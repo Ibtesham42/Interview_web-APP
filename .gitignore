@@ -1,0 +1,61 @@
+# === Secrets — never commit ===
+.env
+.env.*
+!.env.example
+!.env.*.example
+# Google OAuth client-secret files
+client_secret*.json
+*.apps.googleusercontent.com.json
+# Service-account / credential files & keys
+*credentials*.json
+*service-account*.json
+*.pem
+*.key
+id_rsa*
+# Ad-hoc secret notes
+secrets.md
+secrets.txt
+secret*.md
+
+# Local Claude Code settings (machine-specific, not shared)
+.claude/settings.local.json
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# === Node / frontend ===
+node_modules/
+coverage/
+
+# === IDE / editors ===
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# === OS ===
+.DS_Store
+Thumbs.db
+
+# === Logs & local artifacts ===
+*.log
+interviews/
+recordings/
+*.sql.bak
+
+# === Large binary assets (exceed GitHub size limits — keep out of git) ===
+*.onnx

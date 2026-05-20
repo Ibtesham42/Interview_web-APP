@@ -1,0 +1,502 @@
+# CHANGE.md
+
+> **Working memory for this project.** Read this file top-to-bottom at the start
+> of every session — it carries recent changes, architecture decisions, known
+> issues, technical debt and TODOs across sessions.
+>
+> **Rules**
+> - Log every meaningful change. Append new entries at the TOP (newest first).
+> - Entry format:
+>   ```
+>   ## DD/MM/YYYY HH:MM
+>   Type: Feature | Fix | Refactor | Decision | Known Issue | TODO
+>
+>   <short description>
+>
+>   Affected files: <paths>
+>   Architectural impact: <how it changes the system, or "None">
+>   Future considerations: <follow-ups, risks, debt>
+>   ```
+> - Track: architecture decisions, implemented features, future-impacting
+>   decisions, unresolved bugs, technical debt, pending improvements.
+> - This file is authoritative context — do not rely on chat history.
+
+---
+
+## 21/05/2026 16:30
+Type: Feature
+
+Matryoshka layered-questioning system — deterministic, layer-aware interview
+engine (see docs/adr/0001-matryoshka-layered-questioning.md).
+
+Every topic is now drilled through a canonical 5-layer scale (L1 broad intro
+-> L5 real-world/scaling). The orchestrator owns the layer as deterministic
+Python state: a strong answer climbs a layer, a weak one runs a 3-strike
+de-escalation cascade (step-down -> pivot -> end phase). The single generation
+LLM call is told the exact layer/topic to ask — no extra LLM call, turn
+latency unchanged.
+
+Key changes:
+- PhaseState gained current_layer / current_topic / max_layer_reached /
+  struggle_streak / topic_count / topic_complete / pending_action. The
+  superseded DrillState + ML-keyword _extract_topic_from_question are removed.
+- New deterministic engine: _apply_layer_engine, _classify_answer,
+  _deep_dive_transition (full L1-L5, phases 2-3), _mini_drill_transition
+  (light 2-layer, phases 4-5), _build_question_directive + _deep_dive_directive
+  + _mini_drill_directive. evaluate_answer now runs the engine after scoring.
+- Interviewer prompt rewritten cold -> warm-professional; per-turn layer/topic
+  directive is built in Python.
+- Phase 4 reworked: the dead question-retriever path (ml_questions_retrieved,
+  never populated) is replaced by per-area 2-question mini-drills.
+- Hybrid domain handling: _resolve_field_info uses the 9 curated FIELD_PROMPTS
+  as a fast path and LLM-derives + in-memory-caches any other domain, so any
+  field works. types/index.ts field_specialization widened to string.
+- Scoring: compute_phase_scores phase 2/3 gains a layer-depth term
+  (min(max_layer,5)/5*10 * 0.2). Forward-only — applied ONLY when an
+  evaluation row carries details.layer; historical interviews keep their
+  original formula and their displayed scores never move.
+- The Matryoshka layer is persisted in evaluations.details.layer and is
+  internal-only — stripped from the client-facing WebSocket evaluation message.
+
+Affected files:
+- backend: services/interview_orchestrator.py (engine, prompt, scoring,
+  domain handling), routers/interview_session.py (details.layer persistence,
+  follow_up_score = layer, strip layer from the WS evaluation frame)
+- frontend: src/types/index.ts (field_specialization -> string)
+- docs: CONTEXT.md (new glossary), docs/adr/0001-matryoshka-layered-questioning.md
+
+Architectural impact:
+- Question selection is now a deterministic Python state machine; the LLM only
+  phrases a fully-planned question. drill_level self-reporting is dropped.
+- Interview scoring is layer-aware for new interviews only (forward-only),
+  keeping dashboard/admin trend lines truthful across the change.
+- Realtime WebSocket flow, voice pipeline and turn sequencing are unchanged;
+  no new per-turn LLM call; no DB migration.
+
+Future considerations:
+- Phase 4/5 also stamp details.layer (harmless — the layer term is scored for
+  phases 2-3 only); the curated/derived domain table and the CandidateUpload
+  dropdown could still be reconciled.
+- _derive_field_info adds one LLM call at interview start for non-curated
+  domains; if interview volume grows, cache the result on the candidate row.
+- PhaseState is still not restored on a mid-interview WebSocket reconnect
+  (pre-existing limitation, unchanged by this work).
+
+## 21/05/2026 10:00
+Type: Decision
+
+Short description:
+Migrated the AI provider from OpenAI to Groq. All chat/LLM completions now use
+`llama-3.3-70b-versatile`; speech-to-text now uses Groq Whisper
+`whisper-large-v3`. Groq exposes an OpenAI-compatible API, so the existing
+`openai` SDK is reused with `base_url=https://api.groq.com/openai/v1` — no new
+dependency.
+
+Affected files:
+- backend: config.py (new GROQ_API_KEY setting + get_groq_client helper;
+  OPENAI_API_KEY now optional), services/interview_orchestrator.py,
+  services/resume_parser.py, services/voice_service.py, .env.example
+- docs: CLAUDE.md, .claude/SKILLS/architecture.md
+
+Architectural impact:
+- Single LLM/STT provider (Groq) behind one `get_groq_client()` helper. The
+  whole app runs on one GROQ_API_KEY.
+- Backend now REQUIRES `GROQ_API_KEY` in backend/.env or it will not start.
+
+Future considerations:
+- Groq has no embeddings API. `question_retriever.get_embedding` /
+  `seed_ml_questions` still reference OpenAI embeddings — only used by the
+  offline seed script (not the runtime), so OPENAI_API_KEY is optional.
+- `backend/CLAUDE.md` and `.claude/SKILLS/voice-ai.md` still name old models;
+  refresh when convenient.
+
+## 20/05/2026 17:00
+Type: Refactor (Docs)
+
+Phase 5 (SaaS extension) — engineering documentation.
+
+Short description:
+- `CLAUDE.md` rewritten as a full engineering operating document (~20 sections:
+  architecture, folder structure, naming, standards, realtime/voice rules,
+  testing, git, deployment, debugging workflow, review checklist, security,
+  session-startup + working-memory rules).
+- This `CHANGE.md` formalised as a working-memory system with a rules header
+  and a fixed entry format.
+- Specialized Claude agents added under `.claude/agents/`.
+- `.claude/SKILLS/architecture.md` updated to the SaaS architecture; new
+  `.claude/SKILLS/auth-saas.md` skill added.
+
+Affected files:
+- CLAUDE.md, CHANGE.md
+- .claude/agents/*.md (new)
+- .claude/SKILLS/architecture.md, .claude/SKILLS/auth-saas.md (new)
+
+Architectural impact:
+- None — documentation only.
+
+Future considerations:
+- Skill-file copies exist under frontend/.claude and backend/.claude; treat
+  root .claude/SKILLS as canonical and re-sync or remove the copies.
+
+## 20/05/2026 16:30
+Type: Refactor (UI)
+
+Phase 4 (SaaS extension) — premium UI/UX polish pass.
+
+Short description:
+A contained global polish of the shared design system (index.css only), so
+every screen feels more premium with zero component/logic risk:
+- Typography: Inter stylistic sets + optimised legibility + subtle negative
+  letter-spacing on body and headings (the Linear/Stripe "crafted" look).
+- Layered, softer shadow tokens.
+- Crisp app-wide `:focus-visible` ring (keyboard accessibility + polish).
+- Refined thin scrollbars and `::selection` styling.
+- Subtle content settle-in animation on page/auth surfaces.
+- `prefers-reduced-motion` honored globally.
+
+Affected files:
+- frontend: src/index.css
+
+Architectural impact:
+- None. Pure design-token / base-style refinement; no component or backend
+  changes. Interview, voice, websocket, auth all untouched.
+
+Decision:
+- Phase 4 was scoped to a global polish pass rather than a screen-by-screen
+  rebuild, given the app already had a consistent design system and the
+  session length favored a contained, low-risk change.
+
+## 20/05/2026 15:30
+Type: Fix + Refactor
+
+Short description:
+- Admin overview hung on "Loading…" — it generated a full report per interview
+  in a loop (3 blocking DB queries x 82 interviews = ~57s, blocking the event
+  loop). The user dashboard had the same anti-pattern.
+- Fixed: scoring is now computed from a SINGLE bulk evaluations query.
+  82 interviews: 57s -> 0.26s.
+- Also fixed an infinite-spinner: a failed `/api/auth/me` left the app loading
+  forever; AuthContext now tracks `profileLoading` separately and degrades.
+
+Affected files:
+- backend: services/interview_orchestrator.py (new shared helpers
+  compute_phase_scores / compute_final_score / recommendation_for /
+  score_interviews_bulk; generate_report refactored to use them),
+  routers/dashboard.py + routers/admin.py (rewritten to use
+  score_interviews_bulk)
+- frontend: contexts/AuthContext.tsx, components/auth/ProtectedRoute.tsx,
+  App.tsx (profileLoading state)
+
+Architectural impact:
+- Interview score computation is now a pure, shared function over evaluation
+  rows — one source of truth for the report, dashboard and admin views.
+- Aggregation endpoints do O(1) queries instead of O(N) per-interview reports.
+
+Decision:
+- Backend started without `uvicorn --reload` — the reload watcher was making
+  the dev server die mid-session. Backend is now restarted manually after
+  backend code changes.
+
+## 20/05/2026 14:10
+Type: Fix + Decision
+
+Short description:
+- Profile/role is now read from the backend (`GET /api/auth/me`, service-role
+  key) instead of a direct RLS-gated `profiles` query — the admin role was
+  silently failing to load because client-side RLS could return nothing. The
+  endpoint also creates a missing profile row on the fly.
+- Role separation: admins are oversight-only. Admins can no longer access the
+  interview-taking flow (/new, /interview/:id) or the candidate dashboard;
+  they land on /admin and the header shows only the Admin nav. Candidates
+  cannot reach /admin. Reports (/report/:id) remain viewable by both.
+
+Affected files:
+- backend (new): app/routers/profile.py  (modified): app/main.py
+- frontend (modified): contexts/AuthContext.tsx, services/api.ts,
+  components/auth/ProtectedRoute.tsx, App.tsx
+
+Decision:
+- ProtectedRoute gained a `restrictTo: 'user' | 'admin'` gate; `/` now routes
+  each role to its correct home via a RoleHome redirect.
+- Admin/candidate separation is enforced client-side via routing. Backend
+  enforcement on interview creation is left as a future hardening item.
+
+## 20/05/2026 13:00
+Type: Feature
+
+Phase 3 (SaaS extension) — Admin dashboard + role-based access.
+
+Short description:
+- Role-gated admin area. `profiles.role` ('user' | 'admin') now controls access;
+  a user is promoted to admin manually via SQL.
+- Admin overview (`/admin`): platform stats (total/active users, interviews,
+  completion rate, average score), interview-category breakdown, and a users
+  table with per-user interview counts and average scores.
+- Admin user detail (`/admin/users/:userId`): a single user's profile, stats
+  and full interview history (links through to each report).
+- The "Admin" nav link appears only for admin accounts; non-admins hitting an
+  admin route are redirected to their dashboard.
+
+Affected files:
+- backend (new): app/routers/admin.py
+- backend (modified): app/auth.py (get_current_admin role guard),
+  app/main.py (register admin router)
+- frontend (new): components/admin/AdminDashboard.tsx,
+  components/admin/AdminUserDetail.tsx
+- frontend (modified): App.tsx (admin routes + conditional nav),
+  services/api.ts (adminApi), types/index.ts, index.css
+
+Architectural impact:
+- `get_current_admin` is a nested FastAPI dependency: it resolves the user via
+  get_current_user, then verifies role == 'admin' on the profiles table (403
+  otherwise). The backend's service-role key lets admin endpoints aggregate
+  across all users without needing admin RLS policies.
+- ProtectedRoute already supported `requireAdmin`; it is now used for /admin*.
+
+Decision:
+- Admins are created by running, in the Supabase SQL editor:
+  `update public.profiles set role = 'admin' where email = 'you@example.com';`
+- Admin RLS policies remain deferred — admin reads go through the backend
+  service-role key, so direct-client admin RLS is not needed yet.
+
+## 20/05/2026 11:30
+Type: Feature
+
+Phase 2 (SaaS extension) — Post-interview results + User dashboard.
+
+Short description:
+- New `/dashboard` is the post-login landing page: aggregate stats (total,
+  completed, average score, best score), a performance-trend bar chart, and
+  the full interview history with per-interview scores and recommendations.
+- The post-interview report screen (already auto-redirected to from the
+  interview) was rebuilt: score hero, summary, strengths vs. areas-to-improve,
+  per-phase breakdown, and a collapsible transcript replay.
+- Routing restructured: `/` -> `/dashboard`, new interview setup moved to
+  `/new`, header gains Dashboard / New Interview nav.
+
+Affected files:
+- backend (new): app/routers/dashboard.py
+- backend (modified): app/main.py (register dashboard router),
+  app/models/schemas.py (report now carries transcript/strengths/
+  improvements/summary), app/services/interview_orchestrator.py
+  (generate_report derives strengths, improvements and a summary)
+- frontend (new): components/Dashboard.tsx
+- frontend (modified): components/Report.tsx (full rebuild), App.tsx
+  (routing + header nav), services/api.ts (dashboardApi), types/index.ts,
+  index.css
+
+Architectural impact:
+- New aggregation endpoint GET /api/dashboard returns the signed-in user's
+  interview summaries + stats + trend; reuses ReportGenerator per interview.
+- Report generation is now richer but still fully deterministic (no extra
+  LLM calls): strengths/improvements/summary derived from phase scores.
+- Interview orchestration, websocket and voice pipeline unchanged.
+
+Future considerations:
+- Dashboard computes each interview's score via ReportGenerator (3 queries
+  per interview). Fine for personal use; batch if interview counts grow large.
+
+## 20/05/2026 09:40
+Type: Fix + UI
+
+Short description:
+Hardened error reporting and redesigned the candidate onboarding screen.
+- "Begin Interview" no longer shows "Unknown error". Root cause: the Phase 1
+  migration had not been run, so `candidates` lacked a `user_id` column and the
+  insert raised an unhandled error returned as a plain-text 500 the frontend
+  could not parse. Fixed both layers: the backend now returns meaningful JSON
+  for any database error, and the API client parses non-JSON error bodies.
+- Google sign-in now returns a clear, actionable message when the provider is
+  not enabled (the error is Supabase dashboard configuration, not code).
+- Candidate onboarding redesigned: premium card, refined upload zone, two-column
+  field grid, polished ready state, subtle cursor tilt + hover depth, responsive.
+
+Affected files:
+- backend: app/main.py (global APIError exception handler)
+- frontend (new): hooks/useTilt.ts
+- frontend (modified): services/api.ts, contexts/AuthContext.tsx,
+  components/CandidateUpload.tsx, index.css
+
+Architectural impact:
+- All PostgREST/database errors now surface as JSON `{detail}` 500s app-wide;
+  the frontend never shows an unparseable plain-text error again.
+- No change to interview orchestration, websocket, voice pipeline or auth
+  architecture.
+
+Known issue / decision:
+- Google OAuth and per-user persistence still require the Phase 1 Supabase
+  dashboard setup: run migration 001_auth_and_ownership.sql and enable the
+  Email + Google providers. Until the migration is run, "Begin Interview" now
+  reports exactly that instead of failing opaquely.
+
+## 20/05/2026 08:15
+Type: Feature
+
+Phase 1 (SaaS extension) — Authentication & data ownership.
+
+Short description:
+Added Supabase Auth (email/password + Google OAuth), persistent sessions,
+secure logout, protected routes, and per-user data ownership so a returning
+user's interviews, resumes and reports persist and reload under their account.
+
+Affected files:
+- frontend (new): contexts/AuthContext.tsx,
+  components/auth/{Login,Signup,AuthCallback,ProtectedRoute}.tsx
+- frontend (modified): App.tsx, services/api.ts, components/CandidateUpload.tsx,
+  utils/supabase/client.ts, types/index.ts, index.css
+- backend (new): app/auth.py, app/migrations/001_auth_and_ownership.sql
+- backend (modified): routers/candidates.py, routers/interviews.py
+
+Architectural impact:
+- All app routes now require authentication; /login, /signup, /auth/callback
+  are the only public routes.
+- `candidates` and `interviews` carry a `user_id`; Row Level Security scopes
+  every row to its owner. `evaluations` are owned transitively via interview.
+- The backend verifies the Supabase JWT (Bearer token) via `get_current_user`
+  and stamps `user_id` on all writes. It still uses the service-role key
+  (bypasses RLS); RLS protects the direct client queries the dashboards use.
+
+Future considerations:
+- The WebSocket `/ws/interview/{id}` is not yet token-authenticated
+  (interview_id is the capability) — harden in a later phase.
+- `profiles.role` exists but admin RLS is deferred to Phase 3 (needs a
+  SECURITY DEFINER `is_admin()` to avoid RLS policy recursion).
+- Requires Supabase dashboard setup: run migration 001, enable the Email and
+  Google providers, and whitelist the localhost redirect URL.
+
+## 2026-05-20: CLAUDE.md Accuracy Rewrite
+
+### Brief: Rewrite CLAUDE.md to match actual codebase reality
+
+### Description
+Regenerated `CLAUDE.md` via `/init`. The previous version described intended
+design rather than the implemented system, which could mislead future work.
+Corrected factual inaccuracies and documented setup gaps and architecture.
+
+### Changes Made
+
+#### 1. Tech Stack Corrections
+- Clarified `gpt-4o-mini` is used for ALL live work (question generation,
+  evaluation, resume parsing, empathy nudges)
+- Noted `gpt-4o` only appears in `ResumeParser._parse_with_file_id` (dead code)
+- Documented embeddings model (`text-embedding-3-small`, 1536-dim)
+
+#### 2. Known Setup Issues (new section)
+- `requirements.txt` missing `edge-tts` — backend fails to import without it
+- Embedding dimension mismatch: `database.sql` declares `VECTOR(384)` but
+  seed writes 1536-dim vectors
+- `/voice/stt` and `/analyze` reject non-`audio/*` MIME types
+
+#### 3. Architecture Documentation
+- Documented the WebSocket state machine as the core (REST routers are thin)
+- Documented in-memory orchestrator state and WS message protocol
+- Flagged the two overlapping phase-advance mechanisms in InterviewOrchestrator
+- Corrected "RAG" claim: question retrieval is keyword scoring, not vector search
+- Documented schema-drift defensive code in `interview_session.py`
+
+#### 4. Misc
+- Fixed required header line, frontend dev port (3000), hardcoded WS host
+- Noted absence of unit tests and the root-level e2e Node scripts
+- Preserved UI/UX principles and added pointer to `.claude/SKILLS/` docs
+
+### Files Changed
+- `CLAUDE.md` - full rewrite for accuracy
+
+### Known Issues
+- `frontend/.env` and `backend/.env` contain live-looking credentials and are
+  present in the repo — should be gitignored
+
+## 2026-05-18: UI/UX Quality Improvements
+
+### Brief: Fix field visibility, remove AI aesthetic, improve voice recognition, fix responsiveness
+
+### Description
+Major quality improvements to make the platform feel enterprise-grade and human-designed.
+
+### Changes Made
+
+#### 1. Field Selection Text Visibility (FIXED)
+- Fixed select dropdown text visibility for all browsers
+- Added explicit color overrides for :hover, :focus, :active states
+- Firefox-specific fix for select element colors
+- IE/Edge fallback styling
+- Proper -webkit-text-fill-color and fill properties
+- Ensure option elements always have visible text
+
+#### 2. Remove AI-Generated Aesthetic
+- Removed gradient text effects from hero
+- Removed radial gradient background
+- Simplified startup animation to minimal fade
+- Replaced emoji icons with SVG icons in Report.tsx
+- Removed excessive animations:
+  - Voice wave: reduced height (32px -> 20px) and opacity
+  - Recording pulse: changed from scale to ring effect
+  - Mic pulse: reduced scale effect
+- Removed gradient references in CSS
+- Made animations subtle and purposeful
+
+#### 3. Voice Recognition Quality Improvements
+Frontend (useAudioRecorder.ts):
+- Optimized MediaStream settings for speech recognition:
+  - 16000 Hz sample rate (optimal for Whisper)
+  - Mono channel (channelCount: 1)
+  - Enhanced echo cancellation, noise suppression, auto-gain
+- Added silence detection (isSilence state)
+- Audio level visualization responds to actual input
+- Better MIME type detection priority
+- Proper cleanup on unmount (streams, audio context, timeouts)
+- Focus on speech frequencies (85-255Hz) for level detection
+
+Backend (voice_service.py):
+- Added language hint ("en") to Whisper for faster, more accurate transcription
+- Set temperature to 0.0 for deterministic output
+- Added response_format optimization for text output
+
+InterviewRoom.tsx:
+- Dynamic listening state: shows "Listening..." / "Speech detected" / "Processing..."
+- Voice wave bar heights respond to actual audio level
+- Visual feedback for silence detection
+
+#### 4. Device Responsiveness Improvements
+Added comprehensive responsive breakpoints:
+- 1600px+ (ultrawide): max-width 1400px, 4-column features, larger typography
+- 1024px-1440px (laptop): max-width 960px, 2-column features
+- 768px-1023px (tablet landscape): max-width 720px
+- 768px (tablet portrait): full responsive collapse
+- 640px (mobile landscape): chat/input optimizations
+- 480px (mobile portrait): touch-friendly adjustments
+- 360px (very small): font-size scaling
+
+Fixed viewport issues:
+- Added 100dvh (dynamic viewport height) for mobile browsers
+- Fixed interview container height calculation
+- Proper min-height with dvh fallback
+
+#### 5. Documentation Updates
+- Updated CLAUDE.md with UI/UX design principles
+- Added form control guidelines (select visibility)
+- Documented responsive breakpoints
+- Updated voice service section with optimizations
+
+### Files Changed
+
+#### Frontend
+- `frontend/src/index.css` - Select fixes, animation reductions, responsive breakpoints, viewport fixes
+- `frontend/src/App.tsx` - Removed gradient text class
+- `frontend/src/components/Report.tsx` - Replaced emojis with SVG icons
+- `frontend/src/components/InterviewRoom.tsx` - Voice level visualization, dynamic states
+- `frontend/src/hooks/useAudioRecorder.ts` - Complete rewrite for speech optimization
+
+#### Backend
+- `backend/app/services/voice_service.py` - Whisper optimization (language hint, temperature)
+
+### Known Issues
+- Whisper API requires stable internet connection
+- Mobile Safari may have stricter microphone permissions
+- Edge TTS latency varies (typically 1-3 seconds)
+
+### Future Improvements
+- Consider Web Speech API for real-time transcription
+- Add offline-capable speech recognition fallback
+- Test on more mobile devices
+- Consider voice recording playback feature
