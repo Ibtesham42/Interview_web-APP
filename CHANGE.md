@@ -23,6 +23,35 @@
 
 ---
 
+## 21/05/2026 20:00
+Type: Fix
+
+Resolved the post-login 401 (see the 19:15 entry). The 19:15 hypothesis — a
+SUPABASE_URL / SUPABASE_KEY mismatch — was DISPROVEN: the Render env vars are
+correct (verified by decoding the service_role key and testing it against the
+project's Auth API).
+
+Actual root cause: dependency drift. requirements.txt pins supabase==2.3.4 but
+its sub-dependencies (gotrue, postgrest, realtime, storage3, supafunc) and httpx
+were left unpinned. Render's fresh May-2026 install resolved them to current
+releases; the drifted gotrue auth client fails to validate Supabase's current
+ES256-signed access tokens, so get_user() raises and get_current_user() returns
+401. Proven by differential: the local environment (gotrue 2.5.5 / postgrest
+0.15.1 / httpx 0.24.1) validates a real ES256 token through the identical
+supabase 2.3.4 get_user() code path; the freshly-resolved stack does not.
+
+Fix: pinned the full Supabase stack in requirements.txt to the verified-working
+set — gotrue==2.5.5, postgrest==0.15.1, realtime==1.0.6, storage3==0.7.7,
+supafunc==0.3.3, httpx==0.24.1, httpcore==0.17.3.
+
+Affected files: backend/requirements.txt
+Architectural impact: None — dependency pinning only.
+Future considerations: third deploy bug from old, loosely-pinned dependencies
+(after Python 3.14 / pydantic-core). A complete lockfile (pip freeze / pip-tools
+/ uv) would prevent the whole class. The auth.py logging from the 19:15 entry
+stays as the safety net — if a 401 persists after this deploys, the
+[auth] log line in Render names the exact exception.
+
 ## 21/05/2026 19:15
 Type: Fix
 

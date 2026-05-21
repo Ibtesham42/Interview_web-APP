@@ -4,9 +4,18 @@ python-multipart==0.0.9
 pydantic==2.6.1
 pydantic-settings==2.1.0
 supabase==2.3.4
+# supabase 2.3.4 leaves these sub-dependencies unpinned. A fresh install
+# resolves them to newer releases whose auth client breaks token validation
+# against current Supabase (ES256) tokens. Pinned to the verified-working set.
+gotrue==2.5.5
+postgrest==0.15.1
+realtime==1.0.6
+storage3==0.7.7
+supafunc==0.3.3
 openai==1.12.0
 python-dotenv==1.0.1
-httpx>=0.24,<0.26
+httpx==0.24.1
+httpcore==0.17.3
 websockets==12.0
 aiofiles==23.2.1
 PyPDF2==3.0.1
