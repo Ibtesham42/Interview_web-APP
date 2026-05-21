@@ -1,3 +1,4 @@
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 
@@ -25,6 +26,20 @@ class Settings(BaseSettings):
     # Piper TTS Configuration (free, open-source)
     use_piper_tts: bool = False  # Set to True to use Piper
     piper_voice_path: str = ""   # Path to .onnx voice file
+
+    @field_validator(
+        "groq_api_key", "openai_api_key", "supabase_url", "supabase_key",
+        mode="before",
+    )
+    @classmethod
+    def _strip_env(cls, v):
+        """Strip stray whitespace from credential/URL env vars.
+
+        Values pasted into a hosting dashboard often pick up a trailing
+        newline. An unprintable character in SUPABASE_URL makes httpx reject
+        the request URL ("Invalid non-printable ASCII character in URL").
+        """
+        return v.strip() if isinstance(v, str) else v
 
     class Config:
         env_file = ".env"

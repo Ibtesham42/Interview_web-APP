@@ -23,6 +23,35 @@
 
 ---
 
+## 21/05/2026 21:45
+Type: Fix
+
+The post-login 401 persisted. The [auth] logging (19:15 entry) now reveals the
+definitive cause: get_user() raises
+"AuthRetryableError: Invalid non-printable ASCII character in URL".
+
+Root cause: the SUPABASE_URL env var on Render carries a trailing newline (a
+copy-paste artifact). create_client builds the request URL as
+f"{supabase_url}/auth/v1/user", so the newline lands inside the URL and
+httpx/h11 rejects it before the request is sent. Reproduced locally: a URL with
+a trailing newline raises that exact error; .strip() resolves it.
+
+This supersedes the 20:00 root-cause entry — "dependency drift" was an
+unconfirmed hypothesis (the [auth] logging was not yet surfacing the real error
+then). The dependency pinning (20:00 / 20:30 / 21:00) remains valid
+build-reproducibility hardening, but the actual 401 cause is this newline.
+
+Fix: config.py Settings strips whitespace from groq_api_key, openai_api_key,
+supabase_url and supabase_key via a pydantic field_validator (mode="before").
+The backend is now immune to stray whitespace in these env vars.
+
+Affected files: backend/app/config.py
+Architectural impact: None — defensive input normalisation at the config
+boundary.
+Future considerations: re-entering the Render SUPABASE_URL cleanly is now
+optional (the code tolerates it). Recurring class: values pasted into hosting
+dashboards picking up stray characters (cf. the VITE_API_URL trailing slash).
+
 ## 21/05/2026 21:00
 Type: Fix
 
