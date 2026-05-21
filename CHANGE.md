@@ -23,6 +23,31 @@
 
 ---
 
+## 21/05/2026 21:00
+Type: Fix
+
+Render build failed with pip ResolutionImpossible: edge-tts 6.1.9 hard-pins
+certifi==2023.07.22, but the lockfile pinned certifi==2026.2.25.
+
+Root cause: edge-tts was mis-pinned. When it was first added to requirements.txt
+it was pinned to 6.1.9 (a guessed "known stable"), but the actually-installed,
+proven-working version is 7.2.8. The lockfile's transitive section was generated
+from the installed 7.2.8 tree (certifi 2026.2.25, tabulate, etc.), so the direct
+edge-tts==6.1.9 line contradicted its own transitive closure. Verified every
+other direct pin matches its installed version — edge-tts was the only mismatch.
+
+Fix: corrected edge-tts==6.1.9 -> edge-tts==7.2.8 (the proven-working version;
+7.2.8 requires certifi>=2023.11.17, satisfied by the pinned certifi==2026.2.25).
+No other change needed — the transitive section was already correct for 7.2.8.
+Verified all 53 pins are mutually consistent: every dependency specifier in the
+closure is satisfied by the pinned set.
+
+Affected files: backend/requirements.txt
+Architectural impact: None.
+Future considerations: a lockfile must be generated from an environment whose
+installed versions match the direct pins. Lockfile regeneration should first
+assert direct-pin == installed-version, then walk the closure.
+
 ## 21/05/2026 20:30
 Type: Refactor
 
