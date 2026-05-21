@@ -23,6 +23,28 @@
 
 ---
 
+## 21/05/2026 20:30
+Type: Refactor
+
+Fully pinned backend/requirements.txt (lockfile). Every transitive dependency
+is now pinned to the verified-working version, split into a "Direct" and a
+"Transitive (pinned)" section. Previously only top-level packages were pinned
+and their sub-dependencies resolved fresh on each install — the cause of the
+auth-401 bug (drifted gotrue) and a contributor to the Python-3.14 build
+failure. 53-package closure computed from the working environment.
+
+uvloop (Linux-only uvicorn speed-up) is not pinnable from the Windows dev
+machine and is left to uvicorn[standard] to resolve on Render; every app- and
+auth-critical package is cross-platform and pinned.
+
+Affected files: backend/requirements.txt
+Architectural impact: None — reproducible-build hardening; closes the
+dependency-drift class of deploy failures.
+Future considerations: regenerate the Transitive section after any direct-dep
+change. A platform-aware locker (uv, or pip-tools --universal, or locking
+inside the Linux build) would additionally pin uvloop and is the longer-term
+ideal.
+
 ## 21/05/2026 20:00
 Type: Fix
 

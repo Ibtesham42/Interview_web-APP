@@ -1,12 +1,24 @@
+# requirements.txt — fully pinned for reproducible builds.
+#
+# Every transitive dependency is pinned, so a fresh install (e.g. a Render
+# rebuild) can never resolve to a drifted version. This is what prevents the
+# class of bug where old top-level pins + unpinned sub-deps break months later.
+#
+# Generated 2026-05-21 from the verified-working environment. To change a
+# direct dependency: edit the "Direct" section, install, then regenerate the
+# "Transitive" section from the resulting environment.
+#
+# Note: uvloop (Linux-only uvicorn speed-up) is not pinnable from a Windows
+# dev machine; uvicorn[standard] pulls it on Render. Every app- and
+# auth-critical package is cross-platform and pinned below.
+
+# --- Direct dependencies ---
 fastapi==0.109.2
 uvicorn[standard]==0.27.1
 python-multipart==0.0.9
 pydantic==2.6.1
 pydantic-settings==2.1.0
 supabase==2.3.4
-# supabase 2.3.4 leaves these sub-dependencies unpinned. A fresh install
-# resolves them to newer releases whose auth client breaks token validation
-# against current Supabase (ES256) tokens. Pinned to the verified-working set.
 gotrue==2.5.5
 postgrest==0.15.1
 realtime==1.0.6
@@ -20,3 +32,39 @@ websockets==12.0
 aiofiles==23.2.1
 PyPDF2==3.0.1
 edge-tts==6.1.9
+
+# --- Transitive dependencies (pinned) ---
+aiohttp==3.9.0
+aiosignal==1.4.0
+annotated-types==0.7.0
+anyio==4.12.1
+async-timeout==4.0.3
+attrs==25.4.0
+certifi==2026.2.25
+click==8.3.1
+colorama==0.4.6
+deprecation==2.1.0
+distro==1.9.0
+exceptiongroup==1.3.1
+frozenlist==1.8.0
+h11==0.14.0
+h2==4.3.0
+hpack==4.1.0
+httptools==0.7.1
+hyperframe==6.1.0
+idna==3.11
+multidict==6.7.1
+packaging==26.0
+propcache==0.4.1
+pydantic-core==2.16.2
+python-dateutil==2.9.0.post0
+pyyaml==6.0.3
+six==1.17.0
+sniffio==1.3.1
+starlette==0.36.3
+strenum==0.4.15
+tabulate==0.9.0
+tqdm==4.67.3
+typing-extensions==4.15.0
+watchfiles==1.1.1
+yarl==1.22.0
