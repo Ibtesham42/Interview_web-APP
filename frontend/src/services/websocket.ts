@@ -1,56 +1,100 @@
 import type { WebSocketMessage } from '../types';
+import { supabase } from '../utils/supabase/client';
 
 type MessageHandler = (message: WebSocketMessage) => void;
 
-const WS_HOST = 'ws://localhost:8000';
+// In production VITE_WS_URL is the wss:// Render backend; unset in local dev.
+const WS_HOST = import.meta.env.VITE_WS_URL ?? 'ws://localhost:8000';
 const MAX_RECONNECT_ATTEMPTS = 3;
 
 class InterviewWebSocket {
   private ws: WebSocket | null = null;
   private handlers: Map<string, Set<MessageHandler>> = new Map();
-  private reconnectAttempts = 0;
   private intentionalClose = false;
   private interviewId: string | null = null;
 
-  connect(interviewId: string): Promise<void> {
+  /**
+   * Connect to the interview WebSocket.
+   *
+   * The retry loop only covers the *cold-start* window — a socket that never
+   * opens (e.g. the Render backend is waking up). Once the socket has opened,
+   * the interview is running and the in-memory orchestrator cannot be resumed
+   * (ADR 0002): a later drop is terminal and surfaces a `disconnected` event
+   * rather than silently restarting the interview.
+   *
+   * Resolves once a socket opens; rejects if every cold-start attempt fails.
+   */
+  async connect(interviewId: string): Promise<void> {
     this.interviewId = interviewId;
     this.intentionalClose = false;
 
-    return new Promise((resolve, reject) => {
-      const ws = new WebSocket(`${WS_HOST}/ws/interview/${interviewId}`);
-      this.ws = ws;
-
-      ws.onopen = () => {
-        this.reconnectAttempts = 0;
-        resolve();
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const message: WebSocketMessage = JSON.parse(event.data);
-          this.emit(message.type, message);
-        } catch (e) {
-          console.error('Failed to parse WebSocket message:', e);
+    for (let attempt = 0; attempt <= MAX_RECONNECT_ATTEMPTS; attempt++) {
+      if (this.intentionalClose) return;
+      try {
+        await this.openSocket(interviewId);
+        return; // socket opened — interview is now running
+      } catch (err) {
+        if (attempt >= MAX_RECONNECT_ATTEMPTS) {
+          throw err instanceof Error
+            ? err
+            : new Error('Unable to reach the interview server.');
         }
-      };
+        // Exponential backoff before the next cold-start attempt: 1s, 2s, 4s.
+        await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)));
+      }
+    }
+  }
 
-      ws.onerror = (error) => {
-        if (ws.readyState !== WebSocket.OPEN) reject(error);
-      };
+  /**
+   * Open a single WebSocket. Resolves on `open`; rejects if the socket closes
+   * before it ever opens (so {@link connect} can retry). A close *after* the
+   * socket has opened is terminal and emits a synthetic `disconnected` event.
+   */
+  private openSocket(interviewId: string): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      let opened = false;
 
-      ws.onclose = () => {
-        if (this.intentionalClose || !this.interviewId) return;
-        if (this.reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-          // Exponential backoff: 1s -> 2s -> 4s.
-          const delay = 1000 * Math.pow(2, this.reconnectAttempts);
-          this.reconnectAttempts++;
-          setTimeout(() => {
-            if (!this.intentionalClose && this.interviewId) {
-              this.connect(this.interviewId).catch(() => {});
+      // A fresh access token per attempt — getSession() refreshes if needed.
+      supabase.auth
+        .getSession()
+        .then(({ data }) => {
+          const token = data.session?.access_token ?? '';
+          const ws = new WebSocket(
+            `${WS_HOST}/ws/interview/${interviewId}?token=${encodeURIComponent(token)}`,
+          );
+          this.ws = ws;
+
+          ws.onopen = () => {
+            opened = true;
+            resolve();
+          };
+
+          ws.onmessage = (event) => {
+            try {
+              const message: WebSocketMessage = JSON.parse(event.data);
+              this.emit(message.type, message);
+            } catch (e) {
+              console.error('Failed to parse WebSocket message:', e);
             }
-          }, delay);
-        }
-      };
+          };
+
+          ws.onerror = () => {
+            // The outcome (retry vs terminal) is decided in onclose.
+          };
+
+          ws.onclose = () => {
+            if (!opened) {
+              // Never opened — cold start or a rejected handshake. Let the
+              // connect() retry loop decide whether to try again.
+              reject(new Error('WebSocket failed to open'));
+              return;
+            }
+            if (this.intentionalClose || !this.interviewId) return;
+            // Opened then dropped: the interview is not resumable (ADR 0002).
+            this.emit('disconnected', { type: 'disconnected' });
+          };
+        })
+        .catch(reject);
     });
   }
 
@@ -58,7 +102,7 @@ class InterviewWebSocket {
     this.intentionalClose = true;
     this.interviewId = null;
     if (this.ws) {
-      this.ws.onclose = null; // suppress reconnect on an intentional close
+      this.ws.onclose = null; // suppress the terminal event on an intentional close
       this.ws.close();
       this.ws = null;
     }

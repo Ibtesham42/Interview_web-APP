@@ -1,0 +1,27 @@
+# Render Blueprint — backend API (FastAPI).
+# Deploy: Render Dashboard -> New -> Blueprint -> select this repo.
+# Or configure an equivalent Web Service manually with the values below.
+services:
+  - type: web
+    name: ai-mock-interview-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    # Single process (no --workers): 512MB free tier cannot host more, and the
+    # in-memory interview orchestrator is not shared across workers.
+    # WS ping flags keep idle interview sockets alive through silent stretches.
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --ws-ping-interval 20 --ws-ping-timeout 20
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.10.13"
+      - key: GROQ_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      # Optional. FRONTEND_ORIGIN_REGEX already covers *.vercel.app; set
+      # FRONTEND_ORIGINS only for an additional custom domain. Add in the
+      # Render dashboard if needed (see backend/.env.example).

@@ -23,6 +23,79 @@
 
 ---
 
+## 21/05/2026 17:00
+Type: Feature
+
+Production deployment readiness — Vercel (frontend) + Render (backend, free
+tier). Additive only; the realtime interview pipeline, voice flow and
+orchestrator logic are unchanged (see docs/adr/0002).
+
+Frontend:
+- API/WS URLs are now environment-driven. api.ts builds API_BASE from
+  VITE_API_URL; websocket.ts builds WS_HOST from VITE_WS_URL. Both fall back to
+  the dev defaults (relative /api via the Vite proxy, ws://localhost:8000) when
+  unset, so local dev is unchanged. New vars typed in vite-env.d.ts.
+- websocket.ts reworked: connect() now retries ONLY during the cold-start
+  window (a socket that never opens) — 4 attempts, 1s/2s/4s backoff. Once the
+  socket has opened, a drop is terminal and emits a synthetic `disconnected`
+  event instead of silently restarting the interview (ADR 0002). The Supabase
+  JWT is attached as a `?token=` query param, refreshed per attempt.
+- InterviewRoom.tsx handles `disconnected` with a terminal "Connection lost"
+  screen (progress-saved messaging + back-to-dashboard).
+- New frontend/vercel.json: SPA rewrite so deep-link refreshes resolve.
+- New frontend/.env.example.
+
+Backend:
+- WebSocket auth: interview_session.py validates the Supabase JWT and interview
+  ownership BEFORE accepting the socket (close codes 4401/4403/4404). It is a
+  gate in front of the existing flow — the interview loop is untouched.
+- CORS fixed: main.py replaced allow_origins=["*"] + allow_credentials=True
+  (an invalid combo) with an explicit allowlist (localhost + FRONTEND_ORIGINS)
+  plus FRONTEND_ORIGIN_REGEX for *.vercel.app; credentials disabled (Bearer
+  auth uses no cookies).
+- edge-tts added to requirements.txt (was imported by voice_service.py but
+  missing — would have crashed the backend on Render at import time).
+- Hardening: get_groq_client() now sets timeout=30s + max_retries=2 so a
+  stalled Groq call cannot block the single-worker event loop indefinitely.
+  Client-facing WS error messages (`error`, `voice_error`) no longer leak raw
+  exception strings — the real error is logged server-side.
+- New render.yaml blueprint: single uvicorn process (no --workers) with
+  --ws-ping-interval/--ws-ping-timeout to keep idle interview sockets alive;
+  healthCheckPath /health; Python pinned to 3.10.13.
+- backend/.env.example documents the two new CORS vars.
+
+Affected files:
+- frontend: src/services/api.ts, src/services/websocket.ts,
+  src/components/InterviewRoom.tsx, src/types/index.ts, src/vite-env.d.ts,
+  vercel.json (new), .env.example (new)
+- backend: app/main.py, app/config.py, app/routers/interview_session.py,
+  requirements.txt, .env.example
+- root: render.yaml (new), docs/adr/0002-interview-sessions-are-not-resumable.md
+  (new)
+
+Architectural impact:
+- The frontend is now cross-origin to the backend in production; CORS and the
+  WS auth gate are the new trust boundary. The WebSocket is authenticated for
+  the first time.
+- A dropped interview is explicitly non-resumable (ADR 0002). This is a
+  deliberate, documented boundary — not a regression — replacing the previous
+  silent-restart corruption path.
+- Realtime turn sequencing, voice pipeline and orchestrator are unchanged.
+
+Future considerations / known issues:
+- Free tier cold start (~50-60s): mitigated by an external keep-alive pinger
+  hitting /health every ~10 min — must be set up post-deploy (e.g. UptimeRobot
+  / cron-job.org). Not in the repo.
+- FRONTEND_ORIGIN_REGEX defaults to all *.vercel.app; tighten it to the
+  project slug (https://<slug>-.*\.vercel\.app) once the Vercel project name
+  is known.
+- Synchronous Groq client still blocks the event loop per turn; with a single
+  worker, concurrent interviews serialise their LLM calls. Acceptable for a
+  low-concurrency free-tier deploy; revisit (wrap in a thread) if volume grows.
+- Deploy-time config NOT in the repo: Supabase Site URL + Redirect URLs must
+  include the production Vercel domain (+ /auth/callback); Render + Vercel env
+  vars must be set in their dashboards.
+
 ## 21/05/2026 16:30
 Type: Feature
 

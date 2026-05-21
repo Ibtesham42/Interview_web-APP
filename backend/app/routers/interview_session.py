@@ -139,23 +139,63 @@ def save_evaluation(supabase, eval_data: dict) -> bool:
     return False
 
 
+def _authenticate_ws_token(supabase, token: str):
+    """Resolve the Supabase user from a WebSocket `token` query param.
+
+    Returns the user object, or None if the token is missing/invalid. Mirrors
+    `app.auth.get_current_user` but returns None instead of raising, since a
+    WebSocket rejects with a close code rather than an HTTP error.
+    """
+    if not token:
+        return None
+    try:
+        response = supabase.auth.get_user(token)
+    except Exception:
+        return None
+    user = getattr(response, "user", None)
+    if user is None or not getattr(user, "id", None):
+        return None
+    return user
+
+
 async def interview_websocket(websocket: WebSocket, interview_id: str):
     """WebSocket endpoint for real-time interview session."""
+    from app.supabase_client import get_supabase
+    from app.services.interview_orchestrator import InterviewOrchestrator
+
+    supabase = get_supabase()
+
+    # --- Auth gate -------------------------------------------------------
+    # Validate the Supabase JWT and interview ownership BEFORE accepting the
+    # socket. This is a gate in front of the existing realtime flow, not a
+    # change to it; closing before accept() cleanly rejects the handshake.
+    user = _authenticate_ws_token(supabase, websocket.query_params.get("token", ""))
+    if user is None:
+        await websocket.close(code=4401)  # unauthorized
+        return
+
+    try:
+        interview_result = (
+            supabase.table("interviews").select("*").eq("id", interview_id).execute()
+        )
+    except Exception:
+        await websocket.close(code=1011)  # internal error
+        return
+
+    if not interview_result.data:
+        await websocket.close(code=4404)  # interview not found
+        return
+
+    interview = interview_result.data[0]
+    owner_id = interview.get("user_id")
+    if owner_id is not None and owner_id != user.id:
+        await websocket.close(code=4403)  # not the caller's interview
+        return
+
+    # --- Accept and run the interview (existing flow below, unchanged) ---
     await manager.connect(interview_id, websocket)
 
     try:
-        from app.supabase_client import get_supabase
-        from app.services.interview_orchestrator import InterviewOrchestrator
-
-        supabase = get_supabase()
-
-        interview_result = supabase.table("interviews").select("*").eq("id", interview_id).execute()
-
-        if not interview_result.data:
-            await websocket.send_json({"type": "error", "message": "Interview not found"})
-            return
-
-        interview = interview_result.data[0]
         candidate_result = supabase.table("candidates").select("*").eq("id", interview["candidate_id"]).execute()
 
         if not candidate_result.data:
@@ -351,10 +391,10 @@ async def interview_websocket(websocket: WebSocket, interview_id: str):
                             "pace": pace_analysis if duration > 0 else None
                         })
                     except Exception as e:
-                        print(f"[DEBUG] Voice transcription error: {e}")
+                        print(f"[WS] Voice transcription error: {e}")
                         await websocket.send_json({
                             "type": "voice_error",
-                            "message": str(e)
+                            "message": "Transcription failed. Please record your answer again."
                         })
 
             elif msg_type == "analyze":
@@ -388,5 +428,12 @@ async def interview_websocket(websocket: WebSocket, interview_id: str):
     except WebSocketDisconnect:
         manager.disconnect(interview_id)
     except Exception as e:
-        await websocket.send_json({"type": "error", "message": str(e)})
+        print(f"[WS] Interview session error: {e}")
+        try:
+            await websocket.send_json({
+                "type": "error",
+                "message": "Something went wrong on the server. Please restart the interview.",
+            })
+        except Exception:
+            pass
         manager.disconnect(interview_id)

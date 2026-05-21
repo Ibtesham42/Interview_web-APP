@@ -87,6 +87,7 @@ export function InterviewRoom() {
   const [empathyNudge, setEmpathyNudge] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [connectionError, setConnectionError] = useState(false);
+  const [lostConnection, setLostConnection] = useState(false);
   const [interviewTime, setInterviewTime] = useState(0);
 
   const { startRecording, stopRecording, audioLevel, isSilence, error: micError } =
@@ -225,6 +226,14 @@ export function InterviewRoom() {
       navigate(`/report/${interviewId}`);
     };
 
+    // The socket dropped after the interview was already running. The
+    // in-memory orchestrator cannot be resumed (ADR 0002) — surface a
+    // terminal state instead of silently restarting the interview.
+    const onDisconnected = () => {
+      audioRef.current?.pause();
+      setLostConnection(true);
+    };
+
     interviewWs.on('init', onInit);
     interviewWs.on('question', onQuestion);
     interviewWs.on('audio', onAudio);
@@ -235,6 +244,7 @@ export function InterviewRoom() {
     interviewWs.on('voice_error', onVoiceError);
     interviewWs.on('error', onBackendError);
     interviewWs.on('interview_ended', onInterviewEnded);
+    interviewWs.on('disconnected', onDisconnected);
 
     return () => {
       interviewWs.off('init', onInit);
@@ -247,6 +257,7 @@ export function InterviewRoom() {
       interviewWs.off('voice_error', onVoiceError);
       interviewWs.off('error', onBackendError);
       interviewWs.off('interview_ended', onInterviewEnded);
+      interviewWs.off('disconnected', onDisconnected);
     };
   }, [interviewId, navigate]);
 
@@ -300,6 +311,22 @@ export function InterviewRoom() {
           <div className="iv-connect-icon error">!</div>
           <h3>Unable to connect</h3>
           <p>We couldn't reach the interview server. Check your connection and refresh the page.</p>
+        </div>
+      ) : lostConnection ? (
+        <div className="iv-connect-state">
+          <div className="iv-connect-icon error">!</div>
+          <h3>Connection lost</h3>
+          <p>
+            The interview connection dropped and can't be resumed. Your progress up to
+            this point was saved.
+          </p>
+          <button
+            className="btn btn-primary"
+            onClick={() => navigate('/')}
+            style={{ marginTop: 'var(--space-md)' }}
+          >
+            Back to dashboard
+          </button>
         </div>
       ) : showConnecting ? (
         <div className="iv-connect-state">

@@ -10,7 +10,9 @@ import type {
 } from '../types';
 import { supabase } from '../utils/supabase/client';
 
-const API_BASE = '/api';
+// In production VITE_API_URL points at the Render backend; in local dev it is
+// unset and requests stay relative, served through the Vite dev proxy.
+const API_BASE = `${import.meta.env.VITE_API_URL ?? ''}/api`;
 
 /** Authorization header carrying the current Supabase access token, if signed in. */
 async function authHeaders(): Promise<Record<string, string>> {

@@ -15,6 +15,13 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
 
+    # CORS — production frontend origins.
+    # frontend_origins: comma-separated exact origins (e.g. a custom domain).
+    # frontend_origin_regex: matches Vercel deployments; tighten to the project
+    # slug for safety, e.g. https://my-app-.*\.vercel\.app
+    frontend_origins: str = ""
+    frontend_origin_regex: str = r"https://.*\.vercel\.app"
+
     # Piper TTS Configuration (free, open-source)
     use_piper_tts: bool = False  # Set to True to use Piper
     piper_voice_path: str = ""   # Path to .onnx voice file
@@ -29,7 +36,16 @@ def get_settings() -> Settings:
 
 
 def get_groq_client():
-    """OpenAI-compatible client pointed at Groq — used for chat and speech-to-text."""
+    """OpenAI-compatible client pointed at Groq — used for chat and speech-to-text.
+
+    An explicit timeout and retry budget keep a stalled Groq request from
+    blocking the (single-worker) event loop indefinitely.
+    """
     from openai import OpenAI
     settings = get_settings()
-    return OpenAI(api_key=settings.groq_api_key, base_url=GROQ_BASE_URL)
+    return OpenAI(
+        api_key=settings.groq_api_key,
+        base_url=GROQ_BASE_URL,
+        timeout=30.0,
+        max_retries=2,
+    )

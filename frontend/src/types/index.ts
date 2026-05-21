@@ -217,10 +217,12 @@ export interface Phase5Score {
 }
 
 export interface WebSocketMessage {
+  // 'disconnected' is a client-side synthetic event emitted when an
+  // already-open interview socket drops and cannot be resumed (see ADR 0002).
   type: 'init' | 'question' | 'answer' | 'voice' | 'audio' |
         'evaluation' | 'phase_update' | 'empathy_nudge' |
         'voice_transcript' | 'voice_error' | 'analysis_result' |
-        'interview_ended' | 'end_interview' | 'error';
+        'interview_ended' | 'end_interview' | 'error' | 'disconnected';
   content?: string;
   phase?: number;
   data?: Record<string, unknown>;
