@@ -4,7 +4,8 @@ import { supabase } from '../utils/supabase/client';
 type MessageHandler = (message: WebSocketMessage) => void;
 
 // In production VITE_WS_URL is the wss:// Render backend; unset in local dev.
-const WS_HOST = import.meta.env.VITE_WS_URL ?? 'ws://localhost:8000';
+// A trailing slash is stripped so `${WS_HOST}/ws/...` never doubles up.
+const WS_HOST = (import.meta.env.VITE_WS_URL ?? 'ws://localhost:8000').replace(/\/+$/, '');
 const MAX_RECONNECT_ATTEMPTS = 3;
 
 class InterviewWebSocket {

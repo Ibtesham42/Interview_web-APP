@@ -23,6 +23,29 @@
 
 ---
 
+## 21/05/2026 18:30
+Type: Fix
+
+Production dashboard failed after login ("Couldn't load your dashboard" /
+"Failed to fetch"). Root cause: the Vercel VITE_API_URL was set with a
+trailing slash, so API_BASE became `https://<host>//api` — every REST call
+hit `//api/...`, which matches no route and 404s (and, against a cold
+free-tier backend, the preflight can 502 without CORS headers, surfacing as
+"Failed to fetch"). Backend CORS itself was verified correct.
+
+Fix: api.ts and websocket.ts now strip a trailing slash from VITE_API_URL /
+VITE_WS_URL before composing the base URL, so a misconfigured env var can no
+longer double the slash. The Vercel VITE_API_URL value should also be
+corrected to have no trailing slash; the frontend must be redeployed for
+either change to take effect (Vite inlines env vars at build time).
+
+Affected files: frontend/src/services/api.ts, frontend/src/services/websocket.ts
+Architectural impact: None — defensive parsing only.
+Future considerations: no test seam — API_BASE is a module-load const built
+from import.meta.env; verifying it would need a Vitest setup with mocked env,
+which the project does not have. The "Failed to fetch" cold-start variant is
+mitigated by the keep-alive pinger (still pending post-deploy setup).
+
 ## 21/05/2026 17:40
 Type: Fix
 
