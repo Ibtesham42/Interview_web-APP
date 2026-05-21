@@ -14,8 +14,11 @@ services:
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --ws-ping-interval 20 --ws-ping-timeout 20
     healthCheckPath: /health
     envVars:
+      # Pin Python: Render defaults new accounts to 3.14, which has no
+      # prebuilt pydantic-core wheel and fails the build. Kept in sync with
+      # the repo-root .python-version file.
       - key: PYTHON_VERSION
-        value: "3.10.13"
+        value: "3.11.9"
       - key: GROQ_API_KEY
         sync: false
       - key: SUPABASE_URL

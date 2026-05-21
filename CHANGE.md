@@ -23,6 +23,29 @@
 
 ---
 
+## 21/05/2026 17:40
+Type: Fix
+
+First Render build failed. Python 3.14.3 (Render's current default for new
+accounts) has no prebuilt wheel for pydantic-core 2.16.2 (pinned transitively
+by pydantic 2.6.1), so pip fell back to compiling it from Rust source, which
+fails on Render's read-only build filesystem.
+
+Pinned Python to 3.11.9 via a repo-root `.python-version` file — Render does
+NOT read `runtime.txt` (confirmed in Render's own docs) — and kept the
+PYTHON_VERSION key in render.yaml in sync. Removed the dead backend/runtime.txt.
+
+Note: the failed build ran from `main` (commit 8f8dfa7). The deployment config
+(render.yaml, edge-tts, CORS fix, WS auth) lives on the
+deploy/vercel-render-production branch and must be merged into `main` — or the
+Render service pointed at that branch — before a build includes any of it.
+
+Affected files: .python-version (new), render.yaml, backend/runtime.txt (removed)
+Architectural impact: None.
+Future considerations: Python is now explicitly pinned. Bumping it later
+requires confirming every pinned dependency (especially pydantic-core) ships a
+wheel for the new version, or the build will attempt a Rust source compile.
+
 ## 21/05/2026 17:00
 Type: Feature
 
@@ -61,7 +84,7 @@ Backend:
   exception strings — the real error is logged server-side.
 - New render.yaml blueprint: single uvicorn process (no --workers) with
   --ws-ping-interval/--ws-ping-timeout to keep idle interview sockets alive;
-  healthCheckPath /health; Python pinned to 3.10.13.
+  healthCheckPath /health; Python pinned to 3.11.9.
 - backend/.env.example documents the two new CORS vars.
 
 Affected files:
