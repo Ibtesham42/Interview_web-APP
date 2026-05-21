@@ -24,7 +24,13 @@ def get_current_user(authorization: str = Header(None)):
     token = authorization.split(" ", 1)[1].strip()
     try:
         response = get_supabase().auth.get_user(token)
-    except Exception:
+    except Exception as e:
+        # Log the real reason server-side (never sent to the client). This
+        # distinguishes a genuinely bad token from a backend Supabase
+        # misconfiguration: "invalid JWT"/"bad_jwt" => SUPABASE_URL points at a
+        # different project than the one that issued the token; "API key" =>
+        # SUPABASE_KEY is wrong; a connection error => SUPABASE_URL unreachable.
+        print(f"[auth] token validation failed: {type(e).__name__}: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired session",
@@ -32,6 +38,7 @@ def get_current_user(authorization: str = Header(None)):
 
     user = getattr(response, "user", None)
     if user is None or not getattr(user, "id", None):
+        print("[auth] token validation returned no user")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired session",

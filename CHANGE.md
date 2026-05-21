@@ -23,6 +23,31 @@
 
 ---
 
+## 21/05/2026 19:15
+Type: Fix
+
+Production dashboard returns 401 after a successful Google OAuth login.
+Diagnosis: the frontend attaches the token correctly (architecturally proven —
+ProtectedRoute renders Dashboard only after /api/auth/me on the same token path
+completes), so the backend is rejecting a valid token. Root cause is a
+deployment misconfiguration: the Render backend's SUPABASE_URL / SUPABASE_KEY
+do not match the frontend's Supabase project (gnylvnobdfzfynhwefrb) — so
+get_user() validates the OAuth token against the wrong project and fails.
+
+get_current_user previously swallowed the real exception, making this
+indistinguishable from a genuinely bad token. Added server-side logging (never
+sent to the client) so the exact cause is visible in the Render log stream:
+"invalid JWT"/"bad_jwt" => wrong SUPABASE_URL; "API key" => wrong SUPABASE_KEY;
+connection error => SUPABASE_URL unreachable.
+
+Affected files: backend/app/auth.py
+Architectural impact: None — observability only; auth logic unchanged.
+Future considerations: no code regression seam — this is a deployment-config
+error, not a code defect. The added logging is the durable safeguard (future
+auth-config mistakes are now immediately visible in logs). The fix itself is to
+correct the Render env vars; left a throwaway unconfirmed Supabase user
+(diag-test-5066@gmail.com) from diagnosis — delete it.
+
 ## 21/05/2026 18:30
 Type: Fix
 
