@@ -30,6 +30,17 @@ EVENT_TYPES = {
     "camera_dark": "warning",         # video frame near-black (Phase B)
 }
 
+# Severity-weighted warning increment (Phase C). At MAX_WARNINGS=3:
+# - a single critical event alone (weight 2) is under threshold,
+# - two criticals OR one critical + one warning OR three warnings terminate.
+# This makes "second person in frame" / "camera unplugged" decisive (two such
+# events end the session) without making a single ambient hiccup terminal.
+SEVERITY_WEIGHT = {
+    "info": 0,
+    "warning": 1,
+    "critical": 2,
+}
+
 
 class IntegrityMonitor:
     """Track and persist integrity events; flag termination at threshold."""
@@ -60,7 +71,7 @@ class IntegrityMonitor:
         transient DB outage cannot let a candidate bypass the threshold.
         """
         severity = EVENT_TYPES.get(event_type, "info")
-        self.warning_count += 1
+        self.warning_count += SEVERITY_WEIGHT.get(severity, 1)
 
         try:
             self.supabase.table("interview_integrity_events").insert({

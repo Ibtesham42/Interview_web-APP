@@ -9,7 +9,22 @@ Dates are DD/MM/YYYY (matches `CHANGE.md`).
 ---
 
 ## [Unreleased]
-_Nothing pending — Phase C (face / multi-person detection via native FaceDetector + MediaPipe BlazeFace fallback) is the next planned tranche; see `IMPLEMENTATION_ROADMAP.md`._
+_Nothing pending — the integrity rollout (Phases A → C) is now complete. The remaining "close-the-cheating-loophole" backend polish is sized S in `IMPLEMENTATION_ROADMAP.md`._
+
+## [2026-05-24] — Integrity Phase C
+
+### Added
+- **Face presence detection.** The interview now monitors whether the candidate's face is visible. If the face is missing for more than 5 seconds (e.g. the candidate walks away from the screen), an integrity event is logged.
+- **Multi-person detection.** If a second person appears in frame, an integrity event is logged immediately as a critical event.
+- **Severity-weighted warnings.** Critical events (multiple people detected, camera disconnected) now count for 2 warnings each, so two such events end the interview. Ordinary warnings still count for 1 each. The toast labels critical events distinctly so the larger jump in the counter is clear.
+
+### Changed
+- The integrity toast now distinguishes critical events with a stronger left border and clearer wording (`"Critical integrity warning · 2/3"` vs. the ordinary `"Integrity warning 1 of 3"`).
+
+### Browser support
+- Chromium-family browsers (Chrome / Edge / Opera, ~70 % of users) use the built-in `FaceDetector` API — zero extra download.
+- Firefox / Safari lazy-load MediaPipe BlazeFace from CDN on first use (~1 MB JS + ~3 MB WASM + ~230 KB model). Native browsers never load this — Vite emits it as a separate chunk.
+- If MediaPipe fails to load (offline / CDN unreachable), face checks silently degrade to off — tab/focus and camera-dark monitoring still run.
 
 ## [2026-05-23] — Integrity Phase B
 

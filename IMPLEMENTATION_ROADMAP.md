@@ -28,36 +28,24 @@ Phase letters carry over from the integrity rollout already in flight.
 
 Same SQL migration as Phase A — no additional deploy action.
 
----
+### Integrity Phase C — shipped (2026-05-24)
 
-## Next — Integrity Phase C (face / multi-person detection)
+✅ `useFaceMonitor` hook — native `FaceDetector` first, MediaPipe BlazeFace lazy fallback
+✅ `multi_face` (immediate, 8 s cooldown) and `no_face` (≥5 s hysteresis, 10 s post-fire cooldown) events
+✅ Severity-weighted warning increments (info=0, warning=1, critical=2)
+✅ Toast variant for critical events so the +2 jump is clear
 
-**Goal:** detect the candidate stepping out of frame, looking away for long stretches, or a second person appearing.
-
-**Direction chosen** (confirmed 2026-05-23): **MediaPipe BlazeFace fallback** for cross-browser parity — native `FaceDetector` API where available (Chromium / Edge / Opera, ~70 % of users), lazy-loaded MediaPipe BlazeFace on Firefox / Safari. Frames stay client-side.
-
-| Item | Size | Notes |
-|---|---|---|
-| Wrap `FaceDetector` API into a unified `useFaceMonitor(stream)` hook | M | Browser-API path: zero bundle. Returns `{ faceCount, lastSeenMs }`. |
-| Lazy-load MediaPipe BlazeFace fallback (~1.5–3 MB chunk; dynamic `import()`) for non-Chromium browsers | M | Only loads when the native API is missing — most users pay zero cost. |
-| Hysteresis: `no_face` fires only after face missing for ≥5 s; `multi_face` fires immediately | S | Avoids spamming on a candidate glancing at notes. |
-| Wire into `useIntegrityMonitor` and `sendIntegrityEvent` | S | Existing channel. |
-| Update report "integrity events" section to label face-related events distinctly | S | — |
-| Tune MAX_WARNINGS per event severity (currently every event = 1 warning; `multi_face` may warrant 2) | S | `IntegrityMonitor.record_event` accepts severity; minor refactor to weight by severity. |
-
-**Risk:** false positives in poor lighting. Mitigation: hysteresis + visible thumbnail so candidate self-corrects before a warning fires.
-
-**Acceptance:** stepping out of frame for >5 s, or a second person sitting next to the candidate, fires the appropriate event; lab testing on Chromium / Firefox / Safari produces the expected severities.
+Same SQL migration as Phase A — no additional deploy action.
 
 ---
 
-## After Phase C — closing the cheating loophole
+## Next — close the cheating loophole
 
 Per `PROJECT_STATE.md` known-gap: a determined cheater could close the WS to skip the termination push.
 
 | Item | Size | Notes |
 |---|---|---|
-| Block status `completed` for interviews whose integrity log shows ≥ MAX_WARNINGS at completion time | S | Backend `interview_session.py` `end_interview` handler: read count, force `terminated_integrity`. |
+| Block status `completed` for interviews whose integrity log shows ≥ MAX_WARNINGS at completion time | S | Backend `interview_session.py` `end_interview` handler + `WebSocketDisconnect` branch: read count, force `terminated_integrity` if over threshold. |
 | Report markdown badge: "Flagged for integrity review" when status is `terminated_integrity` or warning count ≥ 1 | S | `interview_orchestrator.py:generate_markdown_report`. |
 
 ---

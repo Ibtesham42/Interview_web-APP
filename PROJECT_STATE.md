@@ -35,8 +35,8 @@ Two roles: **user** (candidate) and **admin** (oversight only).
 | Reports (per-interview detailed + markdown) | ✅ Production | `routers/reports.py` |
 | Voice — TTS / STT / pace empathy nudge | ✅ Production | `voice_service.py`, `useAudioRecorder` |
 | **Integrity Phase A** — camera gate + tab/focus + 3-warning auto-terminate + audit log | ✅ Production (code) | Commit `8aee82c`. **Requires manual SQL migration in Supabase.** |
-| **Integrity Phase B** — camera thumbnail + black-frame detection + report/admin surfacing | ✅ Production (code) | See latest `CHANGE.md` entry. Same migration as Phase A. |
-| Integrity Phase C — face / multi-person detection (MediaPipe BlazeFace) | ⏳ Planned | See `IMPLEMENTATION_ROADMAP.md` |
+| **Integrity Phase B** — camera thumbnail + black-frame detection + report/admin surfacing | ✅ Production (code) | See `CHANGE.md`. Same migration as Phase A. |
+| **Integrity Phase C** — face / multi-person detection + severity-weighted warnings | ✅ Production (code) | Native `FaceDetector` on Chromium/Edge/Opera; lazy MediaPipe BlazeFace on Firefox/Safari. Same migration as Phase A. |
 
 ## Outstanding deploy actions
 
@@ -53,7 +53,7 @@ Two roles: **user** (candidate) and **admin** (oversight only).
 - **No automated test suite** — root-level `test_e2e*.js` Playwright smoke flows only. Every change requires manual browser verification.
 - **Resume parser's `field_specialization`** output is effectively dead for new candidates (commit `b97597f` made user choice authoritative). Either remove the parser inference entirely or expand its allowed-label set and use it as a *suggestion* to pre-fill the form.
 - **Integrity-event audit log** not yet surfaced in the report or admin dashboard. Worth wiring in once Phases B/C land.
-- **Determined cheater could close the WS** to skip termination push. Once Phase C lands, also enforce that an interview cannot be marked completed if its integrity history shows >MAX_WARNINGS.
+- **Determined cheater could close the WS** to skip the termination push. Phase C has landed; the next-step fix is a small backend addition — in `end_interview` and `WebSocketDisconnect` paths, force `terminated_integrity` when `integrity.warning_count >= MAX_WARNINGS`. Sized S in `IMPLEMENTATION_ROADMAP.md`.
 
 ## Architecture invariants (do not violate)
 

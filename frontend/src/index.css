@@ -2750,6 +2750,18 @@ a.iv-row:hover {
   outline-offset: 2px;
 }
 
+/* Critical variant — multi_face, camera_lost. Increments counter by 2,
+   stronger left border + a more saturated icon so the candidate sees
+   the severity at a glance. No gradients (design system rule). */
+.integrity-warning-critical {
+  border-color: rgba(220, 38, 38, 0.6);
+  border-left-width: 4px;
+}
+
+.integrity-warning-critical .integrity-warning-icon {
+  background: rgba(220, 38, 38, 0.28);
+}
+
 .iv-terminated {
   border-color: rgba(220, 38, 38, 0.32);
 }

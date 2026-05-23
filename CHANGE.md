@@ -23,6 +23,100 @@
 
 ---
 
+## 24/05/2026 — interview integrity / anti-cheating (Phase C)
+Type: Feature
+
+Phase C adds face presence + multi-person detection, plus severity-weighted
+warning increments on the backend. Completes the integrity rollout per the
+roadmap chosen on 2026-05-23 (native FaceDetector + MediaPipe BlazeFace
+fallback for cross-browser parity). No architectural change — face events
+ride the same `integrity_event` channel and reuse the same warning counter.
+
+Face detection:
+- New `useFaceMonitor` hook (`frontend/src/hooks/useFaceMonitor.ts`).
+  Tries the native `FaceDetector` API first (Chromium / Edge / Opera, ~70 %
+  of users — zero bundle weight). Falls back to MediaPipe BlazeFace via a
+  lazy `import('@mediapipe/tasks-vision')` on Firefox / Safari — paid for
+  only by users who need it. WASM + model loaded from pinned jsdelivr /
+  Google Cloud Storage CDN paths (locked to MediaPipe 0.10.14, which is
+  API-compatible with the npm-resolved 0.10.35 since 0.10.x is stable).
+- Samples at 2 Hz. `multi_face` fires immediately (8 s cooldown);
+  `no_face` fires only after the face has been absent for ≥5 s of
+  continuous samples (10 s post-fire cooldown). Hysteresis tolerates a
+  candidate glancing at notes / drinking water without producing a warning.
+- Frames stay in the browser. Only the event type + a tiny `count` metadata
+  number reach the backend — same privacy posture as Phases A and B.
+
+Severity-weighted warning increments:
+- `IntegrityMonitor.record_event` now increments `warning_count` by
+  `SEVERITY_WEIGHT[severity]` instead of always +1. Weights: info=0,
+  warning=1, critical=2.
+- At `MAX_WARNINGS=3`: two critical events (or one critical + one warning,
+  or three warnings) terminate. A single critical alone is below threshold,
+  so an ambient hiccup cannot end the session.
+- Backend already returned `severity` in the `integrity_warning` WS reply
+  — frontend now uses it to render a clearer toast: `"Critical integrity
+  warning · 2/3"` for criticals, so the +2 jump isn't confusing. New CSS
+  variant `.integrity-warning-critical` (stronger left border + saturated
+  icon, no gradient — design-system rule).
+
+Dependencies:
+- `frontend/package.json`: added `@mediapipe/tasks-vision: ^0.10.14`
+  (resolved to 0.10.35). Caret on a 0.x version is bounded to the same
+  minor by semver, so an unattended npm install can't pull a breaking
+  0.11.x. Native-only browsers never load the module — Vite emits it as a
+  separate chunk via the dynamic `import()`.
+- No backend dependencies added.
+
+Hard constraints honoured:
+- Camera frames never leave the browser (MediaPipe runs WASM client-side).
+- Reuses `integrity_event` / `integrity_warning` WS messages; no new types.
+- No backend write changes; same DB migration as Phase A.
+- `prefers-reduced-motion` respected on the new toast variant (no
+  animation, just stronger border).
+- No emojis in source.
+
+Verified: frontend `npx tsc --noEmit` clean; backend imports + severity
+weights asserted clean.
+
+Affected files:
+- new: frontend/src/hooks/useFaceMonitor.ts
+- modified: frontend/src/components/InterviewRoom.tsx,
+  frontend/src/components/integrity/IntegrityWarning.tsx,
+  frontend/src/index.css, frontend/package.json,
+  frontend/package-lock.json,
+  backend/app/services/integrity_monitor.py
+- docs: PROJECT_STATE.md, CHANGELOG.md, IMPLEMENTATION_ROADMAP.md,
+  CHANGE.md
+
+Architectural impact: None. Integrity Phase A/B/C share the same:
+- WS channel and message types
+- Backend `IntegrityMonitor` sibling class
+- Audit table + RLS
+- Termination path (`interview_ended` with `reason='integrity_terminated'`)
+
+Future considerations:
+- Brightness threshold (Phase B) and face hysteresis (Phase C) are
+  defensible defaults but unvalidated. A 5-10 candidate lab pass in varied
+  lighting / setups would tighten both — the audit table now has the data
+  to drive that calibration empirically once enough sessions accumulate.
+- "Close-WS-to-skip-terminate" loophole is still open. With Phase C
+  landing, this is now the only obvious bypass left. Single backend-only
+  fix: in the `end_interview` and `WebSocketDisconnect` paths, force
+  `terminated_integrity` if `integrity.warning_count >= MAX_WARNINGS`.
+  Sized S in `IMPLEMENTATION_ROADMAP.md`.
+- MediaPipe model + WASM are fetched at first use from external CDNs
+  (jsdelivr, storage.googleapis.com). If those become unreachable, face
+  monitoring silently degrades to "off" (other integrity signals keep
+  working). For air-gapped or offline-tolerant deployments, self-hosting
+  these assets would be the next step — Vite can copy them to `dist/` and
+  the URLs would point at the same origin.
+- With three integrity signals plus tab/focus, false-positive rate could
+  matter at scale. The audit table already records every event with
+  metadata; building a small admin "integrity events" page (separate from
+  the per-user view) to filter by event_type would let an operator triage
+  noisy patterns and adjust thresholds.
+
 ## 23/05/2026 — interview integrity / anti-cheating (Phase B)
 Type: Feature
 

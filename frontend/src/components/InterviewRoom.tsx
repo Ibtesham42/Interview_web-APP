@@ -4,6 +4,7 @@ import { interviewWs } from '../services/websocket';
 import { useAudioRecorder } from '../hooks/useAudioRecorder';
 import { useIntegrityMonitor } from '../hooks/useIntegrityMonitor';
 import { useCameraPresenceMonitor } from '../hooks/useCameraPresenceMonitor';
+import { useFaceMonitor } from '../hooks/useFaceMonitor';
 import { CameraPreflight } from './integrity/CameraPreflight';
 import { CameraThumbnail } from './integrity/CameraThumbnail';
 import { IntegrityWarning } from './integrity/IntegrityWarning';
@@ -103,7 +104,12 @@ export function InterviewRoom() {
   // — the WS does not open until the candidate grants camera access.
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [activeWarning, setActiveWarning] = useState<
-    { count: number; max: number; eventType: IntegrityEventType } | null
+    {
+      count: number;
+      max: number;
+      eventType: IntegrityEventType;
+      severity?: 'info' | 'warning' | 'critical';
+    } | null
   >(null);
   const [integrityTerminated, setIntegrityTerminated] = useState(false);
 
@@ -196,6 +202,11 @@ export function InterviewRoom() {
 
   useIntegrityMonitor({ enabled: integrityEnabled, onEvent: handleIntegrityEvent });
   useCameraPresenceMonitor({
+    stream: cameraStream,
+    enabled: integrityEnabled,
+    onEvent: handleIntegrityEvent,
+  });
+  useFaceMonitor({
     stream: cameraStream,
     enabled: integrityEnabled,
     onEvent: handleIntegrityEvent,
@@ -300,7 +311,12 @@ export function InterviewRoom() {
       if (typeof msg.count !== 'number' || typeof msg.max !== 'number' || !msg.event_type) return;
       // The backend's terminate signal arrives as a normal warning frame
       // followed by an interview_ended frame; the overlay reflects the count.
-      setActiveWarning({ count: msg.count, max: msg.max, eventType: msg.event_type });
+      setActiveWarning({
+        count: msg.count,
+        max: msg.max,
+        eventType: msg.event_type,
+        severity: msg.severity,
+      });
     };
 
     // The socket dropped after the interview was already running. The
@@ -390,6 +406,7 @@ export function InterviewRoom() {
           count={activeWarning.count}
           max={activeWarning.max}
           eventType={activeWarning.eventType}
+          severity={activeWarning.severity}
           onDismiss={() => setActiveWarning(null)}
         />
       )}
