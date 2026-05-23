@@ -135,6 +135,29 @@ async def admin_user_detail(user_id: UUID, admin=Depends(get_current_admin)):
         candidates = {c["id"]: c for c in rows}
 
     iv_scores = score_interviews_bulk(supabase, [iv["id"] for iv in interviews])
+
+    # Phase B integrity counts — ONE bulk query across all interviews, then
+    # group in Python. Swallow if the migration hasn't been applied yet so the
+    # admin view still renders without the integrity column populated.
+    integrity_counts: dict = {}
+    iv_ids = [iv["id"] for iv in interviews]
+    if iv_ids:
+        try:
+            rows = (
+                supabase.table("interview_integrity_events")
+                .select("interview_id")
+                .in_("interview_id", iv_ids)
+                .execute()
+                .data
+                or []
+            )
+            for row in rows:
+                iv_id = row.get("interview_id")
+                if iv_id:
+                    integrity_counts[iv_id] = integrity_counts.get(iv_id, 0) + 1
+        except Exception:
+            integrity_counts = {}
+
     items = []
     for iv in interviews:
         cand = candidates.get(iv.get("candidate_id"), {})
@@ -146,6 +169,8 @@ async def admin_user_detail(user_id: UUID, admin=Depends(get_current_admin)):
             "completed": iv.get("status") == "completed",
             "created_at": iv.get("created_at"),
             "score": iv_scores.get(iv["id"], {}).get("score", 0),
+            "integrity_warnings": integrity_counts.get(iv["id"], 0),
+            "integrity_terminated": iv.get("status") == "terminated_integrity",
         })
 
     completed_scores = [i["score"] for i in items if i["completed"] and i["score"] > 0]

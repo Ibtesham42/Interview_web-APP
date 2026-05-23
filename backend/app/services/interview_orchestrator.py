@@ -1354,6 +1354,21 @@ class ReportGenerator:
             candidate = candidate_result.data[0] if candidate_result.data else {}
             eval_result = self.supabase.table("evaluations").select("*").eq("interview_id", str(self.interview_id)).execute()
             evaluations = eval_result.data
+            # Integrity events (Phase B). Single bulk query, ordered. If the
+            # migration hasn't been applied yet, the SELECT raises an APIError;
+            # swallow it so the report still renders without integrity context.
+            try:
+                integrity_rows = (
+                    self.supabase.table("interview_integrity_events")
+                    .select("event_type,severity,metadata,created_at")
+                    .eq("interview_id", str(self.interview_id))
+                    .order("created_at")
+                    .execute()
+                    .data
+                    or []
+                )
+            except Exception:
+                integrity_rows = []
         except Exception as e:
             return {"error": str(e)}
 
@@ -1415,6 +1430,11 @@ class ReportGenerator:
             "strengths": strengths,
             "improvements": improvements,
             "summary": summary,
+            "integrity_events": {
+                "count": len(integrity_rows),
+                "terminated": interview.get("status") == "terminated_integrity",
+                "events": integrity_rows,
+            },
         }
 
         return report

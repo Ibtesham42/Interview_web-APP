@@ -9,7 +9,15 @@ Dates are DD/MM/YYYY (matches `CHANGE.md`).
 ---
 
 ## [Unreleased]
-_Nothing pending — Phase B (camera thumbnail + black-frame detection) is the next planned tranche; see `IMPLEMENTATION_ROADMAP.md`._
+_Nothing pending — Phase C (face / multi-person detection via native FaceDetector + MediaPipe BlazeFace fallback) is the next planned tranche; see `IMPLEMENTATION_ROADMAP.md`._
+
+## [2026-05-23] — Integrity Phase B
+
+### Added
+- **Live camera thumbnail** in the interview UI (bottom-right, mirrored selfie preview with a "Live" badge). Visible only while the interview is running; hidden on the preflight gate, the terminated screen, and any error state. Reuses the camera stream already held by the interview — no additional permission prompts.
+- **Camera-dark / black-frame detection.** A new browser-only monitor samples the video at 1 Hz, computes brightness, and emits a `camera_dark` integrity event if the camera stays covered or pointed at darkness. Counts against the same 3-warning limit as Phase A. Zero ML, zero new dependencies — frames stay on the candidate's device.
+- **Integrity events in the candidate report.** A new "Integrity events" section lists every event (with severity + time) and shows a banner when the interview was integrity-terminated.
+- **Integrity warnings in the admin user-detail view.** Each interview row now shows a small "N warning(s)" chip, or a "Terminated" chip when the interview ended for integrity reasons.
 
 ## [2026-05-23] — Integrity + domain-targeting hardening
 

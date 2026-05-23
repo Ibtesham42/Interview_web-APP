@@ -3,7 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { interviewWs } from '../services/websocket';
 import { useAudioRecorder } from '../hooks/useAudioRecorder';
 import { useIntegrityMonitor } from '../hooks/useIntegrityMonitor';
+import { useCameraPresenceMonitor } from '../hooks/useCameraPresenceMonitor';
 import { CameraPreflight } from './integrity/CameraPreflight';
+import { CameraThumbnail } from './integrity/CameraThumbnail';
 import { IntegrityWarning } from './integrity/IntegrityWarning';
 import type {
   WebSocketMessage,
@@ -193,6 +195,11 @@ export function InterviewRoom() {
   );
 
   useIntegrityMonitor({ enabled: integrityEnabled, onEvent: handleIntegrityEvent });
+  useCameraPresenceMonitor({
+    stream: cameraStream,
+    enabled: integrityEnabled,
+    onEvent: handleIntegrityEvent,
+  });
 
   // WebSocket handlers — the WebSocket is the single source of truth for state.
   useEffect(() => {
@@ -386,6 +393,13 @@ export function InterviewRoom() {
           onDismiss={() => setActiveWarning(null)}
         />
       )}
+
+      {/* Live camera preview — only while the interview itself is running.
+          Hidden on preflight, the terminated screen, and any error state. */}
+      {cameraStream &&
+        !integrityTerminated &&
+        !connectionError &&
+        !lostConnection && <CameraThumbnail stream={cameraStream} />}
 
       {!cameraStream ? (
         <CameraPreflight onReady={setCameraStream} />

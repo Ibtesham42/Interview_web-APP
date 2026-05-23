@@ -19,28 +19,18 @@ Phase letters carry over from the integrity rollout already in flight.
 
 **Remaining deploy action:** apply `backend/app/migrations/002_integrity_events.sql` in Supabase SQL editor.
 
----
+### Integrity Phase B — shipped (2026-05-23)
 
-## Next — Integrity Phase B (camera presence, browser-only)
+✅ Camera thumbnail in `InterviewRoom`
+✅ Brightness / black-frame check → `camera_dark` event (1 Hz, 5-sample window, browser-only)
+✅ Integrity events on the candidate report (single bulk query)
+✅ Integrity warnings + termination chip on `AdminUserDetail` (single bulk query)
 
-**Goal:** the candidate sees the camera is on, and we detect obvious tampering (camera covered / pointed at the ceiling / pointed at a black screen) without ML.
-
-| Item | Size | Notes |
-|---|---|---|
-| Persistent camera thumbnail in the interview UI (small bottom-right preview from the existing `MediaStream`) | S | Reuse the stream already held in `InterviewRoom`. New `<CameraThumbnail stream={…}>` component. Tokens already in `index.css`. |
-| Black-frame / brightness check (1 Hz sample, average luminance under threshold for >5 s → `camera_dark` event) | S | Canvas sample of the video element, no ML. Hand off via existing `sendIntegrityEvent('camera_dark')`. Threshold tunable. |
-| `MediaStream` track-ended → `camera_lost` event | ✅ already shipped in Phase A | — |
-| "Camera connected" status pill in interview header | S | CSS class `.integrity-status` already in `index.css` from Phase A. |
-| Surface integrity events in the candidate report | S | Read `interview_integrity_events` in the existing report endpoint; render a small "integrity events" section. Bulk single query, no per-row overhead. |
-| Surface integrity events in the admin dashboard (`AdminUserDetail`) | S | Same source. Bulk query. |
-
-**Architectural change:** none. All Phase B signals ride the same `integrity_event` WS message; backend `IntegrityMonitor` already counts them.
-
-**Acceptance:** with the candidate physically covering the camera for >5 s, an `integrity_warning` toast appears; the audit log row records `camera_dark`. The thumbnail shows the actual camera feed in the corner.
+Same SQL migration as Phase A — no additional deploy action.
 
 ---
 
-## Then — Integrity Phase C (face / multi-person detection)
+## Next — Integrity Phase C (face / multi-person detection)
 
 **Goal:** detect the candidate stepping out of frame, looking away for long stretches, or a second person appearing.
 

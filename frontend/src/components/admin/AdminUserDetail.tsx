@@ -109,6 +109,13 @@ export function AdminUserDetail() {
                     </div>
                   </div>
                   <div className="iv-row-meta">
+                    {iv.integrity_terminated ? (
+                      <span className="integrity-flag-chip terminated">Terminated</span>
+                    ) : (iv.integrity_warnings ?? 0) > 0 ? (
+                      <span className="integrity-flag-chip">
+                        {iv.integrity_warnings} warning{iv.integrity_warnings === 1 ? '' : 's'}
+                      </span>
+                    ) : null}
                     {iv.completed ? (
                       <span className={`score-badge score-bg-${scoreClass(iv.score)}`}>
                         {iv.score.toFixed(1)}

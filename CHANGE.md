@@ -23,6 +23,87 @@
 
 ---
 
+## 23/05/2026 — interview integrity / anti-cheating (Phase B)
+Type: Feature
+
+Phase B layers camera-presence signals + report/admin surfacing on top of
+the Phase A integrity baseline (commit `8aee82c`). Browser-only, zero new
+dependencies, no architectural change. Per the Phase A handoff
+(`HANDOFF_PHASE_B.md`), the four items shipped are:
+
+- B1 — Live camera thumbnail in `InterviewRoom` (bottom-right, ~168×126,
+  mirrored selfie preview, "Live" badge). Reuses the `MediaStream` already
+  held by `InterviewRoom`; mounted only while the interview is running
+  (hidden on preflight, terminated, and error screens). The component is a
+  thin wrapper around a `<video>` — does NOT own the stream lifecycle.
+- B2 — Brightness / camera-dark monitor. New `useCameraPresenceMonitor`
+  hook samples the stream at 1 Hz into an offscreen 32×24 canvas, computes
+  BT.601 luma, slides a 5-sample window, and fires `camera_dark` when the
+  window stays below threshold (12/255 by default). 8 s cooldown prevents
+  refiring while the candidate is still adjusting. Zero ML, zero new deps.
+  Reuses the existing `integrity_event` WS channel and `IntegrityMonitor`
+  counter; `EVENT_TYPES['camera_dark'] = 'warning'` was already in place.
+- B3 — Integrity events on the candidate report. `ReportGenerator` now
+  performs ONE additional bulk query against `interview_integrity_events`
+  (ordered, swallowed on APIError so reports still render if the migration
+  is missing). The payload gains an optional `integrity_events: { count,
+  terminated, events: [{event_type, severity, metadata, created_at}] }`
+  field. The frontend renders a new "Integrity events" panel below the
+  phase breakdown, with a clear banner when `terminated == true`.
+- B4 — Integrity warnings in the admin user-detail view. `admin_user_detail`
+  does ONE additional bulk query for events across all of the user's
+  interview IDs, then groups in Python — no per-row lookups. Each
+  interview row now carries `integrity_warnings` (count) and
+  `integrity_terminated` (bool). The frontend renders a small chip next to
+  the score badge.
+
+Hard constraints honoured (per the handoff):
+- Camera frames never leave the browser. Only the event type plus a tiny
+  `metadata.lum` number reach the backend for `camera_dark`.
+- Reuses the existing `interview_ended` / `integrity_event` / `integrity_warning`
+  WS message types. No new message types.
+- Bulk queries on both B3 and B4 (single SELECT each, grouped in Python).
+- No new npm or Python dependencies.
+- `prefers-reduced-motion` respected on the new thumbnail "Live" dot.
+- No emojis in source files.
+
+Privacy posture is unchanged from Phase A: camera frames are analysed
+client-side only; the OS camera indicator clears on unmount because
+`InterviewRoom` still stops the tracks (Phase A behaviour).
+
+Verified: frontend `npx tsc --noEmit` clean; backend imports clean.
+
+Affected files:
+- new: frontend/src/components/integrity/CameraThumbnail.tsx,
+  frontend/src/hooks/useCameraPresenceMonitor.ts
+- modified: frontend/src/components/InterviewRoom.tsx,
+  frontend/src/components/Report.tsx,
+  frontend/src/components/admin/AdminUserDetail.tsx,
+  frontend/src/types/index.ts, frontend/src/index.css,
+  backend/app/services/interview_orchestrator.py,
+  backend/app/models/schemas.py, backend/app/routers/admin.py
+- docs: PROJECT_STATE.md, CHANGELOG.md, IMPLEMENTATION_ROADMAP.md,
+  HANDOFF_PHASE_B.md (Phase B row flipped to shipped), CHANGE.md
+
+Architectural impact: None. Same WS channel, same backend monitor class,
+same termination path, same auth gate.
+
+Future considerations:
+- Brightness threshold (`12/255`) and the 5-sample window are conservative
+  defaults tuned for obvious tampering (palm over lens, lens cap). A lab
+  calibration pass with 5-10 candidates in varied lighting would tighten
+  both. Surface them in `IntegrityMonitor` config when that happens, not in
+  the hook, so backend telemetry can drive future tuning.
+- Phase C (face presence + multi-person) is now unblocked — see
+  `IMPLEMENTATION_ROADMAP.md`. The chosen direction (MediaPipe BlazeFace
+  fallback for non-Chromium) has not been validated against bundle-size
+  budgets yet; that is the first thing to do in Phase C.
+- The "close-WS-to-skip-terminate" cheating loophole (PROJECT_STATE.md) is
+  still open. With per-interview integrity counts now visible in admin,
+  enforcing "block status=completed when integrity count ≥ MAX_WARNINGS at
+  end_interview" is a small backend-only addition worth doing alongside
+  Phase C.
+
 ## 23/05/2026 — interview integrity / anti-cheating (Phase A)
 Type: Feature
 

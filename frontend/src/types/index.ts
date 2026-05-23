@@ -105,6 +105,20 @@ export interface InterviewReport {
   strengths?: string[];
   improvements?: string[];
   summary?: string;
+  integrity_events?: IntegrityEventsSection;
+}
+
+export interface IntegrityEventRow {
+  event_type: IntegrityEventType | string;
+  severity: 'info' | 'warning' | 'critical';
+  metadata?: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface IntegrityEventsSection {
+  count: number;
+  terminated: boolean;
+  events: IntegrityEventRow[];
 }
 
 export interface DashboardStats {
@@ -179,6 +193,10 @@ export interface AdminUserInterview {
   completed: boolean;
   created_at: string;
   score: number;
+  // Phase B integrity surfacing — optional so older admin payloads still
+  // deserialise cleanly during the deploy window.
+  integrity_warnings?: number;
+  integrity_terminated?: boolean;
 }
 
 export interface AdminUserDetail {

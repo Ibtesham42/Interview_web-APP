@@ -35,7 +35,7 @@ Two roles: **user** (candidate) and **admin** (oversight only).
 | Reports (per-interview detailed + markdown) | ✅ Production | `routers/reports.py` |
 | Voice — TTS / STT / pace empathy nudge | ✅ Production | `voice_service.py`, `useAudioRecorder` |
 | **Integrity Phase A** — camera gate + tab/focus + 3-warning auto-terminate + audit log | ✅ Production (code) | Commit `8aee82c`. **Requires manual SQL migration in Supabase.** |
-| Integrity Phase B — camera thumbnail + black-frame detection | ⏳ Planned | See `IMPLEMENTATION_ROADMAP.md` |
+| **Integrity Phase B** — camera thumbnail + black-frame detection + report/admin surfacing | ✅ Production (code) | See latest `CHANGE.md` entry. Same migration as Phase A. |
 | Integrity Phase C — face / multi-person detection (MediaPipe BlazeFace) | ⏳ Planned | See `IMPLEMENTATION_ROADMAP.md` |
 
 ## Outstanding deploy actions

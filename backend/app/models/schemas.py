@@ -121,3 +121,6 @@ class FinalReportResponse(BaseModel):
     strengths: List[str] = []
     improvements: List[str] = []
     summary: str = ""
+    # Phase B integrity events. Optional so historical reports (generated
+    # before this field existed) still validate cleanly.
+    integrity_events: Optional[Dict[str, Any]] = None

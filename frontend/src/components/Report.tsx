@@ -1,7 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { reportApi } from '../services/api';
-import type { InterviewReport, PhaseScores, Phase2Score, Phase4Score, Phase5Score } from '../types';
+import type {
+  InterviewReport,
+  PhaseScores,
+  Phase2Score,
+  Phase4Score,
+  Phase5Score,
+  IntegrityEventRow,
+} from '../types';
 
 const PHASE_NAMES: Record<number, string> = {
   2: 'Project Deep-Dive #1',
@@ -9,6 +16,34 @@ const PHASE_NAMES: Record<number, string> = {
   4: 'Technical Assessment',
   5: 'Behavioral Questions',
 };
+
+const INTEGRITY_LABELS: Record<string, string> = {
+  tab_blur: 'Tab switched',
+  window_blur: 'Window lost focus',
+  visibility_hidden: 'Page hidden',
+  camera_lost: 'Camera disconnected',
+  no_face: 'Face not detected',
+  multi_face: 'Multiple people detected',
+  camera_dark: 'Camera dark / covered',
+};
+
+function formatEventTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function IntegrityEventList({ events }: { events: IntegrityEventRow[] }) {
+  return (
+    <ul className="integrity-report-list">
+      {events.map((e, i) => (
+        <li key={`${e.created_at}-${i}`}>
+          <span className={`integrity-report-severity ${e.severity}`}>{e.severity}</span>
+          <span>{INTEGRITY_LABELS[e.event_type] ?? e.event_type}</span>
+          <span className="integrity-report-time">{formatEventTime(e.created_at)}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 function scoreClass(s: number): string {
   if (s >= 7) return 'good';
@@ -191,6 +226,27 @@ export function Report() {
           {[2, 3, 4, 5].map((phase) => renderPhase(phase, report.phase_scores[phase]))}
         </div>
       </div>
+
+      {/* Integrity events (Phase B). Only rendered when the backend provides
+          the section — historical reports generated before this field existed
+          simply skip it. */}
+      {report.integrity_events && (
+        <div className="panel">
+          <h3 className="panel-title">Integrity events</h3>
+          <div className="integrity-report">
+            {report.integrity_events.terminated && (
+              <div className="integrity-report-terminated">
+                This interview was terminated early after reaching the integrity warning limit.
+              </div>
+            )}
+            {report.integrity_events.count === 0 ? (
+              <p className="integrity-report-empty">No integrity events recorded.</p>
+            ) : (
+              <IntegrityEventList events={report.integrity_events.events} />
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Transcript replay */}
       {transcript.length > 0 && (
