@@ -23,6 +23,113 @@
 
 ---
 
+## 23/05/2026 — interview drifted to ML questions regardless of selected domain
+Type: Fix
+
+User reported: selecting Marketing / Web Development / non-ML domains in the
+CandidateUpload form, and uploading a matching resume, still produced an
+interview that asked Machine Learning / Data Science questions.
+
+Root cause: `routers/candidates.py:upload_resume` was overwriting the
+user-selected `field_specialization` on every resume upload with the parser's
+inferred value. The resume parser's prompt
+(`services/resume_parser.py:_parse_text`) constrains its output to exactly
+four labels — `nlp / cv / ml / research` — all ML-adjacent. There is no
+"web_dev" / "marketing" / "design" label it can return for a matching resume,
+and every failure path defaults to `"ml"`. Net effect: a Web Dev candidate
+who picked "Web Development" in the form had `field_specialization` silently
+clobbered to `"ml"` in the database; the orchestrator then resolved
+`FIELD_PROMPTS["ml"]` (gradient descent, neural networks, MLOps) and steered
+every prompt accordingly. The domain-aware routing further down the pipeline
+(`_resolve_field_info` + curated `FIELD_PROMPTS` + `_derive_field_info` LLM
+fallback for off-table domains) works correctly — it just never received the
+user's real choice.
+
+Two secondary defects compounded the symptom:
+1. `_evaluate_technical` (the Phase 4 evaluator prompt) hardcoded
+   "Evaluate this ML technical interview response rigorously" and probed for
+   "ML terminology" regardless of the candidate's domain — so even if the
+   prompt drift were fixed, Phase 4 scoring would still pull the answer
+   toward an ML rubric.
+2. `get_resume_context` injected `projects` and `experience` into the prompt
+   but NOT the `skills` array the parser already extracts, so the user's
+   specific ask ("React, JavaScript, HTML, CSS → frontend questions") could
+   not land — those tokens never reached the LLM.
+
+Fix (additive, minimal, architecture preserved):
+- `routers/candidates.py` — resume upload no longer overwrites
+  `field_specialization`. The form selection is authoritative; the parser's
+  inference is adopted ONLY for legacy rows whose domain is empty/null.
+- `services/interview_orchestrator.py:get_resume_context` — includes up to
+  20 skills (handles both string-list and dict-list shapes); default field
+  changed from "ml" to "general".
+- `services/interview_orchestrator.py:_evaluate_technical` — domain-aware
+  prompt: pulls role + topics from `_resolve_field_info()` and asks the
+  evaluator to score "for this domain" instead of against ML terminology.
+
+Verified: `python -c "from app.main import app; from
+app.services.interview_orchestrator import InterviewOrchestrator"` clean.
+
+Affected files: backend/app/routers/candidates.py,
+backend/app/services/interview_orchestrator.py, CHANGE.md
+Architectural impact: None — the realtime pipeline, Matryoshka layer engine
+(ADR 0001), and orchestrator structure are untouched. The fix is a
+boundary-level correction: stop mutating user input on the upload path, and
+let already-extracted resume signals reach the prompt.
+Future considerations:
+- The resume parser's `field_specialization` output is now effectively dead
+  for new candidates. Worth either (a) removing the inference entirely from
+  the parser, or (b) expanding its allowed-label set to the full 26-option
+  DOMAIN_OPTIONS list and using it as a *suggestion* to pre-fill the form,
+  not an authoritative overwrite.
+- The orchestrator never reads `resume_text` (only `resume_sections`). For
+  off-curriculum domains the LLM-derived `_derive_field_info` path runs
+  exactly once per orchestrator and is reasonable, but the closer the
+  injected resume context tracks the candidate's actual stack, the less the
+  generation LLM needs to extrapolate. Promoting "user input at API
+  boundaries is authoritative; derived data is advisory" to a CLAUDE.md rule
+  would lock this principle in beyond this single fix.
+
+---
+
+## 23/05/2026 — production WS connect failed ("Unable to connect")
+Type: Fix
+
+After resume upload and "Start Interview" the InterviewRoom panel reported
+"Unable to connect — we couldn't reach the interview server." Browser console
+revealed the WebSocket was being dialed at a hostname concatenated six times:
+`wss://interview-web-app.onrender.comwss//…comwss://…comwss://…comwss://…comwss://…com/ws/interview/<id>?token=…`.
+DNS for that hostname does not resolve, so all four cold-start retry attempts
+in `websocket.ts:connect()` failed and the generic banner surfaced.
+
+Root cause: the Vercel `VITE_WS_URL` env var was pasted multiple times into
+the dashboard (one of the seams even lost its `:`, becoming `wss//`). The
+frontend's `WS_HOST` const did only trailing-slash stripping — the mangled
+value flowed straight into `new WebSocket(…)`. Same class as the
+`VITE_API_URL` trailing slash (18:30) and the `SUPABASE_URL` trailing newline
+(21:45) — the fourth env-var paste-mistake in this deploy.
+
+Actual fix is in the Vercel dashboard: set `VITE_WS_URL` to exactly
+`wss://interview-web-app.onrender.com` and redeploy (Vite inlines env vars at
+build time).
+
+Code hardening (this commit): `websocket.ts` now runs the env value through
+`normalizeWsHost` — trims whitespace, coerces `http(s)://` → `ws(s)://`, and
+if a second ws/wss scheme is present keeps only the first occurrence and
+emits a `console.warn`. So a future paste mistake auto-recovers and surfaces
+in the console instead of hiding behind the "Unable to connect" panel.
+
+Affected files: frontend/src/services/websocket.ts, CHANGE.md
+Architectural impact: None — defensive input normalisation at the env-var
+boundary; realtime / WS lifecycle / auth gate untouched.
+Future considerations: this is the 4th env-var paste-corruption incident
+across Vercel/Render. The recurring pattern is now hardened at every
+ingestion boundary (backend `config.py` strips whitespace from creds; this
+frontend layer normalises the URL). Worth promoting a small `lockfile`-style
+deploy preflight (e.g. a `/health` ping that round-trips the resolved
+WS_HOST) before the user can reach the interview screen, so misconfig
+surfaces at app boot rather than mid-session.
+
 ## 21/05/2026 21:45
 Type: Fix
 

@@ -460,12 +460,33 @@ class InterviewOrchestrator:
         self._save_conversation()
 
     def get_resume_context(self) -> str:
-        """Get resume context for personalized questions."""
+        """Get resume context for personalized questions.
+
+        Skills are included so the interviewer prompt can steer to what the
+        candidate actually claims experience in (React / SEO / Figma / etc.)
+        — without them, the prompt knows only the broad domain label and can
+        drift into generic-domain questions that ignore the resume.
+        """
         if not self.candidate_data:
             return ""
 
         context = []
         resume_sections = self.candidate_data.get("resume_sections") or {}
+
+        skills = resume_sections.get("skills") or []
+        if isinstance(skills, list) and skills:
+            labels: List[str] = []
+            for s in skills[:20]:
+                if isinstance(s, dict):
+                    label = (s.get("name") or s.get("skill") or s.get("category")
+                             or str(next(iter(s.values()), "")))
+                else:
+                    label = str(s)
+                label = " ".join(str(label).split()).strip()
+                if label:
+                    labels.append(label[:60])
+            if labels:
+                context.append(f"Candidate's skills: {', '.join(labels)}")
 
         if resume_sections.get("projects"):
             projects = resume_sections["projects"]
@@ -477,7 +498,7 @@ class InterviewOrchestrator:
             if isinstance(exp, list) and len(exp) > 0:
                 context.append(f"Candidate's experience: {exp[0]}")
 
-        field_spec = self.candidate_data.get("field_specialization", "ml")
+        field_spec = self.candidate_data.get("field_specialization") or "general"
         context.append(f"Field specialization: {field_spec}")
 
         return "\n".join(context)
@@ -1082,15 +1103,25 @@ Return JSON ONLY: {{"correctness": X, "depth": X, "specificity": X, "clarity": X
             return {"correctness": 5, "depth": 5, "specificity": 5, "clarity": 5, "is_superficial": False, "struggling": False}
 
     async def _evaluate_technical(self, question: str, answer: str) -> Dict[str, Any]:
-        """Evaluate factual ML question answers with engineering focus."""
-        prompt = f"""Evaluate this ML technical interview response rigorously.
+        """Evaluate a Phase 4 technical answer in the candidate's domain.
+
+        The rubric is generic across domains; the role/topic from the resolved
+        field info are injected so the LLM scores against the right ground
+        (a marketing answer is not judged on ML terminology).
+        """
+        field_info = self._resolve_field_info()
+        role = field_info["role"]
+        topics = field_info["topics"]
+        prompt = f"""Evaluate this {role} technical interview response rigorously.
+
+Domain focus: {topics}
 
 Question: {question}
 Candidate's answer: {answer}
 
 Evaluate each dimension 0-10:
 
-1. CORRECTNESS: Is the answer technically correct?
+1. CORRECTNESS: Is the answer technically correct for this domain?
    - 8-10: Completely accurate
    - 5-7: Partially correct, minor inaccuracies
    - 0-4: Significant errors
@@ -1100,13 +1131,13 @@ Evaluate each dimension 0-10:
    - 5-7: Mentions main points but lacks depth
    - 0-4: Incomplete or missing key points
 
-3. PRECISION: Did they use correct ML terminology?
-   - 8-10: Precise use of technical terms
-   - 5-7: Some technical language used
+3. PRECISION: Did they use correct terminology for this domain?
+   - 8-10: Precise use of {role} domain terms
+   - 5-7: Some domain language used
    - 0-4: Vague or incorrect terminology
 
 4. PRACTICAL KNOWLEDGE: Can they connect theory to implementation?
-   - 8-10: Mentions actual implementations, libraries, or production concerns
+   - 8-10: Mentions actual tools, libraries, or production concerns
    - 5-7: Theoretical understanding shown
    - 0-4: Only high-level conceptual understanding
 

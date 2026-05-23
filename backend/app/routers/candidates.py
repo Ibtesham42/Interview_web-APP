@@ -107,11 +107,22 @@ async def upload_resume(
     parser = ResumeParser()
     parsed_data = await parser.parse_resume(pdf_content)
 
-    supabase.table("candidates").update({
+    # The candidate's domain choice (from the CandidateUpload form) is
+    # AUTHORITATIVE. The resume parser's inferred field is advisory only —
+    # its prompt can return just four ML-adjacent labels (nlp/cv/ml/research),
+    # and it falls back to "ml" on failure, so blindly persisting it would
+    # silently clobber a Web Dev / Marketing / Design / etc. selection back
+    # to "ml" and make the interviewer ask gradient-descent questions to a
+    # frontend candidate. Only adopt the inference for legacy rows that have
+    # no domain set yet.
+    update_payload: dict = {
         "resume_text": parsed_data["full_text"],
         "resume_sections": parsed_data["sections"],
-        "field_specialization": parsed_data["field_specialization"],
-    }).eq("id", str(candidate_id)).execute()
+    }
+    if not candidate.get("field_specialization"):
+        update_payload["field_specialization"] = parsed_data["field_specialization"]
+
+    supabase.table("candidates").update(update_payload).eq("id", str(candidate_id)).execute()
 
     return ResumeUploadResponse(
         candidate_id=candidate_id,
