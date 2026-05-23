@@ -162,6 +162,7 @@ async def interview_websocket(websocket: WebSocket, interview_id: str):
     """WebSocket endpoint for real-time interview session."""
     from app.supabase_client import get_supabase
     from app.services.interview_orchestrator import InterviewOrchestrator
+    from app.services.integrity_monitor import IntegrityMonitor
 
     supabase = get_supabase()
 
@@ -207,6 +208,11 @@ async def interview_websocket(websocket: WebSocket, interview_id: str):
         # Create orchestrator with candidate data for personalized questions
         orchestrator = InterviewOrchestrator(UUID(interview_id), candidate_data=candidate)
         manager.orchestrators[interview_id] = orchestrator
+
+        # Integrity monitor — sibling to the orchestrator, NOT baked into it
+        # (the orchestrator already owns enough state). Lives for the WS
+        # lifetime; dies with the interview per ADR 0002.
+        integrity = IntegrityMonitor(UUID(interview_id), str(user.id))
 
         # Send initialization data
         await websocket.send_json({
@@ -411,6 +417,31 @@ async def interview_websocket(websocket: WebSocket, interview_id: str):
                         "pace": pace_analysis,
                         "sentiment": sentiment
                     })
+
+            elif msg_type == "integrity_event":
+                # Out-of-band integrity signal from the client (tab switch,
+                # camera lost, etc.). Persists the event, counts the warning,
+                # and at the threshold (3 by default) terminates the interview
+                # via the existing interview_ended path. Does NOT interleave
+                # with the question/answer turn — it is a parallel concern.
+                event_type = data.get("event_type", "unknown")
+                metadata = data.get("metadata") or {}
+                result = integrity.record_event(event_type, metadata)
+                await websocket.send_json({
+                    "type": "integrity_warning",
+                    "event_type": result["event_type"],
+                    "severity": result["severity"],
+                    "count": result["count"],
+                    "max": result["max"],
+                    "terminate": result["terminate"],
+                })
+                if result["terminate"]:
+                    integrity.mark_terminated()
+                    await websocket.send_json({
+                        "type": "interview_ended",
+                        "reason": "integrity_terminated",
+                    })
+                    break
 
             elif msg_type == "end_interview":
                 # Complete the interview

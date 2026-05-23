@@ -2,7 +2,15 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { interviewWs } from '../services/websocket';
 import { useAudioRecorder } from '../hooks/useAudioRecorder';
-import type { WebSocketMessage, TranscriptMessage, Evaluation } from '../types';
+import { useIntegrityMonitor } from '../hooks/useIntegrityMonitor';
+import { CameraPreflight } from './integrity/CameraPreflight';
+import { IntegrityWarning } from './integrity/IntegrityWarning';
+import type {
+  WebSocketMessage,
+  TranscriptMessage,
+  Evaluation,
+  IntegrityEventType,
+} from '../types';
 
 const PHASE_NAMES = ['', 'Background', 'Project #1', 'Project #2', 'Technical', 'Behavioral'];
 const MIN_BLOB_BYTES = 1200;
@@ -89,6 +97,13 @@ export function InterviewRoom() {
   const [connectionError, setConnectionError] = useState(false);
   const [lostConnection, setLostConnection] = useState(false);
   const [interviewTime, setInterviewTime] = useState(0);
+  // Integrity / anti-cheating state. cameraStream gates the interview entirely
+  // — the WS does not open until the candidate grants camera access.
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [activeWarning, setActiveWarning] = useState<
+    { count: number; max: number; eventType: IntegrityEventType } | null
+  >(null);
+  const [integrityTerminated, setIntegrityTerminated] = useState(false);
 
   const { startRecording, stopRecording, audioLevel, isSilence, error: micError } =
     useAudioRecorder();
@@ -120,9 +135,11 @@ export function InterviewRoom() {
     setStatus((s) => (s === 'ai_speaking' ? 'ready' : s));
   }, []);
 
-  // WebSocket connection lifecycle
+  // WebSocket connection lifecycle. The socket does NOT open until the
+  // candidate has granted camera access in the preflight gate — without it
+  // there is no interview, only the gate UI.
   useEffect(() => {
-    if (!interviewId) return;
+    if (!interviewId || !cameraStream) return;
     let cancelled = false;
     interviewWs.connect(interviewId).catch(() => {
       if (!cancelled) setConnectionError(true);
@@ -135,7 +152,47 @@ export function InterviewRoom() {
         audioUrlRef.current = null;
       }
     };
-  }, [interviewId]);
+  }, [interviewId, cameraStream]);
+
+  // Release the camera tracks on unmount so the OS camera indicator turns
+  // off the moment the candidate leaves the interview.
+  useEffect(() => {
+    return () => {
+      cameraStream?.getTracks().forEach((t) => t.stop());
+    };
+  }, [cameraStream]);
+
+  // Surface a camera_lost integrity event if a video track ends unexpectedly
+  // (user revokes permission, OS turns the camera off, etc.) while the
+  // interview is live.
+  useEffect(() => {
+    if (!cameraStream) return;
+    const track = cameraStream.getVideoTracks()[0];
+    if (!track) return;
+    const onEnded = () => interviewWs.sendIntegrityEvent('camera_lost');
+    track.addEventListener('ended', onEnded);
+    return () => track.removeEventListener('ended', onEnded);
+  }, [cameraStream]);
+
+  // Phase A integrity monitor — browser APIs only (tab/window/visibility).
+  // Disabled while still preflighting, while the WS is connecting, after the
+  // interview ends, after an integrity termination, or in any error state.
+  const integrityEnabled =
+    !!cameraStream &&
+    !connectionError &&
+    !lostConnection &&
+    !integrityTerminated &&
+    status !== 'connecting' &&
+    status !== 'ended';
+
+  const handleIntegrityEvent = useCallback(
+    (eventType: IntegrityEventType, metadata?: Record<string, unknown>) => {
+      interviewWs.sendIntegrityEvent(eventType, metadata);
+    },
+    [],
+  );
+
+  useIntegrityMonitor({ enabled: integrityEnabled, onEvent: handleIntegrityEvent });
 
   // WebSocket handlers — the WebSocket is the single source of truth for state.
   useEffect(() => {
@@ -220,10 +277,23 @@ export function InterviewRoom() {
       setNotice(msg.message || 'A server error occurred.');
     };
 
-    const onInterviewEnded = () => {
+    const onInterviewEnded = (msg: WebSocketMessage) => {
       setStatus('ended');
       audioRef.current?.pause();
+      // Integrity-terminated interviews stay on this screen so the candidate
+      // sees the reason explicitly; the partial report is still reachable.
+      if (msg.reason === 'integrity_terminated') {
+        setIntegrityTerminated(true);
+        return;
+      }
       navigate(`/report/${interviewId}`);
+    };
+
+    const onIntegrityWarning = (msg: WebSocketMessage) => {
+      if (typeof msg.count !== 'number' || typeof msg.max !== 'number' || !msg.event_type) return;
+      // The backend's terminate signal arrives as a normal warning frame
+      // followed by an interview_ended frame; the overlay reflects the count.
+      setActiveWarning({ count: msg.count, max: msg.max, eventType: msg.event_type });
     };
 
     // The socket dropped after the interview was already running. The
@@ -245,6 +315,7 @@ export function InterviewRoom() {
     interviewWs.on('error', onBackendError);
     interviewWs.on('interview_ended', onInterviewEnded);
     interviewWs.on('disconnected', onDisconnected);
+    interviewWs.on('integrity_warning', onIntegrityWarning);
 
     return () => {
       interviewWs.off('init', onInit);
@@ -258,6 +329,7 @@ export function InterviewRoom() {
       interviewWs.off('error', onBackendError);
       interviewWs.off('interview_ended', onInterviewEnded);
       interviewWs.off('disconnected', onDisconnected);
+      interviewWs.off('integrity_warning', onIntegrityWarning);
     };
   }, [interviewId, navigate]);
 
@@ -306,7 +378,35 @@ export function InterviewRoom() {
       {/* Audio element is always mounted so playback never races the DOM. */}
       <audio ref={audioRef} hidden onEnded={handleAudioEnded} onError={handleAudioEnded} />
 
-      {connectionError ? (
+      {activeWarning && (
+        <IntegrityWarning
+          count={activeWarning.count}
+          max={activeWarning.max}
+          eventType={activeWarning.eventType}
+          onDismiss={() => setActiveWarning(null)}
+        />
+      )}
+
+      {!cameraStream ? (
+        <CameraPreflight onReady={setCameraStream} />
+      ) : integrityTerminated ? (
+        <div className="iv-connect-state iv-terminated">
+          <div className="iv-connect-icon error">!</div>
+          <h3>Interview terminated</h3>
+          <p>
+            This interview was ended early because the integrity warning limit
+            ({activeWarning?.max ?? 3}) was reached. Your progress up to this point
+            was saved.
+          </p>
+          <button
+            className="btn btn-primary"
+            onClick={() => navigate('/')}
+            style={{ marginTop: 'var(--space-md)' }}
+          >
+            Back to dashboard
+          </button>
+        </div>
+      ) : connectionError ? (
         <div className="iv-connect-state">
           <div className="iv-connect-icon error">!</div>
           <h3>Unable to connect</h3>

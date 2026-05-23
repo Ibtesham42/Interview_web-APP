@@ -1,4 +1,4 @@
-import type { WebSocketMessage } from '../types';
+import type { IntegrityEventType, WebSocketMessage } from '../types';
 import { supabase } from '../utils/supabase/client';
 
 type MessageHandler = (message: WebSocketMessage) => void;
@@ -159,6 +159,10 @@ class InterviewWebSocket {
 
   sendEndInterview(): void {
     this.send({ type: 'end_interview' });
+  }
+
+  sendIntegrityEvent(eventType: IntegrityEventType, metadata?: Record<string, unknown>): void {
+    this.send({ type: 'integrity_event', event_type: eventType, metadata: metadata ?? {} });
   }
 
   on(type: string, handler: MessageHandler): void {

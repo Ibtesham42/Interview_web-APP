@@ -23,6 +23,111 @@
 
 ---
 
+## 23/05/2026 — interview integrity / anti-cheating (Phase A)
+Type: Feature
+
+Adds a production-safe integrity layer over the existing realtime pipeline.
+Phase A is intentionally scoped to the lowest-risk, highest-value signals —
+camera-required preflight gate, tab/window/visibility monitoring, a warning
+system that auto-terminates the interview at three warnings, and a per-event
+audit log. Camera-frame analysis (black-frame check) and face detection
+(no-face / multi-face) are planned as Phases B and C and are NOT in this
+change. The chosen face-detection direction for Phase C is MediaPipe
+BlazeFace fallback for cross-browser parity.
+
+Architecture (sibling-class pattern, not orchestrator-bake-in):
+- New `IntegrityMonitor` in `services/integrity_monitor.py` — sibling to
+  `InterviewOrchestrator`, lives for the lifetime of the WebSocket (ADR 0002
+  — non-resumable). Counts warnings in memory (DB persistence is best-effort
+  so a transient outage can't let a candidate bypass the threshold), logs
+  every event to `interview_integrity_events`, and at MAX_WARNINGS=3 marks
+  the interview row `status='terminated_integrity'`.
+- `routers/interview_session.py` handles a new client→server WS message type
+  `integrity_event` and replies with `integrity_warning` (carrying count +
+  event_type + severity + terminate flag). On terminate it emits the
+  existing `interview_ended` with `reason='integrity_terminated'` and
+  closes — reusing the existing terminal-state path, NOT inventing a new
+  one. The realtime turn flow (question/answer/audio) is untouched;
+  integrity messages are parallel and out-of-band.
+- New DB migration `002_integrity_events.sql` — table + indexes + RLS
+  scoped to user_id (same pattern as candidates/interviews). Idempotent.
+  No client-side INSERT policy; only the service-role backend writes events.
+
+Frontend:
+- New `CameraPreflight` component — gates `/interview/:id` entirely; the WS
+  does not open until `navigator.mediaDevices.getUserMedia({video:true})`
+  resolves. Handles denied / unsupported / generic-error branches with
+  retry. Frames stay on-device; only event types reach the backend
+  (explicitly disclosed in the gate copy).
+- New `useIntegrityMonitor` hook — browser APIs only (`visibilitychange` +
+  `window.blur`), 3 s per-event-type cooldown to avoid spamming on rapid
+  alt-tabbing. Zero ML, zero bundle weight.
+- New `IntegrityWarning` toast component — auto-dismiss after 6 s, dismissible
+  with keyboard, role="alert" + aria-live="assertive" for accessibility.
+- `InterviewRoom.tsx` extended: holds the MediaStream (stops tracks on
+  unmount so the OS camera indicator turns off cleanly), surfaces
+  `camera_lost` if the video track ends mid-interview, renders the toast,
+  and replaces the report-redirect with a terminal "interview terminated"
+  screen when the close reason is `integrity_terminated`.
+- WS service: `sendIntegrityEvent(type, metadata?)` helper added.
+- Types: new `IntegrityEventType` union; `integrity_warning` added to the
+  WebSocketMessage type discriminator with the relevant fields.
+- CSS: ~110 lines appended to `index.css` for the toast / status pill /
+  terminal-screen styling, matching the existing dark design tokens.
+  Respects `prefers-reduced-motion`.
+
+Privacy posture (stated in the gate copy and enforced by the code):
+- Camera frames never leave the candidate's browser in any phase. Phase A
+  doesn't even read them; Phases B/C analyse client-side only.
+- Only the event type / severity / lightweight metadata reach the backend.
+- Camera tracks are stopped on unmount so the OS indicator clears.
+
+Verified: frontend `npx tsc --noEmit` clean; backend imports clean.
+
+Affected files:
+- new: backend/app/migrations/002_integrity_events.sql,
+  backend/app/services/integrity_monitor.py,
+  frontend/src/components/integrity/CameraPreflight.tsx,
+  frontend/src/components/integrity/IntegrityWarning.tsx,
+  frontend/src/hooks/useIntegrityMonitor.ts
+- modified: backend/app/routers/interview_session.py,
+  frontend/src/components/InterviewRoom.tsx,
+  frontend/src/services/websocket.ts,
+  frontend/src/types/index.ts,
+  frontend/src/index.css
+
+Architectural impact:
+- New WS message types `integrity_event` (client→server) and
+  `integrity_warning` (server→client). Termination reuses the existing
+  `interview_ended` path with a new optional `reason` field.
+- New DB table + status value `terminated_integrity`. Existing aggregation
+  queries treat it as not-completed (it carries no `completed=true`-style
+  flag the dashboard reads, only the status string).
+- Realtime turn sequencing, Matryoshka layer engine, orchestrator
+  structure, voice pipeline — all untouched.
+- IntegrityMonitor is a sibling class to InterviewOrchestrator, NOT a
+  feature of it — keeps the orchestrator from accreting unrelated state.
+
+Future considerations:
+- Phase B (next): camera thumbnail in the interview UI + black-frame /
+  camera-covered detection. Reuses the same WS event channel.
+- Phase C: face presence + multi-face detection. Per the chosen direction,
+  native `FaceDetector` API where available with a lazy-loaded MediaPipe
+  BlazeFace fallback (~1.5–3 MB) on Firefox/Safari.
+- The integrity-event audit log is not yet surfaced in the report or admin
+  dashboard. Worth wiring into the report endpoint as a small "integrity
+  events" section once Phase B/C land — single bulk query, no per-row
+  overhead.
+- DB migration must be applied manually in Supabase SQL editor before this
+  deploys; the backend's per-event INSERT will silently no-op (caught,
+  logged) if the table is missing, so the integrity-termination still works
+  in-memory — but the audit log will be empty.
+- A determined cheater could close the WS, skipping the termination push.
+  Once Phase C face checks land we should also enforce that the interview
+  cannot be marked completed if its integrity history shows >MAX_WARNINGS.
+
+---
+
 ## 23/05/2026 — interview drifted to ML questions regardless of selected domain
 Type: Fix
 

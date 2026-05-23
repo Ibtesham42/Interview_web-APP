@@ -219,10 +219,12 @@ export interface Phase5Score {
 export interface WebSocketMessage {
   // 'disconnected' is a client-side synthetic event emitted when an
   // already-open interview socket drops and cannot be resumed (see ADR 0002).
+  // 'integrity_warning' is a server-side reply to a client integrity_event.
   type: 'init' | 'question' | 'answer' | 'voice' | 'audio' |
         'evaluation' | 'phase_update' | 'empathy_nudge' |
         'voice_transcript' | 'voice_error' | 'analysis_result' |
-        'interview_ended' | 'end_interview' | 'error' | 'disconnected';
+        'interview_ended' | 'end_interview' | 'error' | 'disconnected' |
+        'integrity_warning';
   content?: string;
   phase?: number;
   data?: Record<string, unknown>;
@@ -234,7 +236,23 @@ export interface WebSocketMessage {
   candidate_field?: string;
   current_phase?: number;
   message?: string;
+  // integrity_warning fields
+  event_type?: IntegrityEventType;
+  severity?: 'info' | 'warning' | 'critical';
+  count?: number;
+  max?: number;
+  terminate?: boolean;
+  reason?: string;
 }
+
+export type IntegrityEventType =
+  | 'tab_blur'
+  | 'window_blur'
+  | 'visibility_hidden'
+  | 'camera_lost'
+  | 'no_face'
+  | 'multi_face'
+  | 'camera_dark';
 
 export interface PaceAnalysis {
   words_per_minute: number;
