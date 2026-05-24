@@ -82,7 +82,7 @@ export function Dashboard() {
     <div className="page">
       <div className="page-head">
         <div>
-          <h1 className="page-title">Welcome back, {firstName}</h1>
+          <h1>Welcome back, {firstName}</h1>
           <p className="page-sub">Track your interview performance and pick up where you left off.</p>
         </div>
         <Link to="/new" className="btn btn-primary btn-lg">New Interview</Link>
@@ -131,7 +131,7 @@ export function Dashboard() {
           {trend.length > 1 && (
             <div className="panel">
               <div className="panel-head">
-                <h3 className="panel-title">Performance trend</h3>
+                <h3>Performance trend</h3>
                 <span className="panel-meta">Last {Math.min(trend.length, 12)} completed</span>
               </div>
               <div className="trend-chart">
@@ -154,7 +154,7 @@ export function Dashboard() {
           {/* Interview history */}
           <div className="panel">
             <div className="panel-head">
-              <h3 className="panel-title">Interview history</h3>
+              <h3>Interview history</h3>
             </div>
             <div className="iv-list">
               {interviews.map((iv) => {

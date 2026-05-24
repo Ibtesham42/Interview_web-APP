@@ -71,7 +71,7 @@ function NewInterview() {
     <div className="page">
       <div className="page-head">
         <div>
-          <h1 className="page-title">New interview</h1>
+          <h1>New interview</h1>
           <p className="page-sub">Set up a fresh voice interview session.</p>
         </div>
       </div>

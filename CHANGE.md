@@ -23,6 +23,102 @@
 
 ---
 
+## 25/05/2026 — UI polish C4 · heading scale &amp; typography rhythm
+Type: Refactor
+
+First slice of the architecture-review-driven UI polish (analysis-only HTML
+report at `C:\Users\ibtes\AppData\Local\Temp\architecture-review-2026-05-25-frontend.html`).
+Stress-tested via the `grill-with-docs` skill; the design decision is locked
+in `docs/adr/0003-in-app-heading-scale-is-restrained.md` so future
+architecture reviews don't re-relitigate it.
+
+What changed:
+
+Global heading scale (`src/index.css`):
+- h1: 2.5rem 700 → **1.75rem 600** (-0.022em)
+- h2: 1.75rem → **1.375rem** (-0.018em)
+- h3: 1.25rem → **1.125rem** (-0.014em)
+- h4: 1rem → **0.9375rem** (-0.010em)
+- Plus rhythm rules: `h1 { margin-bottom: var(--space-md); }`,
+  `h3 { margin-bottom: var(--space-md); }`,
+  `.page-head { margin-bottom: var(--space-2xl); }`
+- Plus two scoped overrides where the global margin would offset flex
+  children: `.panel-head h3 { margin-bottom: 0; }` and
+  `.onboard-head h3 { margin-bottom: var(--space-xs); }`,
+  and `.page-head h1 { margin-bottom: 0; }` (the page-head's own bottom
+  margin owns the spacing to the next block).
+
+Bespoke title classes:
+- `.page-title` — DELETED (4 JSX call sites un-classed: `App.tsx:74`,
+  `Dashboard.tsx:85`, `AdminDashboard.tsx:64`, `AdminUserDetail.tsx:67`).
+  The global h1 rule now matches what `.page-title` used to override to.
+- `.card-title` — DELETED from CSS (was defined but never used; dead code).
+- `.onboard-title` — DELETED; `CandidateUpload.tsx:136` changed from
+  `<h2 className="onboard-title">` to `<h3>`. Semantic fix: the page
+  already has an `<h1>New interview</h1>` above this card, so the card's
+  own heading is subordinate.
+- `.panel-title` — DELETED (9 JSX call sites un-classed across Dashboard,
+  Report, AdminDashboard, AdminUserDetail). Bare `<h3>` now renders
+  correctly. The single non-h3 site (a `<span>` inside the transcript
+  toggle button in `Report.tsx:259`) gets its visual styling from a new
+  scoped selector `.transcript-toggle > span:first-child` instead.
+- `.auth-title` — slimmed to just `text-align: center;`. The size/weight
+  override is gone (h1 native rule covers it); the centering is preserved
+  because `.auth-card` is a normal block, not a flex container. Both
+  Login and Signup keep `className="auth-title"` for the centering intent.
+
+Out of scope (deliberate):
+- `.hero-title` not added — no landing page exists today; YAGNI per
+  stability phase. When/if a landing surface is built, it opts in then.
+- `.features-grid` / `.feature-card` are dead CSS — flagged for a separate
+  cleanup PR; not touched here.
+
+Hard constraints honoured:
+- No new tokens, no new dependencies, no React component changes.
+- No new files except the ADR.
+- Realtime / voice / orchestrator — untouched.
+- Backend untouched.
+- The "user input authoritative" rule + integrity surface — untouched.
+
+Verified:
+- `npx tsc --noEmit` clean.
+- `npm run test` — Vitest 14/14 pass in ~385ms.
+- Manual browser walk-through completed by the user across Dashboard,
+  /new, Login, Signup, Report, /admin, /admin/users/:id, and a mobile
+  width. No regressions observed; the restrained premium-app direction
+  reads as cleaner.
+
+Affected files:
+- new: docs/adr/0003-in-app-heading-scale-is-restrained.md
+- modified: frontend/src/index.css,
+  frontend/src/App.tsx,
+  frontend/src/components/Dashboard.tsx,
+  frontend/src/components/CandidateUpload.tsx,
+  frontend/src/components/Report.tsx,
+  frontend/src/components/admin/AdminDashboard.tsx,
+  frontend/src/components/admin/AdminUserDetail.tsx
+- docs: CHANGE.md, CHANGELOG.md, CURRENT_TASKS.md
+
+Architectural impact: None on the runtime. The semantic h1–h4 scale now
+matches the visual hierarchy on every in-app page. Future contributors
+writing `<h1>Foo</h1>` get the right size automatically; no className
+cargo-culting required. ADR 0003 records the "premium-app over
+premium-marketing" decision so the next architecture review doesn't
+suggest bumping the scale back up.
+
+Future considerations:
+- Candidate 5 from the architecture review (InterviewRoom inline-style
+  purge) is the next slice. Separate grilling pass + PR per the user's
+  instruction "Do not batch all candidates into one PR".
+- Candidate 1 (Button primitive) lands after Candidate 5.
+- `.features-grid` / `.feature-card` dead-CSS cleanup is queued as a
+  follow-up; not part of any of the three planned candidates.
+- The transcript toggle uses a non-semantic `<span>` styled like an h3.
+  Acceptable because the parent is a `<button>` (a heading would be
+  awkward HTML there), but worth a code-review eye if the toggle pattern
+  appears elsewhere — a `Heading-as-label` utility class might be worth
+  introducing then.
+
 ## 25/05/2026 02:15 — Render keep-alive via UptimeRobot
 Type: Decision (deploy / external infra)
 

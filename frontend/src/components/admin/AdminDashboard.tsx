@@ -61,7 +61,7 @@ export function AdminDashboard() {
     <div className="page">
       <div className="page-head">
         <div>
-          <h1 className="page-title">Admin overview</h1>
+          <h1>Admin overview</h1>
           <p className="page-sub">Platform-wide users, interviews and performance analytics.</p>
         </div>
       </div>
@@ -100,7 +100,7 @@ export function AdminDashboard() {
       {by_category.length > 0 && (
         <div className="panel">
           <div className="panel-head">
-            <h3 className="panel-title">Interview categories</h3>
+            <h3>Interview categories</h3>
           </div>
           <div className="cat-list">
             {by_category.map((c) => (
@@ -119,7 +119,7 @@ export function AdminDashboard() {
       {/* Users */}
       <div className="panel">
         <div className="panel-head">
-          <h3 className="panel-title">Users ({users.length})</h3>
+          <h3>Users ({users.length})</h3>
         </div>
         {users.length === 0 ? (
           <p className="report-empty">No users yet.</p>

@@ -188,7 +188,7 @@ export function Report() {
       {/* Summary */}
       {report.summary && (
         <div className="panel">
-          <h3 className="panel-title">Summary</h3>
+          <h3>Summary</h3>
           <p className="report-summary">{report.summary}</p>
         </div>
       )}
@@ -197,7 +197,7 @@ export function Report() {
       {(strengths.length > 0 || improvements.length > 0) && (
         <div className="report-cols">
           <div className="panel">
-            <h3 className="panel-title">Strengths</h3>
+            <h3>Strengths</h3>
             {strengths.length > 0 ? (
               <ul className="report-list good">
                 {strengths.map((s) => <li key={s}>{s}</li>)}
@@ -207,7 +207,7 @@ export function Report() {
             )}
           </div>
           <div className="panel">
-            <h3 className="panel-title">Areas to improve</h3>
+            <h3>Areas to improve</h3>
             {improvements.length > 0 ? (
               <ul className="report-list low">
                 {improvements.map((s) => <li key={s}>{s}</li>)}
@@ -221,7 +221,7 @@ export function Report() {
 
       {/* Phase breakdown */}
       <div className="panel">
-        <h3 className="panel-title">Phase breakdown</h3>
+        <h3>Phase breakdown</h3>
         <div className="phase-grid">
           {[2, 3, 4, 5].map((phase) => renderPhase(phase, report.phase_scores[phase]))}
         </div>
@@ -232,7 +232,7 @@ export function Report() {
           simply skip it. */}
       {report.integrity_events && (
         <div className="panel">
-          <h3 className="panel-title">Integrity events</h3>
+          <h3>Integrity events</h3>
           <div className="integrity-report">
             {report.integrity_events.terminated && (
               <div className="integrity-report-terminated">
@@ -256,7 +256,7 @@ export function Report() {
             onClick={() => setShowTranscript((v) => !v)}
             aria-expanded={showTranscript}
           >
-            <span className="panel-title">Transcript ({transcript.length} turns)</span>
+            <span>Transcript ({transcript.length} turns)</span>
             <span className="transcript-chevron">{showTranscript ? '−' : '+'}</span>
           </button>
           {showTranscript && (

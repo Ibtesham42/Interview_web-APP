@@ -64,7 +64,7 @@ export function AdminUserDetail() {
       <div className="page-head">
         <div>
           <Link to="/admin" className="back-link">← Admin overview</Link>
-          <h1 className="page-title">{user.full_name || 'Unnamed user'}</h1>
+          <h1>{user.full_name || 'Unnamed user'}</h1>
           <p className="page-sub">{user.email || '—'}</p>
         </div>
         <span className={`role-badge role-${user.role}`}>{user.role}</span>
@@ -93,7 +93,7 @@ export function AdminUserDetail() {
 
       <div className="panel">
         <div className="panel-head">
-          <h3 className="panel-title">Interview history</h3>
+          <h3>Interview history</h3>
         </div>
         {interviews.length === 0 ? (
           <p className="report-empty">This user has not run any interviews.</p>

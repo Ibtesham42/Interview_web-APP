@@ -133,7 +133,7 @@ export function CandidateUpload() {
     <div className="onboard-card">
       <div className="onboard-head">
         <span className="onboard-eyebrow">New session</span>
-        <h2 className="onboard-title">Set up your interview</h2>
+        <h3>Set up your interview</h3>
         <p className="onboard-sub">
           Upload your resume and we'll tailor every question to your experience.
         </p>

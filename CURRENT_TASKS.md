@@ -55,10 +55,28 @@ _All items burned down this phase — see "Done" section below._
 
 ---
 
+## UI polish track (architecture review 2026-05-25)
+
+From the analysis-only HTML report. Three small, sequential PRs — not
+batched. After each ships and is verified, the next begins.
+
+| # | Candidate | Status |
+|---|---|---|
+| C4 | Heading scale &amp; typography rhythm | **Shipped 2026-05-25** (ADR 0003) |
+| C5 | InterviewRoom inline-style purge | Pending |
+| C1 | Button primitive | Pending |
+
+Each gets its own `grill-with-docs` pass before any code lands.
+
 ## Done in this phase
 
 (Update as items land. Newest at the top.)
 
+- 2026-05-25 — Shipped UI polish C4 (heading scale + typography rhythm).
+  Global h1–h4 scale dropped to premium-app sizes (1.75 / 1.375 / 1.125
+  / 0.9375 rem at weight 600). Retired bespoke `.page-title`,
+  `.card-title`, `.onboard-title`, `.panel-title` classes; slimmed
+  `.auth-title` to just centering. Decision locked in ADR 0003.
 - 2026-05-25 — Configured UptimeRobot keep-alive pinger (HTTP(S)
   monitor on `/health`, 5-min interval, alerting email enabled).
   Eliminates the 50–60 s Render free-tier cold start on first user

@@ -9,7 +9,13 @@ Dates are DD/MM/YYYY (matches `CHANGE.md`).
 ---
 
 ## [Unreleased]
-_Nothing pending._
+_Nothing pending — two more incremental UI polish PRs (InterviewRoom inline-style cleanup, Button primitive) are queued in `CURRENT_TASKS.md`._
+
+## [2026-05-25] — UI polish · heading scale &amp; typography rhythm
+
+### Changed
+- **Restrained premium-app heading scale across every in-app page.** Page headings drop from 1.5rem (or 2.5rem in some places) to a unified **1.75rem at weight 600** with tight letter-spacing. Section headings inside cards bump slightly from 1rem to 1.125rem. Auth screen titles ("Welcome back", "Create your account") gain presence at the larger size while keeping their centered card layout. The visual rhythm now matches Linear / Stripe / Notion app shells — restrained, not marketing-hero.
+- **Retired five bespoke title classes** (`.page-title`, `.card-title`, `.onboard-title`, `.panel-title`, plus slimmed `.auth-title`). Semantic `<h1>`–`<h4>` tags carry their styling natively; future contributors get the right typography automatically. The decision is locked in `docs/adr/0003-in-app-heading-scale-is-restrained.md`.
 
 ## [2026-05-25] — Cold-start mitigation
 

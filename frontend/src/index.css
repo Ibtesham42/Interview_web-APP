@@ -179,10 +179,14 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--text-primary);
 }
 
-h1 { font-size: 2.5rem; font-weight: 700; letter-spacing: -0.03em; }
-h2 { font-size: 1.75rem; font-weight: 600; letter-spacing: -0.022em; }
-h3 { font-size: 1.25rem; font-weight: 600; letter-spacing: -0.017em; }
-h4 { font-size: 1rem; font-weight: 600; letter-spacing: -0.011em; }
+/* Heading scale — premium-app, not premium-marketing (see ADR 0003).
+   In-app h1 = 1.75rem at weight 600, not 2.5rem at 700. Restrained tone
+   comes from medium weight + tight letter-spacing + generous vertical
+   rhythm, not from larger headings. */
+h1 { font-size: 1.75rem;    font-weight: 600; letter-spacing: -0.022em; margin-bottom: var(--space-md); }
+h2 { font-size: 1.375rem;   font-weight: 600; letter-spacing: -0.018em; }
+h3 { font-size: 1.125rem;   font-weight: 600; letter-spacing: -0.014em; margin-bottom: var(--space-md); }
+h4 { font-size: 0.9375rem;  font-weight: 600; letter-spacing: -0.010em; }
 
 p { color: var(--text-secondary); line-height: 1.6; }
 
@@ -354,14 +358,6 @@ a:hover { color: var(--primary); }
   padding: var(--space-xl);
 }
 
-.card-title {
-  font-size: 1.125rem;
-  font-weight: 600;
-  margin-bottom: var(--space-lg);
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-}
 
 /* ========================================
    BUTTONS - Clean, professional
@@ -549,6 +545,12 @@ select.form-input option {
   margin-bottom: var(--space-lg);
 }
 
+.onboard-head h3 {
+  /* Tighter than the default h3 rhythm — this h3 has a subtitle immediately
+     below it inside a card header, not a section to lead into. */
+  margin-bottom: var(--space-xs);
+}
+
 .onboard-eyebrow {
   display: inline-block;
   font-size: 0.6875rem;
@@ -559,12 +561,6 @@ select.form-input option {
   margin-bottom: var(--space-sm);
 }
 
-.onboard-title {
-  font-size: 1.375rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  margin-bottom: var(--space-xs);
-}
 
 .onboard-sub {
   font-size: 0.9375rem;
@@ -1925,8 +1921,9 @@ select.form-input option {
 }
 
 .auth-title {
-  font-size: 1.25rem;
-  font-weight: 600;
+  /* Size + weight come from the global h1 rule; this class exists only to
+     center the heading within the auth-card (which is a normal block, not
+     a flex column). See ADR 0003. */
   text-align: center;
 }
 
@@ -2078,12 +2075,14 @@ select.form-input option {
   align-items: flex-end;
   gap: var(--space-md);
   flex-wrap: wrap;
+  margin-bottom: var(--space-2xl);
 }
 
-.page-title {
-  font-size: 1.5rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
+.page-head h1 {
+  /* The page-head's own margin-bottom carries spacing to the next block;
+     the h1's default margin-bottom would double-space against the sibling
+     subtitle inside the page-head. */
+  margin-bottom: 0;
 }
 
 .page-sub {
@@ -2114,9 +2113,11 @@ select.form-input option {
   margin-bottom: var(--space-md);
 }
 
-.panel-title {
-  font-size: 1rem;
-  font-weight: 600;
+.panel-head h3 {
+  /* Cancel the default h3 margin-bottom — .panel-head is a flex row that
+     owns its own spacing to the next sibling; an h3 child's margin would
+     vertically offset it against the meta span. */
+  margin-bottom: 0;
 }
 
 .panel-meta {
@@ -2473,6 +2474,14 @@ a.iv-row:hover {
   cursor: pointer;
   color: var(--text-primary);
   padding: 0;
+}
+
+.transcript-toggle > span:first-child {
+  /* Matches the h3 visual rhythm without becoming a heading element — the
+     toggle is a button, not a section header. */
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: -0.014em;
 }
 
 .transcript-chevron {
