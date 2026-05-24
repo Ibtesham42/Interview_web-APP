@@ -91,7 +91,7 @@ These are load-bearing decisions; revisit only with an ADR.
 3. **The interviewer LLM only phrases — Python plans the layer/topic.** No extra LLM call per turn. (ADR 0001)
 4. **Backend writes stamp `user_id`; list/detail endpoints filter by caller.** RLS protects direct client reads.
 5. **Aggregations use bulk queries** — never N per-row report generation. (`score_interviews_bulk`)
-6. **User-provided input at API boundaries is authoritative; LLM-derived data is advisory.** *Promoted to a project principle after commit `b97597f` — see CHANGE.md.*
+6. **User-provided input at API boundaries is authoritative; LLM-derived data is advisory.** *Now a formal `CLAUDE.md` Engineering Rule (promoted 2026-05-24). Origin: commit `b97597f` — see CHANGE.md.*
 
 ## Working files for next agent
 

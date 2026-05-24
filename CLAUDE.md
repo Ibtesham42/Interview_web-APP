@@ -90,6 +90,14 @@ frontend/src/
 - Additive changes over rewrites. Don't refactor beyond the task.
 - No `any` types; no hardcoded secrets (env vars only).
 - Trust framework guarantees; validate only at system boundaries.
+- **User-provided input at API boundaries is authoritative; LLM/parser/heuristic-derived
+  data is advisory.** Never silently overwrite a field the user has explicitly set.
+  If you must persist inferred data alongside it, store it separately (e.g. an
+  `inferred_*` column or a suggestion the UI can offer) — never blow away the user's
+  choice. Code-review red flag: any `update({field: parsed_data[field]})` next to a
+  `update({user_text: ...})` for the same row. *Origin: the resume-parser bug fixed
+  in commit `b97597f` (a Web Dev candidate received ML questions because the
+  parser's inference overwrote the user's form choice).*
 - After backend code changes, restart the backend manually (see Commands).
 - Every meaningful change is logged in `CHANGE.md` (see CHANGE.md Rules).
 

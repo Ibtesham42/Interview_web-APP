@@ -25,7 +25,6 @@ deferred unless explicitly promoted out of the deferred section.
 
 | Item | Size | Notes |
 |---|---|---|
-| Promote "user input authoritative; LLM-derived data advisory" to a rule in `CLAUDE.md` | S | Already a project principle in memory + `PROJECT_STATE.md` invariant #6. Promoting it makes it visible at session start. |
 | Remove (or repurpose as a form-prefill *suggestion*) `resume_parser.field_specialization` | S | Dead since commit `b97597f` (user form choice is authoritative). Carries cost in confusion; zero benefit. |
 | Add pytest for `compute_phase_scores` / `compute_final_score` / `score_interviews_bulk` | S | Pure helpers; drive dashboard aggregates. Next-best test targets after the integrity surfaces already covered. |
 
@@ -65,6 +64,9 @@ deferred unless explicitly promoted out of the deferred section.
 
 (Update as items land. Newest at the top.)
 
+- 2026-05-24 — Promoted "user input authoritative; LLM-derived data
+  advisory" to a formal Engineering Rule in `CLAUDE.md`. The memory entry
+  is kept as a historical pointer.
 - 2026-05-24 — Branch protection enabled on `main`: required checks
   `Frontend (tsc + vitest)` + `Backend (pytest)`, up-to-date branches
   required, force-pushes blocked.

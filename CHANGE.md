@@ -23,6 +23,52 @@
 
 ---
 
+## 25/05/2026 00:15 — promote "user input authoritative" to a CLAUDE.md rule
+Type: Decision
+
+Promoted the long-standing project principle into a formal `CLAUDE.md`
+Engineering Rule so it lands in every session's startup read. Origin: the
+resume-parser bug fix (commit `b97597f`, CHANGE 23/05/2026). The
+principle has been an informal invariant + a memory entry since; landing
+the integrity rollout cleared the integrity surface to write down rules.
+
+Rule wording (now in `CLAUDE.md` → Engineering Rules):
+
+> User-provided input at API boundaries is authoritative; LLM/parser/
+> heuristic-derived data is advisory. Never silently overwrite a field
+> the user has explicitly set. If you must persist inferred data
+> alongside it, store it separately (e.g. an `inferred_*` column or a
+> suggestion the UI can offer) — never blow away the user's choice.
+> Code-review red flag: any `update({field: parsed_data[field]})` next
+> to a `update({user_text: ...})` for the same row.
+
+Side effects:
+- `PROJECT_STATE.md` invariant #6 updated to point at the CLAUDE.md rule
+  as the authoritative source.
+- `CURRENT_TASKS.md`: item moved from "Now / Maintainability" to "Done in
+  this phase".
+- Auto-memory entry rewritten to describe itself as a historical pointer
+  (origin + code-review heuristic) — CLAUDE.md is the load-bearing copy.
+
+Affected files:
+- modified: CLAUDE.md (Engineering Rules section), PROJECT_STATE.md
+  (invariant #6 wording), CURRENT_TASKS.md (move to Done)
+- memory: project_user_input_authoritative.md rewritten;
+  MEMORY.md index line updated
+
+Architectural impact: None on the runtime. The rule already governed
+review/PR decisions informally; now it governs them visibly.
+
+Future considerations:
+- The code-review heuristic (the "`update({field: parsed_data[field]})`
+  next to `update({user_text: ...})`" smell) lives only in the memory
+  file and CLAUDE.md. It's specific enough that a grep-based pre-commit
+  hook is feasible if this class re-occurs.
+- The candidate pipeline (`routers/candidates.py:upload_resume`) is the
+  only place this currently matters. If a second user-vs-inferred-data
+  surface appears (e.g. interview goals, skill tags), this is the rule
+  that governs how to wire it.
+
 ## 24/05/2026 23:55 — phase shift: stability + scalability
 Type: Decision
 
