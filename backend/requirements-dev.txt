@@ -1,0 +1,6 @@
+# Dev-only dependencies. Kept separate from requirements.txt so the
+# production Render build doesn't pull testing extras.
+#
+# Install with: pip install -r requirements-dev.txt
+-r requirements.txt
+pytest==7.4.3

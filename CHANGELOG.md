@@ -9,7 +9,16 @@ Dates are DD/MM/YYYY (matches `CHANGE.md`).
 ---
 
 ## [Unreleased]
-_Nothing pending — the integrity rollout (Phases A → C) and the WS-disconnect bypass fix have shipped._
+_Nothing pending — the integrity rollout (Phases A → C), the WS-disconnect bypass fix, and the first automated test suite have shipped._
+
+## [2026-05-24] — First automated tests
+
+### Added
+- **Vitest** for the frontend with a 14-test suite covering `normalizeWsHost` (the WebSocket URL normaliser that has caught several env-var paste mistakes in production). Run with `npm run test`.
+- **pytest** for the backend with a 31-test suite covering `IntegrityMonitor.record_event`, the severity-weighted warning thresholds (info=0 / warning=1 / critical=2; terminate at 3), and `_finalize_status` — including explicit regression guards for the WS-disconnect bypass closed earlier today. Run with `python -m pytest`.
+
+### Changed
+- Extracted `normalizeWsHost` from `services/websocket.ts` into its own `services/wsHost.ts` so it can be unit-tested without pulling the Supabase client (which throws at import time on missing env vars). Pure refactor — behaviour is identical.
 
 ## [2026-05-24] — Integrity bypass closed
 

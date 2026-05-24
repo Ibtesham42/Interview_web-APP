@@ -64,7 +64,7 @@ migration as Phase A.
 | Tighten `FRONTEND_ORIGIN_REGEX` to the actual Vercel project slug | S | Currently allows all `*.vercel.app`. |
 | Wrap synchronous Groq client in a thread executor | M | Currently blocks the single-worker event loop per turn; serialises concurrent interviews. Only matters above ~5 simultaneous candidates. |
 | Remove dead `resume_parser.field_specialization` inference (or expand its allowed-label set + use to pre-fill the form) | S | After commit `b97597f` the inferred value is unused for new candidates. Either delete or repurpose. |
-| Add Vitest setup + a test for `normalizeWsHost` and `IntegrityMonitor.record_event` thresholds | M | First automated tests in the project. Both are pure / easily testable. |
+| ~~Add Vitest setup + a test for `normalizeWsHost` and `IntegrityMonitor.record_event` thresholds~~ — **shipped 2026-05-24** (14 frontend Vitest + 31 backend pytest tests, see CHANGE.md) | — | — |
 | Persist orchestrator state to enable interview resume after a drop | L | Requires careful design — see ADR 0002 for why we explicitly chose NOT to ship this initially. Revisit only if drop-rate telemetry justifies it. |
 | Promote "user-provided input at API boundaries is authoritative; LLM-derived data is advisory" to a CLAUDE.md rule | S | Captures the recurring class behind the resume-overwrite bug. |
 

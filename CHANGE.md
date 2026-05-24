@@ -23,6 +23,111 @@
 
 ---
 
+## 24/05/2026 22:50 — first automated test suite (Vitest + pytest)
+Type: Feature
+
+Lands the first automated tests in the project. Scope strictly bounded to
+four targets named in `IMPLEMENTATION_ROADMAP.md` (Vitest line + adjacent
+roadmap items): `normalizeWsHost`, `IntegrityMonitor.record_event`, the
+warning-threshold logic, and `_finalize_status` (interview-termination
+logic). 45 tests total, all green.
+
+Frontend (Vitest, 14 tests):
+- Extracted `normalizeWsHost` from `services/websocket.ts` into a tiny new
+  `services/wsHost.ts`. Pure helper, zero behaviour change — but websocket.ts
+  imports the Supabase client at module load (it throws if VITE_SUPABASE_URL
+  is unset), which would have made the test file fragile to env stubbing.
+  Splitting the helper out is a single-purpose file with no side effects,
+  testable without any env setup. websocket.ts now re-imports it.
+- New `frontend/src/services/__tests__/wsHost.test.ts` covers: fallback on
+  undefined / empty / whitespace; clean passthrough; whitespace + trailing-
+  slash + trailing-newline strip; https→wss and http→ws rewrite (incl.
+  case-insensitive); duplicate-host de-dup with the console.warn assertion;
+  clean URLs do NOT warn; trailing-slash + dup combined.
+- `frontend/package.json`: added `vitest: ^1.6.0` devDependency,
+  `test: "vitest run"`, `test:watch: "vitest"`. Vite 5 / Vitest 1.x.
+
+Backend (pytest, 31 tests):
+- New `backend/requirements-dev.txt` (`-r requirements.txt` + `pytest==7.4.3`)
+  kept separate from `requirements.txt` so the Render production build
+  doesn't pull testing extras.
+- New `backend/pytest.ini` pointing `testpaths` at `tests/`.
+- `tests/test_integrity_monitor.py` — three test classes:
+  - `TestSeverityMapping`: pins the `EVENT_TYPES` / `SEVERITY_WEIGHT` tables
+    as the WS contract with the frontend (Phase A/B/C event types →
+    documented severities; info=0, warning=1, critical=2).
+  - `TestRecordEvent`: warning +1, critical +2, unknown event → info / 0,
+    metadata default + pass-through, event_type carry-through, DB failure
+    does not raise and still counts (the "in-memory counter is
+    authoritative" invariant).
+  - `TestWarningThreshold`: three warnings terminate; one critical + one
+    warning terminate; two criticals terminate; one critical alone does
+    NOT terminate (the explicit Phase C design decision); two warnings
+    don't terminate; info events never contribute; terminate stays True
+    after threshold is crossed.
+  - `TestMarkTerminated`: writes `terminated_integrity`, targets the
+    correct interview row, DB failure does not raise.
+- `tests/test_interview_session.py` — two test classes:
+  - `TestFinalizeStatus`: no monitor / below / one-below / at / over
+    threshold; DB failure swallow; `completed_at='now()'` is written; row
+    targeting via `.eq('id', ...)`; table is `interviews`.
+  - `TestBypassPrevention`: explicit regression guards for the WS-disconnect
+    bypass closed earlier today — end_interview path with threshold crossed
+    → terminated_integrity; natural completion with threshold crossed →
+    terminated_integrity; natural completion with a single stray warning
+    → completed (markdown badge handles surfacing).
+- Tests use `unittest.mock.MagicMock` for the Supabase client; no DB or
+  network access. `IntegrityMonitor`'s lazy `_supabase` attribute is set
+  directly to short-circuit `get_supabase()`. A tiny `_FakeIntegrity` is
+  used in the session tests so they don't transitively depend on the real
+  monitor's wiring (`_finalize_status` only reads two attributes).
+
+How to run:
+- Frontend: `cd frontend && npm run test` (one-shot) or
+  `npm run test:watch` (TDD loop).
+- Backend: `cd backend && python -m pytest` (autodiscovers `tests/`).
+
+Hard constraints honoured:
+- No production code behaviour change. `normalizeWsHost` was moved into a
+  new file but is functionally identical; `websocket.ts` re-imports it.
+- No new runtime dependencies. `vitest` is devDependencies; `pytest` is in
+  `requirements-dev.txt`, NOT `requirements.txt`.
+- Realtime / voice / orchestrator / WS contract — all untouched.
+
+Verified:
+- Frontend `npx tsc --noEmit` clean.
+- `npm run test` — 14/14 pass in 378ms.
+- `python -m pytest -v` — 31/31 pass in 0.73s.
+
+Affected files:
+- new: frontend/src/services/wsHost.ts,
+  frontend/src/services/__tests__/wsHost.test.ts,
+  backend/requirements-dev.txt, backend/pytest.ini,
+  backend/tests/test_integrity_monitor.py,
+  backend/tests/test_interview_session.py
+- modified: frontend/src/services/websocket.ts,
+  frontend/package.json, frontend/package-lock.json
+
+Architectural impact: None on the runtime. The codebase now has a
+test-running discipline — every future change to `IntegrityMonitor`,
+`_finalize_status`, or `normalizeWsHost` should run these suites before
+merge. Future agents: please add tests when touching code under
+`integrity_monitor.py`, the completion paths in `interview_session.py`,
+or `wsHost.ts`; the existing tests document the contracts those changes
+must preserve.
+
+Future considerations:
+- Pre-commit / CI hook to run both suites would let us treat these as
+  required-green gates instead of advisory. Currently a manual discipline.
+- The orchestrator's scoring helpers (`compute_phase_scores`,
+  `compute_final_score`, `score_interviews_bulk`) are the next-best
+  targets for unit tests — pure functions, no side effects, and they
+  drive the dashboard aggregates.
+- `_finalize_status` is currently tested via direct import; an
+  integration-style test that exercises a real WebSocket handshake would
+  cover the call-site wiring, but needs `httpx` AsyncClient + a stubbed
+  Supabase. Sized M.
+
 ## 24/05/2026 17:30 — close WS-disconnect integrity bypass
 Type: Fix
 
