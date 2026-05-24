@@ -11,6 +11,11 @@ Dates are DD/MM/YYYY (matches `CHANGE.md`).
 ## [Unreleased]
 _Nothing pending._
 
+## [2026-05-25] — CORS tightening
+
+### Security
+- **Production CORS allowlist tightened.** Previously the backend accepted requests from any `*.vercel.app` origin (a permissive default suitable for fresh setups but too broad for production). Now anchored to this project's slug — only `interview-web-app-*.vercel.app` origins are allowed. Updated `.env.example` and `config.py` comments so anyone forking the project sees the project-prefix pattern as the canonical template. The default value in code is unchanged (kept wildcard so first-time clones still work); the actual tightening is the Render `FRONTEND_ORIGIN_REGEX` env var.
+
 ## [2026-05-25] — Scoring helpers test coverage
 
 ### Added

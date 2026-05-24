@@ -23,6 +23,73 @@
 
 ---
 
+## 25/05/2026 01:45 — tighten FRONTEND_ORIGIN_REGEX for production
+Type: Decision / Fix (deploy + docs)
+
+Closed the wide-open CORS gap from `PROJECT_STATE.md`. The default
+`https://.*\.vercel\.app` was a template-friendly fallback but allowed
+any *.vercel.app site to call the production API. Now anchored to the
+project prefix on Render via env var.
+
+Production value (set in Render dashboard → Environment →
+FRONTEND_ORIGIN_REGEX → save → rolling restart):
+
+    ^https://interview-web-app(-[a-z0-9-]+)?\.vercel\.app$
+
+Matches:
+- Production: `interview-web-app-lyart.vercel.app`
+- Branch previews: `interview-web-app-git-<branch>-lyart.vercel.app`
+- Commit previews: `interview-web-app-<hash>-lyart.vercel.app`
+
+Blocks: any unrelated `*.vercel.app` site.
+
+Code changes (no behaviour change; clarifies the template):
+- `backend/.env.example`: rewrote the `FRONTEND_ORIGIN_REGEX` comment
+  block to call out the wildcard default as "too permissive for
+  production" and give the explicit project-prefix template plus this
+  project's worked example. The default value in the file is unchanged
+  (kept wildcard so first-time clones still work without override).
+- `backend/app/config.py`: brought the in-code comment in line with the
+  env.example — points readers at the template for the override syntax.
+
+The default in `config.py` stays wildcard intentionally:
+- This keeps the repo viable as a template — a fresh clone still works
+  without the operator needing to figure out CORS first.
+- The production tightening is an operational override, not a code
+  change. Render's env var takes precedence over the default; the only
+  way this default fires in production is if the env var is missing or
+  malformed, which the existing `_strip_env` validator already guards
+  against for whitespace mistakes.
+
+Hard constraints honoured:
+- No runtime behaviour change in the test suites.
+- No new dependencies.
+- The Render env var change is the only operational action.
+
+Verified:
+- Backend imports clean.
+- `python -m pytest`: 72/72 still pass (no test touches CORS config).
+- Frontend `npx tsc --noEmit` clean; Vitest 14/14 still pass.
+
+Affected files:
+- modified: backend/.env.example, backend/app/config.py
+- deploy: Render env var `FRONTEND_ORIGIN_REGEX` (manual step)
+- docs: CHANGE.md, PROJECT_STATE.md, CURRENT_TASKS.md, CHANGELOG.md
+
+Architectural impact: None on the runtime; reduces blast radius of a
+hypothetical compromised third-party Vercel project that might try to
+hit our API.
+
+Future considerations:
+- If the project ever migrates to a custom domain, the regex should be
+  replaced with an exact-origin entry in `FRONTEND_ORIGINS` (the
+  comma-separated allowlist sibling of the regex). `.env.example`
+  already documents that path.
+- A pytest unit test for the CORS regex (e.g. "my-app-lyart.vercel.app
+  matches; evil.vercel.app does not") would close the regression loop
+  end-to-end, but adds a brittle test that ties tightly to the slug.
+  Skipped under the "no new feature branches" phase rule.
+
 ## 25/05/2026 01:15 — pytest for the scoring helpers (41 new tests)
 Type: Feature
 

@@ -43,7 +43,6 @@ _All items burned down this phase — see "Done" section below._
 
 | Item | Size | Notes |
 |---|---|---|
-| Tighten `FRONTEND_ORIGIN_REGEX` on Render to the actual Vercel project slug | S | Currently allows all `*.vercel.app`. Deploy-only change. |
 | Self-host MediaPipe BlazeFace WASM + model in Vercel `dist/` | S | Phase C currently lazy-loads from jsdelivr / GCS. Air-gap-friendly and removes a silent-degradation failure mode. |
 
 ---
@@ -61,6 +60,11 @@ _All items burned down this phase — see "Done" section below._
 
 (Update as items land. Newest at the top.)
 
+- 2026-05-25 — Tightened `FRONTEND_ORIGIN_REGEX` on Render to
+  `^https://interview-web-app(-[a-z0-9-]+)?\.vercel\.app$` — only this
+  project's production + preview deployments are now valid CORS origins.
+  Updated `.env.example` and `config.py` comments to match. The default
+  in code stays wildcard for template friendliness.
 - 2026-05-25 — Added 41 pytest tests for the shared scoring helpers
   (`compute_phase_scores`, `compute_final_score`, `recommendation_for`,
   `score_interviews_bulk`). Backend suite now 72 tests; bulk-query

@@ -18,8 +18,11 @@ class Settings(BaseSettings):
 
     # CORS — production frontend origins.
     # frontend_origins: comma-separated exact origins (e.g. a custom domain).
-    # frontend_origin_regex: matches Vercel deployments; tighten to the project
-    # slug for safety, e.g. https://my-app-.*\.vercel\.app
+    # frontend_origin_regex: matches Vercel deployments. The default below is
+    # wildcard-wide (any *.vercel.app); production deployments MUST override
+    # it with a project-prefix anchor, e.g.
+    #   ^https://my-app(-[a-z0-9-]+)?\.vercel\.app$
+    # See backend/.env.example for the full template + worked example.
     frontend_origins: str = ""
     frontend_origin_regex: str = r"https://.*\.vercel\.app"
 
