@@ -26,7 +26,6 @@ class ResumeParser:
         return {
             "full_text": "",
             "sections": {"education": [], "experience": [], "projects": [], "skills": []},
-            "field_specialization": "ml",
             "name": "Unknown",
             "primary_project": {}
         }
@@ -40,25 +39,18 @@ For the resume provided, identify and extract:
 
 1. **Personal Info**: Name, email, phone (if present)
 
-2. **Field Specialization**: Determine if the candidate specializes in:
-   - "nlp" (Natural Language Processing, LLMs, Text, Transformers)
-   - "cv" (Computer Vision, Images, Object Detection, Segmentation)
-   - "ml" (General Machine Learning, Tabular Data, Classical ML)
-   - "research" (Academic research, Papers, Publications)
+2. **Education**: List of education entries with degree, institution, field, year
 
-3. **Education**: List of education entries with degree, institution, field, year
+3. **Experience**: List of work experiences with company, role, duration, responsibilities
 
-4. **Experience**: List of work experiences with company, role, duration, responsibilities
+4. **Projects**: List of projects with name, description, technologies, outcomes
 
-5. **Projects**: List of projects with name, description, technologies, outcomes
+5. **Skills**: Technical skills, programming languages, frameworks, tools
 
-6. **Skills**: Technical skills, programming languages, frameworks, tools
-
-7. **Full Text**: The complete text content of the resume
+6. **Full Text**: The complete text content of the resume
 
 Return your response as a JSON object with these exact keys:
 - "name": candidate name
-- "field_specialization": one of "nlp", "cv", "ml", "research"
 - "sections": object with keys "education", "experience", "projects", "skills"
 - "full_text": complete text content
 - "primary_project": the most impressive/relevant project for ML engineer role
@@ -105,7 +97,6 @@ Be thorough and extract ALL information visible in the resume.
         return {
             "full_text": "PDF parsing failed. Please ensure the PDF contains selectable text.",
             "sections": {"education": [], "experience": [], "projects": [], "skills": []},
-            "field_specialization": "ml",
             "name": "Unknown",
             "primary_project": {}
         }
@@ -117,7 +108,6 @@ You are an expert resume parser. Analyze this resume text and extract structured
 
 Return a JSON object with these exact keys:
 - "name": candidate name (or "Unknown" if not found)
-- "field_specialization": one of "nlp", "cv", "ml", "research" (infer from content)
 - "sections": object with keys "education", "experience", "projects", "skills"
 - "full_text": the complete text content
 - "primary_project": the most impressive/relevant project for ML engineer role
@@ -153,7 +143,6 @@ Be thorough and extract ALL information.
             return {
                 "full_text": parsed_data.get("full_text", ""),
                 "sections": parsed_data.get("sections", {}),
-                "field_specialization": parsed_data.get("field_specialization", "ml"),
                 "name": parsed_data.get("name", "Unknown"),
                 "primary_project": parsed_data.get("primary_project", {})
             }
@@ -161,7 +150,6 @@ Be thorough and extract ALL information.
             return {
                 "full_text": result_text,
                 "sections": {},
-                "field_specialization": "ml",
                 "name": "Unknown",
                 "primary_project": {}
             }

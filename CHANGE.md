@@ -23,6 +23,90 @@
 
 ---
 
+## 25/05/2026 00:45 — remove dead resume-parser `field_specialization` inference
+Type: Refactor
+
+Burn-down of the dead-code item from `CURRENT_TASKS.md`. After commit
+`b97597f` (the "Web Dev candidate gets ML questions" fix) the resume
+parser's inferred `field_specialization` stopped being adopted on writes
+for any row where the user had set the field — which is every new row.
+The legacy-row fallback (lines 122-123 of `candidates.py`) was the only
+remaining caller, and it had the failure mode the principle was created
+to forbid: the parser is constrained to four ML-adjacent labels
+(nlp/cv/ml/research) and falls back to "ml" on failure, so the
+"legacy-row" branch would silently label a Marketing / Design / Web Dev
+candidate "ml". Promoting "user input authoritative" to a `CLAUDE.md`
+Engineering Rule (CHANGE 25/05/2026 00:15) made keeping this code an
+explicit contradiction.
+
+Removed:
+- `services/resume_parser.py`: the `field_specialization` extraction
+  instructions in both prompts (`_parse_with_file_id` and `_parse_text`),
+  the key in `_parse_response`'s success + JSON-decode-failure dicts,
+  and the key in the two pdf-extraction fallback dicts at the top and
+  bottom of the module. The parser is now scoped to what it does well:
+  name, sections, full_text, primary_project.
+- `routers/candidates.py`:
+  - `parse_resume_only` response: removed the inferred
+    `field_specialization` from the JSONResponse body. The function is
+    a diagnostic endpoint; the inferred value was the most misleading
+    field it exposed.
+  - `upload_resume`: dropped the `if not candidate.get(
+    "field_specialization"): update_payload["field_specialization"] =
+    parsed_data["field_specialization"]` branch and the long comment
+    explaining why we *didn't* adopt it. With the inference gone from
+    the parser, the branch couldn't fire anyway — clearing it removes
+    the dead conditional and the obsolete commentary.
+  - `ResumeUploadResponse.field_specialization`: now sourced from the
+    candidate row (`candidate.get("field_specialization") or "general"`)
+    instead of `parsed_data`. Same wire shape as before; the value is
+    now authoritative (user choice) instead of advisory (inference).
+- `app/test_resume.py`: dropped the print line that surfaced
+  `field_specialization` from the parser result. The file is a manual
+  smoke script (not picked up by pytest — testpaths is `tests/`).
+
+What stayed (intentional, do NOT remove):
+- The `field_specialization` DB column and every read path
+  (`orchestrator`, `dashboard`, `admin`, `interview_session`,
+  `routers/candidates.create_candidate`). These all read the
+  authoritative user value the form writes via `CandidateCreate`.
+- The schema declarations in `models/schemas.py` — these declare DB
+  columns / API response fields, not parser output.
+
+Verified:
+- Backend imports clean (`python -c "from app.main import app"`).
+- `python -m pytest`: 31/31 pass in 0.51s.
+- Frontend `npx tsc --noEmit` clean; Vitest 14/14 pass.
+- `grep field_specialization backend/`: the only remaining references
+  are legitimate (DB column, schema fields, read paths,
+  user-form-driven create).
+
+Affected files:
+- modified: backend/app/services/resume_parser.py,
+  backend/app/routers/candidates.py, backend/app/test_resume.py
+- docs: CHANGE.md, PROJECT_STATE.md, CURRENT_TASKS.md, CHANGELOG.md
+
+Architectural impact: None. The wire shape of all endpoints is
+preserved. The parser's return contract loses one optional key; only
+internal callers consume parser output, and they were already updated
+in commit `b97597f` to ignore the inferred field. The "candidate-field"
+column reads everywhere in the codebase continue to point at the
+authoritative user value.
+
+Future considerations:
+- `models/schemas.py:31` has `field_specialization: str` (required) on
+  `ResumeUploadResponse`. The frontend already ignores the field; if
+  another consumer ever needs it removed, the upgrade path is
+  `Optional[str]` with no default, then remove in a later release.
+- `routers/candidates.py:63` still has `candidate.field_specialization or "ml"`
+  as the default when `create_candidate` receives an empty field. The
+  "user input authoritative" rule doesn't apply (no user input to
+  preserve), but the choice of "ml" vs "general" as the fallback is a
+  product question — the orchestrator and dashboard already use
+  "general" as their own fallbacks (`interview_orchestrator.py:501`,
+  `dashboard.py:53`). One-line consistency fix sized S if/when product
+  decides.
+
 ## 25/05/2026 00:15 — promote "user input authoritative" to a CLAUDE.md rule
 Type: Decision
 

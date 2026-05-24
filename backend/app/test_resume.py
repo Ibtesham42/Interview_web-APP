@@ -46,7 +46,6 @@ async def test_ai_parsing(pdf_path: str):
     result = await parser.parse_resume(pdf_content)
 
     print(f"\nName: {result.get('name')}")
-    print(f"Field: {result.get('field_specialization')}")
     print(f"Sections: {list(result.get('sections', {}).keys())}")
     print(f"\nPrimary project: {result.get('primary_project')}")
     print(f"\nFull text preview:\n{result.get('full_text', '')[:300]}...")

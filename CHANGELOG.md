@@ -9,7 +9,12 @@ Dates are DD/MM/YYYY (matches `CHANGE.md`).
 ---
 
 ## [Unreleased]
-_Nothing pending — the integrity rollout (Phases A → C), the WS-disconnect bypass fix, the first automated test suite, and the CI workflow that runs it have shipped._
+_Nothing pending._
+
+## [2026-05-25] — Resume-parser cleanup
+
+### Removed
+- **Dead `field_specialization` inference** from the resume parser. After the resume-parser fix in `b97597f` made the user's form choice authoritative, the parser's inferred field was no longer adopted on writes for any new candidate — but the inference itself, the legacy-row adoption branch, and the misleading exposure on the `parse-resume` diagnostic endpoint stuck around. All three are gone now. No wire-shape change; the upload endpoint still returns `field_specialization` but it's sourced from the candidate row (the authoritative user choice) instead of the parser.
 
 ## [2026-05-24] — CI workflow
 

@@ -25,7 +25,6 @@ deferred unless explicitly promoted out of the deferred section.
 
 | Item | Size | Notes |
 |---|---|---|
-| Remove (or repurpose as a form-prefill *suggestion*) `resume_parser.field_specialization` | S | Dead since commit `b97597f` (user form choice is authoritative). Carries cost in confusion; zero benefit. |
 | Add pytest for `compute_phase_scores` / `compute_final_score` / `score_interviews_bulk` | S | Pure helpers; drive dashboard aggregates. Next-best test targets after the integrity surfaces already covered. |
 
 ### Scaling safety
@@ -64,6 +63,10 @@ deferred unless explicitly promoted out of the deferred section.
 
 (Update as items land. Newest at the top.)
 
+- 2026-05-25 — Removed the dead `resume_parser.field_specialization`
+  inference (prompts, fallback dicts, return shape, the legacy-row
+  adoption branch in `upload_resume`). The DB column + all read paths
+  + the user-form write path are unchanged.
 - 2026-05-24 — Promoted "user input authoritative; LLM-derived data
   advisory" to a formal Engineering Rule in `CLAUDE.md`. The memory entry
   is kept as a historical pointer.
