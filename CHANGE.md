@@ -23,6 +23,69 @@
 
 ---
 
+## 25/05/2026 02:15 — Render keep-alive via UptimeRobot
+Type: Decision (deploy / external infra)
+
+External keep-alive configured to eliminate Render free-tier cold starts
+(50–60 s on first user hit after 15 min idle). No code change. No
+architecture change.
+
+**Chosen:** UptimeRobot HTTP(S) monitor, 5-min interval, pointed at
+`https://interview-web-app.onrender.com/health`. Alerting email enabled
+on non-2xx responses.
+
+**Why UptimeRobot over cron-job.org:**
+- 5-min interval is 3× under Render's 15-min sleep threshold (safety
+  margin even if a few pings are throttled/dropped).
+- Alerting on non-2xx ships free — cron-job.org has weaker alerting.
+- Purpose-built UI for HTTP monitoring; uptime history + response-time
+  graphs come along.
+- cron-job.org's only edge is sub-minute scheduling; not needed here.
+
+**Cost:** $0. UptimeRobot free tier — 50 monitors, 5-min minimum
+interval, email alerts. No credit card required.
+
+**`/health` characteristics** (worth recording so nobody adds DB
+checks here):
+- Defined at `backend/app/main.py:72-74`.
+- Async, no DB hit, returns `{"status": "healthy"}`.
+- Hit ~288×/day by the monitor — heavy work here would burn Render
+  quota for zero operational gain. If/when we want deeper internal
+  health checks, that's a separate endpoint (`/ready`), not `/health`.
+
+**Rollback path:** pause the monitor in UptimeRobot (one click). Render
+will sleep again after 15 min idle; the WebSocket retry budget covers
+the next cold start.
+
+**Architecture invariants preserved:**
+- No new code paths.
+- No new dependencies.
+- `/health` contract unchanged.
+- The realtime / voice / orchestrator pipeline is untouched.
+
+Affected files:
+- modified: PROJECT_STATE.md (deploy action #3 marked configured;
+  ADR-0002 gap annotated to note the cold-start mitigation),
+  CURRENT_TASKS.md (item moved Now → Done), CHANGE.md
+- memory: new `reference_uptimerobot_keepalive.md`, MEMORY.md index
+  updated
+- deploy: UptimeRobot monitor (external; not in repo)
+
+Architectural impact: None on the runtime. Removes the cold-start
+failure mode from the user's first-of-the-day request.
+
+Future considerations:
+- If we ever migrate off Render free tier, the monitor stops being
+  load-bearing and can be repurposed as pure uptime monitoring (the
+  alerting half is still useful).
+- The 5-min ping rate is the free-tier floor. If we want lower
+  latency on `/health` failure detection, that's a paid tier
+  upgrade — not justified at current volume.
+- If `/health` ever needs DB-aware checks, add a SEPARATE endpoint
+  (e.g. `/ready` returning DB status); do NOT modify `/health`. The
+  external monitor calls `/health` ~288×/day; adding cost there
+  would burn Render quota for zero monitoring benefit.
+
 ## 25/05/2026 01:45 — tighten FRONTEND_ORIGIN_REGEX for production
 Type: Decision / Fix (deploy + docs)
 

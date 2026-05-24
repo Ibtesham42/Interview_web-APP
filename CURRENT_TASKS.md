@@ -36,7 +36,6 @@ _All items burned down this phase — see "Done" section below._
 
 | Item | Size | Notes |
 |---|---|---|
-| Render keep-alive pinger (external cron hitting `/health` every ~10 min) | S | Free-tier cold start is 50–60 s; documented in `PROJECT_STATE.md`. External config (UptimeRobot / cron-job.org), no code change. |
 | Surface integrity-event volume in admin dashboard | S | Audit table now has data. A small "integrity events by type" view would let an operator triage noise patterns and tune thresholds (Phase B/C followup). |
 
 ### Production hardening
@@ -60,6 +59,11 @@ _All items burned down this phase — see "Done" section below._
 
 (Update as items land. Newest at the top.)
 
+- 2026-05-25 — Configured UptimeRobot keep-alive pinger (HTTP(S)
+  monitor on `/health`, 5-min interval, alerting email enabled).
+  Eliminates the 50–60 s Render free-tier cold start on first user
+  hit. External infra; documented in
+  `reference_uptimerobot_keepalive.md` memory and `PROJECT_STATE.md`.
 - 2026-05-25 — Tightened `FRONTEND_ORIGIN_REGEX` on Render to
   `^https://interview-web-app(-[a-z0-9-]+)?\.vercel\.app$` — only this
   project's production + preview deployments are now valid CORS origins.

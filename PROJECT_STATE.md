@@ -69,12 +69,12 @@ Two roles: **user** (candidate) and **admin** (oversight only).
 
 1. ~~Apply `backend/app/migrations/002_integrity_events.sql` in the Supabase SQL editor.~~ Applied 2026-05-24, verified empty table. Integrity audit log + report/admin surfacing is now live.
 2. **Vercel `VITE_WS_URL`** — verify the value is exactly `wss://interview-web-app.onrender.com` (no duplicates / whitespace). The `normalizeWsHost` defence will auto-correct most paste mistakes but the env var should still be clean.
-3. **Keep-alive pinger** — Render free tier sleeps after ~15 min idle. Not in repo. External cron (UptimeRobot / cron-job.org) hitting `/health` every ~10 min recommended.
+3. ~~**Keep-alive pinger** — Render free tier sleeps after ~15 min idle.~~ Configured 2026-05-25 via **UptimeRobot** (free tier). HTTP(S) monitor named "Render backend keep-alive" hits `https://interview-web-app.onrender.com/health` every 5 minutes. Alerting email goes to the account owner on non-2xx. Not in repo (it's an external monitor); to pause, log into UptimeRobot and toggle the monitor — the service will then sleep again after 15 min of no traffic.
 4. ~~**`FRONTEND_ORIGIN_REGEX`** on Render currently `https://.*\.vercel\.app` — tighten to the project slug.~~ Tightened 2026-05-25 to `^https://interview-web-app(-[a-z0-9-]+)?\.vercel\.app$` (production + preview deployments only).
 
 ## Known gaps / acknowledged debt
 
-- **Mid-interview disconnects are terminal** (ADR 0002). Drops surface "Connection lost" + back-to-dashboard. Resumability deferred until interview volume justifies persisting orchestrator state.
+- **Mid-interview disconnects are terminal** (ADR 0002). Drops surface "Connection lost" + back-to-dashboard. Resumability deferred until interview volume justifies persisting orchestrator state. Cold-start drops are now mitigated by the UptimeRobot keep-alive (see "Outstanding deploy actions").
 - ~~**CORS** still permissive via `FRONTEND_ORIGIN_REGEX` for all `*.vercel.app`.~~ Tightened 2026-05-25 to the project-prefix anchor on Render; only this project's production + preview deployments are allowed origins.
 - **Sync Groq client** blocks the event loop per turn; with one worker, concurrent interviews serialise LLM calls. Acceptable at free-tier volume; wrap in a thread when traffic grows.
 - **Automated test coverage is narrow** — Vitest (14 tests for `normalizeWsHost`) + pytest (72 tests for `IntegrityMonitor`, `_finalize_status`, and the shared scoring helpers) cover the integrity-critical surfaces + the scoring path that drives dashboards. Most of the codebase still relies on manual browser verification + root-level `test_e2e*.js` Playwright smoke flows. Run locally with `npm run test` (frontend) / `python -m pytest` (backend); CI workflow at `.github/workflows/ci.yml` runs both on every push to `main` and every PR.

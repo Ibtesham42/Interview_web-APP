@@ -11,6 +11,11 @@ Dates are DD/MM/YYYY (matches `CHANGE.md`).
 ## [Unreleased]
 _Nothing pending._
 
+## [2026-05-25] — Cold-start mitigation
+
+### Operational
+- **UptimeRobot keep-alive configured.** Render free tier sleeps after ~15 min idle; the first request after a sleep paid 50–60 s of cold-start latency. An external UptimeRobot HTTP(S) monitor now hits `/health` every 5 minutes, keeping the backend warm. Alerting on non-2xx is enabled. External infra; no code change.
+
 ## [2026-05-25] — CORS tightening
 
 ### Security
