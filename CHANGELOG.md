@@ -11,6 +11,11 @@ Dates are DD/MM/YYYY (matches `CHANGE.md`).
 ## [Unreleased]
 _Nothing pending._
 
+## [2026-05-25] — Scoring helpers test coverage
+
+### Added
+- **41 pytest tests for the shared scoring helpers** (`compute_phase_scores`, `compute_final_score`, `recommendation_for`, `score_interviews_bulk`). These functions drive the report, the candidate dashboard, and the admin aggregations — a regression in any of them would silently move dashboard numbers. The suite pins phase weights, the layer-aware-vs-historical branching in phases 2/3, the `PHASE_WEIGHTS` sum-to-1 invariant, the recommendation thresholds (including exact boundaries), and the "N interviews → 1 SELECT" bulk-query invariant. Backend suite is now 72 tests total, still <1s wall time.
+
 ## [2026-05-25] — Resume-parser cleanup
 
 ### Removed

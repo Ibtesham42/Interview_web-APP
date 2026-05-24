@@ -23,9 +23,7 @@ deferred unless explicitly promoted out of the deferred section.
 
 ### Maintainability
 
-| Item | Size | Notes |
-|---|---|---|
-| Add pytest for `compute_phase_scores` / `compute_final_score` / `score_interviews_bulk` | S | Pure helpers; drive dashboard aggregates. Next-best test targets after the integrity surfaces already covered. |
+_All items burned down this phase — see "Done" section below._
 
 ### Scaling safety
 
@@ -63,6 +61,10 @@ deferred unless explicitly promoted out of the deferred section.
 
 (Update as items land. Newest at the top.)
 
+- 2026-05-25 — Added 41 pytest tests for the shared scoring helpers
+  (`compute_phase_scores`, `compute_final_score`, `recommendation_for`,
+  `score_interviews_bulk`). Backend suite now 72 tests; bulk-query
+  invariant + PHASE_WEIGHTS-sum-to-1 invariant are regression-guarded.
 - 2026-05-25 — Removed the dead `resume_parser.field_specialization`
   inference (prompts, fallback dicts, return shape, the legacy-row
   adoption branch in `upload_resume`). The DB column + all read paths

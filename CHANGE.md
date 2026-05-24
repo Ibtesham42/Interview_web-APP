@@ -23,6 +23,97 @@
 
 ---
 
+## 25/05/2026 01:15 — pytest for the scoring helpers (41 new tests)
+Type: Feature
+
+Adds `backend/tests/test_scoring.py` (41 tests) covering the four shared
+scoring helpers in `services/interview_orchestrator.py`. These functions
+drive the detailed report, the candidate dashboard, and the admin
+aggregations — a regression here moves dashboard numbers silently. The
+suite is the regression guard the stability phase asked for.
+
+Coverage:
+- `compute_phase_scores`:
+  - Empty input → empty dict; phases with no evals are omitted; unknown
+    phase numbers (0 / 99+) are silently dropped.
+  - **Phase 1** (warm-up): pins the 0.25 / 0.25 / 0.2 / 0.3 weights;
+    weights sum to 1; explicit weighted-calculation case; averaging
+    across multiple evals.
+  - **Phase 2/3 historical**: pins the three-axis formula
+    (0.5 / 0.3 / 0.2). Documents the subtle behaviour I initially
+    misread — an eval with `depth_score` but no `details.clarity`
+    runs the three-axis formula with `avg_clarity=0`, NOT the
+    0.7/0.3 fallback. The fallback only fires in the genuinely
+    degenerate case (depth_score is None AND details is falsy across
+    all evals).
+  - **Phase 2/3 layer-aware**: pins the 0.4 / 0.25 / 0.15 / 0.2
+    formula; `min(max_layer, 5)/5 * 10` clamp guard for legacy
+    drill_level data that exceeds 5; a single eval with
+    `details.layer` flips the entire phase to layer-aware; `max_layer`
+    in result is the raw max (not clamped).
+  - **Phase 4**: `correct_answers` threshold is `accuracy >= 7`;
+    `overall` is the average accuracy.
+  - **Phase 5**: five facets averaged; overall is the mean of all
+    facet values across all evals.
+- `compute_final_score`:
+  - **PHASE_WEIGHTS sum to 1.0** (the invariant — if it drifts every
+    final score in the system moves silently).
+  - Phase 1 is NOT weighted into the final (warm-up by design).
+  - Empty input → 0; uniform 10 → 10; explicit weighted average
+    (8*.30 + 7*.25 + 6*.30 + 5*.15 = 6.70); partial-phase
+    renormalisation; missing `overall` key treated as 0.
+- `recommendation_for`: parametrised across all four threshold bands
+  including exact boundaries (10.0, 8.5, 8.49, 7.0, 6.99, 5.5, 5.49,
+  0.0) — boundary inputs are the failure mode the test pins down
+  (a 7.0 candidate must be Hire, not Hold).
+- `score_interviews_bulk` (PROJECT_STATE invariant #5 — bulk queries):
+  - Empty id list short-circuits with NO DB call.
+  - **N interviews → exactly one `.table("evaluations")` call** — the
+    N+1 regression guard the whole helper exists for.
+  - `.in_("interview_id", ids)` keyed on the full id list.
+  - Each requested id appears in the result with score + question
+    count; ids with no evals get `{score: 0, questions: 0}`.
+  - Per-interview grouping is isolated (iv-A's accuracy=10 doesn't
+    leak into iv-B's accuracy=2 score).
+  - Unrequested ids in the eval batch are dropped (defensive — should
+    not happen, but the helper must not crash).
+
+The test module uses tiny named builders (`_phase1_eval`,
+`_deep_dive_eval`, etc.) so the assertions read like specs over the
+formulas, not over raw dicts. Supabase is `MagicMock`-stubbed for
+`score_interviews_bulk` — no DB, no network.
+
+Verified:
+- `python -m pytest`: 72/72 pass in 0.63s (31 prior + 41 new).
+- Frontend Vitest 14/14 still pass.
+
+Affected files:
+- new: backend/tests/test_scoring.py
+- docs: CHANGE.md, CURRENT_TASKS.md, CHANGELOG.md, PROJECT_STATE.md
+
+Architectural impact: None on the runtime. Adds a regression guard
+around the shared scoring path. Future agents touching
+`compute_phase_scores`, `compute_final_score`, `recommendation_for`, or
+`score_interviews_bulk` should treat these tests as the documented
+contract.
+
+Future considerations:
+- The 0.7/0.3 fallback in the historical phase-2/3 formula is nearly
+  unreachable (requires depth_score=None AND falsy details across
+  EVERY eval row). It's only triggered by very old/degenerate data.
+  Worth flagging for removal if a code-cleanup PR lands in this area
+  — but ADR 0001's "forward-only scoring" rule means the historical
+  branch as a whole stays.
+- The phase-4 `if e.get("accuracy_score")` filter is a falsy filter
+  (it drops `0` scores) — the test pins this behaviour but it's a
+  potential source of confusion if a future change replaces it with
+  `is not None`. The `is not None` filter is used in the phase-2/3
+  branch — consistency would be a small clarity win.
+- Next-best test target after this: `app.routers.reports` (the
+  detailed report endpoint, which orchestrates these helpers + the
+  integrity-events query). Less pure but the highest-value
+  user-facing surface still without a test.
+
 ## 25/05/2026 00:45 — remove dead resume-parser `field_specialization` inference
 Type: Refactor
 
