@@ -9,7 +9,12 @@ Dates are DD/MM/YYYY (matches `CHANGE.md`).
 ---
 
 ## [Unreleased]
-_Nothing pending — the integrity rollout (Phases A → C), the WS-disconnect bypass fix, and the first automated test suite have shipped._
+_Nothing pending — the integrity rollout (Phases A → C), the WS-disconnect bypass fix, the first automated test suite, and the CI workflow that runs it have shipped._
+
+## [2026-05-24] — CI workflow
+
+### Added
+- **GitHub Actions CI** at `.github/workflows/ci.yml`. Runs Vitest (frontend) and pytest (backend) on every push to `main` and every pull request. Type-check (`npx tsc --noEmit`) is folded into the frontend job. Concurrency control cancels superseded runs on the same ref. Pip and npm caches keyed on the lockfiles so re-runs are fast.
 
 ## [2026-05-24] — First automated tests
 

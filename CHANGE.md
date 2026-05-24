@@ -23,6 +23,70 @@
 
 ---
 
+## 24/05/2026 23:30 — CI workflow runs both test suites
+Type: Feature
+
+GitHub Actions workflow that runs the Vitest + pytest suites on every push
+to `main` and every pull request, so the test discipline added an hour ago
+becomes an enforced gate instead of a manual one.
+
+`.github/workflows/ci.yml`:
+- Two parallel jobs (`frontend`, `backend`) — independent, no cross-deps.
+- `concurrency` group cancels superseded runs on the same ref so a fast
+  PR-update loop doesn't pile up duplicate jobs.
+- Frontend job: Node 20 (LTS), npm cache keyed on `frontend/package-lock.json`,
+  `npm ci` → `npx tsc --noEmit` → `npm run test`. Type-check is included
+  because CLAUDE.md already treats it as a gate; folding it into CI removes
+  the manual step.
+- Backend job: Python 3.10 (matches local pin), pip cache keyed on
+  `backend/requirements-dev.txt`, `pip install -r requirements-dev.txt`
+  → `python -m pytest -v`.
+
+Env-var posture:
+- Tests don't trigger env loading. `get_settings()` is `@lru_cache`d and only
+  called inside `get_supabase()`, which the tests bypass by setting
+  `monitor._supabase` directly. Verified locally by running pytest with
+  GROQ_API_KEY / SUPABASE_URL / SUPABASE_KEY unset — 31/31 pass. So no CI
+  secrets needed for this workflow.
+- `npm run test` doesn't touch `import.meta.env` because `normalizeWsHost`
+  was moved into its own `wsHost.ts` (no side-effect imports). Verified
+  earlier today.
+
+Hard constraints honoured:
+- No production behaviour change.
+- No new runtime dependencies.
+- Realtime / voice / orchestrator — untouched.
+
+How to read failures:
+- The `Frontend` job covers TS errors and Vitest regressions in
+  `normalizeWsHost`. Failures here usually mean a contract change in
+  websocket.ts or a regression in URL parsing.
+- The `Backend` job covers IntegrityMonitor / threshold / _finalize_status.
+  Failures here usually mean someone shifted SEVERITY_WEIGHT, MAX_WARNINGS,
+  or one of the completion paths in `interview_session.py` — re-read
+  CHANGE 24/05/2026 17:30 (WS bypass close) before touching those.
+
+Affected files:
+- new: .github/workflows/ci.yml
+- docs: PROJECT_STATE.md, CHANGELOG.md, IMPLEMENTATION_ROADMAP.md,
+  CHANGE.md
+
+Architectural impact: None on the runtime; adds a required-green gate on
+the GitHub side. Future work that breaks `IntegrityMonitor.record_event`
+or `_finalize_status` will visibly fail before merge instead of silently
+shipping.
+
+Future considerations:
+- The workflow does NOT yet require itself as a branch-protection check.
+  That's a one-click GitHub settings change once we've seen a couple of
+  green runs. After that, no PR can merge with red CI.
+- A coverage step (`pytest --cov` / `vitest --coverage`) would let us
+  track which areas grow tests over time. Skipped here to keep this change
+  minimal and production-safe per the user's brief.
+- The two suites are fast (<1s pytest, <500ms vitest) — total CI wall time
+  will be dominated by setup/install. If that becomes painful, the cache
+  steps already in place should keep cold installs to ~30s.
+
 ## 24/05/2026 22:50 — first automated test suite (Vitest + pytest)
 Type: Feature
 
