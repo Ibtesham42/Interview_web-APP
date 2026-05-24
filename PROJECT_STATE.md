@@ -1,8 +1,35 @@
 # Project State Snapshot
 
-Snapshot of the AI Mock Interview platform as of **2026-05-23**.
+Snapshot of the AI Mock Interview platform as of **2026-05-24**.
 For the rolling, append-only engineering log see [`CHANGE.md`](CHANGE.md).
-For deployment / planning context see [`IMPLEMENTATION_ROADMAP.md`](IMPLEMENTATION_ROADMAP.md).
+For active task prioritisation see [`CURRENT_TASKS.md`](CURRENT_TASKS.md).
+For the forward backlog with sizing see [`IMPLEMENTATION_ROADMAP.md`](IMPLEMENTATION_ROADMAP.md).
+
+## Phase
+
+**Stability + scalability** (declared 2026-05-24, see CHANGE.md).
+
+The integrity rollout is shipped (Phases A → C + WS-disconnect bypass
+closed); the first automated test suite is in place; CI is enforced via
+branch protection. The project is no longer in a feature-shaped delivery
+posture. Until further notice, work is bounded to: **maintainability**,
+**scaling safety**, **reliability**, and **production hardening**. No
+large new feature branches.
+
+The prioritised slice of work for this phase lives in
+[`CURRENT_TASKS.md`](CURRENT_TASKS.md). The full backlog (including
+deferred items) stays in [`IMPLEMENTATION_ROADMAP.md`](IMPLEMENTATION_ROADMAP.md).
+
+## CI / merge gates
+
+`main` is branch-protected (configured 2026-05-24):
+- Required status checks: `Frontend (tsc + vitest)`, `Backend (pytest)`
+  — defined in [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+- Branches must be up to date with `main` before merging.
+- Force-pushes blocked.
+
+No PR can land red. Every change must pass `npx tsc --noEmit`, the 14
+Vitest tests, and the 31 pytest tests.
 
 ---
 

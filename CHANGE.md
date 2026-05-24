@@ -23,6 +23,68 @@
 
 ---
 
+## 24/05/2026 23:55 — phase shift: stability + scalability
+Type: Decision
+
+The repository enters a declared **stability + scalability** phase. The
+integrity rollout (Phases A → C + WS-disconnect bypass close) is shipped,
+the first automated test suites are in place (14 Vitest + 31 pytest), CI
+runs on every push and PR, and branch protection on `main` makes the
+suites required checks. The product is production-deployed and the
+integrity surface is load-bearing — adding feature-shaped change now
+would dilute that and re-open the "surface area without coverage" gap
+the test suites just closed.
+
+Phase policy (DO NOT violate without an explicit user decision):
+- No large new feature branches.
+- Work is bounded to four buckets: maintainability, scaling safety,
+  reliability, production hardening.
+- The prioritised slice of work-we-are-willing-to-do-now lives in
+  the new `CURRENT_TASKS.md`. The full backlog (including deferred
+  items) stays in `IMPLEMENTATION_ROADMAP.md`.
+
+Merge gates on `main` (configured via GitHub branch protection 2026-05-24):
+- Required status checks: `Frontend (tsc + vitest)`,
+  `Backend (pytest)` — defined in `.github/workflows/ci.yml`.
+- Branches must be up to date with `main` before merging.
+- Force-pushes blocked.
+
+What this means in practice for future agents:
+- When suggesting next work, pull from `CURRENT_TASKS.md`'s "Now"
+  section, not from `IMPLEMENTATION_ROADMAP.md`'s deferred backlog.
+- Anything sized **L** is deferred until the user explicitly promotes
+  it out.
+- If the user asks for something feature-shaped, confirm the phase shift
+  before agreeing — they may have changed direction and want this
+  policy updated.
+- Touching `IntegrityMonitor`, `_finalize_status`, or `normalizeWsHost`
+  means running both suites and adding tests for any new branch. The
+  suites document the contracts those changes must preserve.
+
+Affected files:
+- new: CURRENT_TASKS.md
+- modified: PROJECT_STATE.md (phase + CI gates sections),
+  memory index + new `project_stability_scalability_phase.md` and
+  updated `reference_project_docs.md`
+- docs: CHANGE.md
+
+Architectural impact: None on the runtime. The change is a policy
+declaration plus a task-board file. Future planning will route through
+`CURRENT_TASKS.md` first.
+
+Future considerations:
+- Coverage CI steps deferred in `CURRENT_TASKS.md` (per the rationale
+  there). Re-evaluate after one round of "add tests when touching code"
+  has happened.
+- The "user input authoritative" memory is now a candidate for promotion
+  into `CLAUDE.md` during this phase (sized S in `CURRENT_TASKS.md`).
+  If/when promoted, remove the duplicated memory line and replace it
+  with a pointer to the CLAUDE.md section.
+- If interview drop-rate telemetry ever justifies orchestrator state
+  persistence (ADR 0002), that promotion happens by editing the
+  "Deferred" section of `CURRENT_TASKS.md` first, not by jumping
+  straight to implementation.
+
 ## 24/05/2026 23:30 — CI workflow runs both test suites
 Type: Feature
 
