@@ -17,7 +17,7 @@ Phase letters carry over from the integrity rollout already in flight.
 ✅ 3-warning auto-terminate
 ✅ Per-event audit log table + RLS
 
-**Remaining deploy action:** apply `backend/app/migrations/002_integrity_events.sql` in Supabase SQL editor.
+**Deploy action:** ~~apply `backend/app/migrations/002_integrity_events.sql` in Supabase SQL editor.~~ Applied 2026-05-24.
 
 ### Integrity Phase B — shipped (2026-05-23)
 

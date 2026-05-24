@@ -40,7 +40,7 @@ Two roles: **user** (candidate) and **admin** (oversight only).
 
 ## Outstanding deploy actions
 
-1. **Apply `backend/app/migrations/002_integrity_events.sql`** in the Supabase SQL editor before Phase A is fully active. Code is defensive — termination still works in-memory if the table is missing — but the audit log will be empty.
+1. ~~Apply `backend/app/migrations/002_integrity_events.sql` in the Supabase SQL editor.~~ Applied 2026-05-24, verified empty table. Integrity audit log + report/admin surfacing is now live.
 2. **Vercel `VITE_WS_URL`** — verify the value is exactly `wss://interview-web-app.onrender.com` (no duplicates / whitespace). The `normalizeWsHost` defence will auto-correct most paste mistakes but the env var should still be clean.
 3. **Keep-alive pinger** — Render free tier sleeps after ~15 min idle. Not in repo. External cron (UptimeRobot / cron-job.org) hitting `/health` every ~10 min recommended.
 4. **`FRONTEND_ORIGIN_REGEX`** on Render currently `https://.*\.vercel\.app` — tighten to the project slug once Vercel project name is stable.
