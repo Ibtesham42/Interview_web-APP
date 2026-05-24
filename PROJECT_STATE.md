@@ -53,7 +53,7 @@ Two roles: **user** (candidate) and **admin** (oversight only).
 - **No automated test suite** — root-level `test_e2e*.js` Playwright smoke flows only. Every change requires manual browser verification.
 - **Resume parser's `field_specialization`** output is effectively dead for new candidates (commit `b97597f` made user choice authoritative). Either remove the parser inference entirely or expand its allowed-label set and use it as a *suggestion* to pre-fill the form.
 - **Integrity-event audit log** not yet surfaced in the report or admin dashboard. Worth wiring in once Phases B/C land.
-- **Determined cheater could close the WS** to skip the termination push. Phase C has landed; the next-step fix is a small backend addition — in `end_interview` and `WebSocketDisconnect` paths, force `terminated_integrity` when `integrity.warning_count >= MAX_WARNINGS`. Sized S in `IMPLEMENTATION_ROADMAP.md`.
+- ~~**Determined cheater could close the WS** to skip the termination push.~~ Closed 2026-05-24 — all completion paths (`end_interview`, natural end, final-question marker, keyword early-end) plus the `WebSocketDisconnect` branch consult the in-memory `IntegrityMonitor` counter and force `terminated_integrity` when at/above threshold. Markdown report carries a "Flagged for integrity review" badge.
 
 ## Architecture invariants (do not violate)
 

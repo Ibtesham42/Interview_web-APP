@@ -23,6 +23,79 @@
 
 ---
 
+## 24/05/2026 17:30 — close WS-disconnect integrity bypass
+Type: Fix
+
+Closes the last known integrity bypass from `PROJECT_STATE.md`: a candidate
+could close the WebSocket (or send `end_interview` immediately after the
+third warning) to land on `status='completed'` and skip
+`terminated_integrity`. The in-memory integrity counter already had the
+authoritative count, but no completion path consulted it.
+
+Backend (`routers/interview_session.py`):
+- New `_finalize_status(supabase, interview_id, integrity)` helper. Reads
+  the in-memory counter; writes `terminated_integrity` when
+  `warning_count >= MAX_WARNINGS`, else `completed`. Single source of truth
+  for the terminal status, used by all four completion paths
+  (early-end-by-keyword, natural final-question, `[Interview Complete]`
+  marker, explicit `end_interview` message).
+- New `_emit_interview_ended(websocket, status)` companion. When the helper
+  upgrades to `terminated_integrity`, the `interview_ended` frame carries
+  `reason='integrity_terminated'` so the client lands on the existing
+  terminal screen instead of the normal report flow. Same WS message
+  contract as Phase A — no new types.
+- `WebSocketDisconnect` branch now calls `integrity.mark_terminated()` if
+  the counter is at or above threshold. The `integrity` reference was
+  hoisted to before the `try` so the disconnect handler can see it.
+  Natural drops with no warnings stay un-finalised (ADR 0002: terminal).
+
+Report markdown badge (`services/interview_orchestrator.py`,
+`ReportGenerator.generate_markdown_report`):
+- Inserts a "Flagged for integrity review" blockquote near the top of the
+  report when `integrity_events.terminated` is true (stronger copy:
+  "interview terminated by the integrity monitor") or `count >= 1`
+  (singular/plural-aware event count). Reads the optional
+  `integrity_events` field already added in Phase B; no new query.
+
+Hard constraints honoured:
+- No new WS message types, no new DB columns, no new endpoints. Only the
+  set of values written to the existing `interviews.status` column.
+- Realtime turn flow, voice pipeline, orchestrator, Matryoshka layer
+  engine — all untouched.
+- Aggregation queries already treat anything that isn't `completed` as
+  non-completed for dashboard scoring; the bypass fix moves bypassed
+  interviews from `completed` to `terminated_integrity`, which the
+  scoring queries already ignore.
+
+Verified:
+- Backend imports clean.
+- `_finalize_status` table-tested across five branches: no monitor,
+  below/at/over threshold, DB failure.
+- `generate_markdown_report` table-tested across no integrity / count=0 /
+  count=1 / count=2 / terminated — all assertions pass.
+- Frontend `npx tsc --noEmit` clean (no contract change).
+
+Affected files:
+- modified: backend/app/routers/interview_session.py,
+  backend/app/services/interview_orchestrator.py
+- docs: PROJECT_STATE.md, IMPLEMENTATION_ROADMAP.md, CHANGELOG.md,
+  CHANGE.md
+
+Architectural impact: None. Same WS channel, same termination path, same
+status vocabulary. The new helper is the only completion-path writer for
+`interviews.status` in the session router, which makes future audits
+("how does an interview end up with status X?") a single grep away.
+
+Future considerations:
+- The two no-op `try/except Exception: pass` blocks that previously
+  guarded each completion-path DB write are gone; `_finalize_status`
+  swallows the DB error in one place. If we ever want telemetry on
+  finalisation failures, that single point is where to add it.
+- The four answer-handler completion paths are still structurally
+  parallel (evaluate → save → maybe-finalise → break). They share the
+  helper but not the call site. Worth folding into one terminal-state
+  handler if a fifth path appears.
+
 ## 24/05/2026 — interview integrity / anti-cheating (Phase C)
 Type: Feature
 

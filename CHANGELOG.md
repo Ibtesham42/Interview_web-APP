@@ -9,7 +9,15 @@ Dates are DD/MM/YYYY (matches `CHANGE.md`).
 ---
 
 ## [Unreleased]
-_Nothing pending — the integrity rollout (Phases A → C) is now complete. The remaining "close-the-cheating-loophole" backend polish is sized S in `IMPLEMENTATION_ROADMAP.md`._
+_Nothing pending — the integrity rollout (Phases A → C) and the WS-disconnect bypass fix have shipped._
+
+## [2026-05-24] — Integrity bypass closed
+
+### Fixed
+- **Closing the browser tab no longer skips integrity termination.** Previously a candidate could close the WebSocket immediately after the third integrity warning and the interview would still settle to `completed`. Now every completion path (natural end, explicit "end interview", and disconnect) consults the integrity counter and writes `terminated_integrity` when the threshold has been reached.
+
+### Added
+- **"Flagged for integrity review" badge** at the top of the markdown report — appears whenever the interview was integrity-terminated or any integrity events were logged. Singular / plural wording reflects the event count.
 
 ## [2026-05-24] — Integrity Phase C
 

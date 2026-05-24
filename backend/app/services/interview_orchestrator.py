@@ -1449,9 +1449,23 @@ class ReportGenerator:
             f"**Interview Duration:** {report.get('total_duration_minutes', 0):.1f} minutes",
             f"**Total Questions:** {report.get('total_questions_asked', 0)}",
             "",
-            "---",
-            ""
         ]
+
+        integrity_info = report.get("integrity_events") or {}
+        integrity_count = integrity_info.get("count") or 0
+        if integrity_info.get("terminated"):
+            lines.extend([
+                "> **Flagged for integrity review — interview terminated by the integrity monitor.**",
+                "",
+            ])
+        elif integrity_count >= 1:
+            noun = "event" if integrity_count == 1 else "events"
+            lines.extend([
+                f"> **Flagged for integrity review** ({integrity_count} {noun} logged).",
+                "",
+            ])
+
+        lines.extend(["---", ""])
 
         phase_scores = report.get("phase_scores", {})
 

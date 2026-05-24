@@ -39,14 +39,20 @@ Same SQL migration as Phase A — no additional deploy action.
 
 ---
 
-## Next — close the cheating loophole
+## Close the cheating loophole — shipped (2026-05-24)
 
-Per `PROJECT_STATE.md` known-gap: a determined cheater could close the WS to skip the termination push.
+✅ All four completion paths in `interview_session.py` route through
+`_finalize_status`, which upgrades to `terminated_integrity` when the
+in-memory `warning_count >= MAX_WARNINGS`.
+✅ `WebSocketDisconnect` branch reads the same counter and calls
+`mark_terminated()` if over threshold — closing the WS no longer bypasses
+the integrity end-state.
+✅ `ReportGenerator.generate_markdown_report` carries a "Flagged for
+integrity review" badge (with stronger copy when the interview was
+terminated).
 
-| Item | Size | Notes |
-|---|---|---|
-| Block status `completed` for interviews whose integrity log shows ≥ MAX_WARNINGS at completion time | S | Backend `interview_session.py` `end_interview` handler + `WebSocketDisconnect` branch: read count, force `terminated_integrity` if over threshold. |
-| Report markdown badge: "Flagged for integrity review" when status is `terminated_integrity` or warning count ≥ 1 | S | `interview_orchestrator.py:generate_markdown_report`. |
+No new WS message types, no new DB columns. Same `002_integrity_events.sql`
+migration as Phase A.
 
 ---
 

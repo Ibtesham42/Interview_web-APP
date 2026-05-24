@@ -1,5 +1,5 @@
 from fastapi import WebSocket, WebSocketDisconnect
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 import base64
 import json
 import re
@@ -158,6 +158,37 @@ def _authenticate_ws_token(supabase, token: str):
     return user
 
 
+def _finalize_status(supabase, interview_id: str, integrity: Optional[Any]) -> str:
+    """Persist the terminal status for an interview.
+
+    Forces `terminated_integrity` when the in-memory integrity counter is at or
+    above threshold so a candidate cannot bypass termination by sending
+    `end_interview` or letting the WS close before the +3rd warning lands.
+    """
+    if integrity is not None and integrity.warning_count >= integrity.MAX_WARNINGS:
+        status = "terminated_integrity"
+    else:
+        status = "completed"
+    try:
+        supabase.table("interviews").update({
+            "status": status,
+            "completed_at": "now()",
+        }).eq("id", interview_id).execute()
+    except Exception:
+        pass
+    return status
+
+
+async def _emit_interview_ended(websocket: WebSocket, status: str) -> None:
+    payload: Dict[str, Any] = {"type": "interview_ended"}
+    if status == "terminated_integrity":
+        payload["reason"] = "integrity_terminated"
+    try:
+        await websocket.send_json(payload)
+    except Exception:
+        pass
+
+
 async def interview_websocket(websocket: WebSocket, interview_id: str):
     """WebSocket endpoint for real-time interview session."""
     from app.supabase_client import get_supabase
@@ -195,6 +226,11 @@ async def interview_websocket(websocket: WebSocket, interview_id: str):
 
     # --- Accept and run the interview (existing flow below, unchanged) ---
     await manager.connect(interview_id, websocket)
+
+    # Declared before the try so the WebSocketDisconnect branch can read the
+    # in-memory counter and force `terminated_integrity` if the candidate
+    # closed the socket to escape a pending termination.
+    integrity: Optional[Any] = None
 
     try:
         candidate_result = supabase.table("candidates").select("*").eq("id", interview["candidate_id"]).execute()
@@ -270,15 +306,8 @@ async def interview_websocket(websocket: WebSocket, interview_id: str):
                             pass
 
                     # End the interview
-                    try:
-                        supabase.table("interviews").update({
-                            "status": "completed",
-                            "completed_at": "now()"
-                        }).eq("id", interview_id).execute()
-                    except Exception:
-                        pass
-
-                    await websocket.send_json({"type": "interview_ended"})
+                    final_status = _finalize_status(supabase, interview_id, integrity)
+                    await _emit_interview_ended(websocket, final_status)
                     break
 
                 question_text = ""
@@ -333,14 +362,8 @@ async def interview_websocket(websocket: WebSocket, interview_id: str):
                 # Check if interview should end naturally
                 if orchestrator._final_question_asked:
                     # Interview complete after final question
-                    try:
-                        supabase.table("interviews").update({
-                            "status": "completed",
-                            "completed_at": "now()"
-                        }).eq("id", interview_id).execute()
-                    except Exception:
-                        pass
-                    await websocket.send_json({"type": "interview_ended"})
+                    final_status = _finalize_status(supabase, interview_id, integrity)
+                    await _emit_interview_ended(websocket, final_status)
                     break
 
                 # Generate next question
@@ -348,14 +371,8 @@ async def interview_websocket(websocket: WebSocket, interview_id: str):
 
                 # Check if interview ended (final question marker)
                 if next_question == "[Interview Complete]":
-                    try:
-                        supabase.table("interviews").update({
-                            "status": "completed",
-                            "completed_at": "now()"
-                        }).eq("id", interview_id).execute()
-                    except Exception:
-                        pass
-                    await websocket.send_json({"type": "interview_ended"})
+                    final_status = _finalize_status(supabase, interview_id, integrity)
+                    await _emit_interview_ended(websocket, final_status)
                     break
 
                 await websocket.send_json({
@@ -444,19 +461,24 @@ async def interview_websocket(websocket: WebSocket, interview_id: str):
                     break
 
             elif msg_type == "end_interview":
-                # Complete the interview
-                try:
-                    supabase.table("interviews").update({
-                        "status": "completed",
-                        "completed_at": "now()"
-                    }).eq("id", interview_id).execute()
-                except Exception:
-                    pass
-
-                await websocket.send_json({"type": "interview_ended"})
+                # Complete the interview. `_finalize_status` upgrades to
+                # `terminated_integrity` when the integrity counter has crossed
+                # the threshold — so a client cannot escape termination by
+                # sending end_interview immediately after the third warning.
+                final_status = _finalize_status(supabase, interview_id, integrity)
+                await _emit_interview_ended(websocket, final_status)
                 break
 
     except WebSocketDisconnect:
+        # If the client closed the WS to escape a pending integrity
+        # termination, mark the interview terminated_integrity here. Sessions
+        # are not resumable (ADR 0002) so it's safe to settle terminal state
+        # at this point. Natural drops with no warnings stay un-finalised.
+        if integrity is not None and integrity.warning_count >= integrity.MAX_WARNINGS:
+            try:
+                integrity.mark_terminated()
+            except Exception:
+                pass
         manager.disconnect(interview_id)
     except Exception as e:
         print(f"[WS] Interview session error: {e}")
