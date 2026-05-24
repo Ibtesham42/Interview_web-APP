@@ -57,16 +57,98 @@ _All items burned down this phase — see "Done" section below._
 
 ## UI polish track (architecture review 2026-05-25)
 
-From the analysis-only HTML report. Three small, sequential PRs — not
-batched. After each ships and is verified, the next begins.
+From the analysis-only HTML report run via `improve-codebase-architecture`.
+Three small, sequential PRs — not batched. Each gets its own
+`grill-with-docs` pass before any code lands.
 
 | # | Candidate | Status |
 |---|---|---|
 | C4 | Heading scale &amp; typography rhythm | **Shipped 2026-05-25** (ADR 0003) |
-| C5 | InterviewRoom inline-style purge | Pending |
-| C1 | Button primitive | Pending |
+| C5 | InterviewRoom inline-style purge | **Next** |
+| C1 | Button primitive | After C5 |
 
-Each gets its own `grill-with-docs` pass before any code lands.
+### C5 — InterviewRoom inline-style purge (next)
+
+**Scope:** `frontend/src/components/InterviewRoom.tsx` only. Replace
+inline `style={{...}}` attributes with named CSS classes. No
+architecture change. Mechanical cleanup.
+
+**Confirmed offenders** (from the 2026-05-25 audit):
+
+| Line | What | Replacement direction |
+|---|---|---|
+| 435 | Inline `marginTop` on button | CSS class |
+| 457 | Inline `marginTop` on button | CSS class |
+| 481-486 | Heading + subtitle inline `fontSize`/`color` | `.interview-heading` + `.interview-subtitle` |
+| 490 | Inline `display: flex; gap: 1rem; flexWrap` | `.interview-header-row` |
+| 511 | Inline button `padding` + `fontSize` | `.btn-end-interview` (or reuse Button primitive once C1 lands — but C5 ships first) |
+| 604 | Inline `background: var(--accent-green)` | CSS class on the dot/badge |
+| 617 | Inline `background: var(--accent-rose)` | CSS class on the dot/badge |
+
+**Leave alone** (data-driven, NOT inline-style cruft):
+- `:626-630` voice-wave-bar inline `height`/`opacity` — calculated from
+  live audio level, must stay inline.
+- `Dashboard.tsx:146` trend-bar dynamic `height` percentage — same
+  reason.
+
+**Open grilling questions for tomorrow** (do these in the `grill-with-docs` pass):
+- Should the inline accent-colour spots (`:604`, `:617`) be class-based
+  *now*, or wait for C1 (Button primitive) since they're button
+  backgrounds anyway?
+- Is the inline `fontSize: '0.9375rem'` on `:481` an h4-sized heading
+  that should just be `<h4>`, or a "label" needing a new class?
+- Should the new CSS classes live as a new `interview-room.css` partial
+  or stay in the existing `src/index.css`? Project convention is single
+  index.css; lean toward keeping it.
+
+**Sizing:** S. One file modified, ~30 lines of CSS added, ~7 JSX style
+attributes removed.
+
+### C1 — Button primitive (after C5)
+
+**Scope:** introduce `src/components/ui/Button.tsx` exposing
+`variant: "primary" | "secondary" | "ghost" | "danger"`,
+`size: "sm" | "md" | "lg"`, plus an `as="a"` escape hatch for
+link-styled buttons and a `loading` prop. The CSS classes
+(`.btn`, `.btn-primary`, etc.) already exist — the component composes
+them. Migrate call sites file-by-file over follow-up PRs if needed.
+
+**Call sites to migrate** (from audit):
+- `Dashboard.tsx` (1+ buttons, link-styled CTA)
+- `Login.tsx` (submit + Google OAuth + inline `style={{ width: '100%' }}` cleanup)
+- `Signup.tsx` (submit + Google OAuth)
+- `CandidateUpload.tsx` (submit)
+- `InterviewRoom.tsx` (end-interview, mic — note: C5 may already have CSS'd these)
+- `Report.tsx` (back-to-dashboard CTA)
+- `AdminDashboard.tsx`, `AdminUserDetail.tsx` (any CTAs)
+
+**Open grilling questions for tomorrow:**
+- Does the `loading` prop replace label-with-spinner, or render a spinner
+  *next to* the label?
+- `as="a"` escape hatch vs. a separate `LinkButton` component?
+- Where does the file live — `src/components/ui/` (new directory) or
+  `src/components/Button.tsx`? Project hasn't established a `ui/`
+  convention yet; consider whether to introduce one with this PR.
+- Should we add a Vitest test for Button render variants? Would extend
+  the existing test discipline.
+
+**Sizing:** S for the primitive + 1 file migration. Subsequent
+file-by-file migrations are XS each; consider whether to ship them in
+this PR or as follow-ups.
+
+### How to pick up tomorrow
+
+1. Read this section first to recall the agreed scope.
+2. Invoke `grill-with-docs` for C5 with the scope above as input.
+3. Settle the open questions one-by-one.
+4. Implement, verify in browser per CLAUDE.md, commit + push.
+5. After CI is green and visual verification passes, repeat for C1.
+
+The architecture review HTML at
+`C:\Users\ibtes\AppData\Local\Temp\architecture-review-2026-05-25-frontend.html`
+is in the OS temp directory and may be cleaned by Windows before
+tomorrow — re-run `improve-codebase-architecture` if you want the
+visual report back, or just work from this section.
 
 ## Done in this phase
 
