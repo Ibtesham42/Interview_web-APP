@@ -64,8 +64,8 @@ Three small, sequential PRs — not batched. Each gets its own
 | # | Candidate | Status |
 |---|---|---|
 | C4 | Heading scale &amp; typography rhythm | **Shipped 2026-05-25** (ADR 0003) |
-| C5 | InterviewRoom inline-style purge | **Next** |
-| C1 | Button primitive | After C5 |
+| C5 | InterviewRoom inline-style purge | **Code complete 2026-05-26** — pending browser verification + commit |
+| C1 | Button primitive | **Next** (unblocked; `.btn-sm` already landed via C5) |
 
 ### C5 — InterviewRoom inline-style purge (next)
 
@@ -77,13 +77,13 @@ architecture change. Mechanical cleanup.
 
 | Line | What | Replacement direction |
 |---|---|---|
-| 435 | Inline `marginTop` on button | CSS class |
-| 457 | Inline `marginTop` on button | CSS class |
+| 435 | Inline `marginTop` on button | **Delete, no replacement** (`.iv-connect-state` parent already has `gap: var(--space-md)` — inline margin is redundant; verified 2026-05-26 grill) |
+| 457 | Inline `marginTop` on button | **Delete, no replacement** (same reason as `:435`) |
 | 481-486 | Heading + subtitle inline `fontSize`/`color` | `.interview-heading` + `.interview-subtitle` |
-| 490 | Inline `display: flex; gap: 1rem; flexWrap` | `.interview-header-row` |
-| 511 | Inline button `padding` + `fontSize` | `.btn-end-interview` (or reuse Button primitive once C1 lands — but C5 ships first) |
-| 604 | Inline `background: var(--accent-green)` | CSS class on the dot/badge |
-| 617 | Inline `background: var(--accent-rose)` | CSS class on the dot/badge |
+| 490 | Inline `display: flex; gap: 1rem; flexWrap` | **`.interview-header-actions`** (mirrors `.interview-info` on the left; `.interview-header` is itself the row — naming it "header-row" was misleading. Use `gap: var(--space-md)` token, not raw `1rem`. Resolved 2026-05-26 grill) |
+| 511 | Inline button `padding` + `fontSize` | **`.btn-sm`** (new generic size modifier, mirrors existing `.btn-lg`: `padding: 0.375rem 0.75rem; font-size: 0.8125rem;`). Drops the bespoke `.btn-end-interview` from the audit — page-bound classes were the C4 anti-pattern. C1 will compose `size="sm"` onto this. Resolved 2026-05-26 grill. |
+| 604 | Inline `background: var(--accent-green)` | **Cascade from parent `.turn-pill.ready`** — add `.turn-pill.ready .turn-dot { background: var(--accent-green); }`. JSX drops the inline + drops the class — just `<span className="turn-dot" />`. The pill's state is the single source of truth. Resolved 2026-05-26 grill. |
+| 617 | Inline `background: var(--accent-rose)` | **Cascade from parent `.turn-pill.live`** — add `.turn-pill.live .turn-dot { background: var(--accent-rose); }`. JSX keeps the `pulse` class for the silence-vs-speech animation only. Resolved 2026-05-26 grill. |
 
 **Leave alone** (data-driven, NOT inline-style cruft):
 - `:626-630` voice-wave-bar inline `height`/`opacity` — calculated from
@@ -95,14 +95,77 @@ architecture change. Mechanical cleanup.
 - Should the inline accent-colour spots (`:604`, `:617`) be class-based
   *now*, or wait for C1 (Button primitive) since they're button
   backgrounds anyway?
+  → **Premise wrong** (grill 2026-05-26): they are NOT button backgrounds.
+  They're `<span className="turn-dot" />` status indicators inside
+  `.turn-pill`. Belong fully to C5, not C1. To be resolved as a
+  `.turn-dot--ready` / `.turn-dot--live` modifier pair (still open).
 - Is the inline `fontSize: '0.9375rem'` on `:481` an h4-sized heading
   that should just be `<h4>`, or a "label" needing a new class?
+  → **Resolved 2026-05-26**: `<h4>` per ADR 0003 ("future agents writing
+  `<h1>Foo</h1>` get the correct size automatically, with no class to
+  remember"). No `.interview-heading` class. The subtitle `<p>` at `:484`
+  gets one tiny new `.interview-info-subtitle` class (font-size 0.8125rem,
+  color var(--text-tertiary)). Reusing `.turn-hint` would be semantically
+  wrong — it belongs to the input area.
 - Should the new CSS classes live as a new `interview-room.css` partial
   or stay in the existing `src/index.css`? Project convention is single
   index.css; lean toward keeping it.
 
 **Sizing:** S. One file modified, ~30 lines of CSS added, ~7 JSX style
 attributes removed.
+
+### C5 — implementation contract (post-grill 2026-05-26)
+
+All open questions resolved. Final scope:
+
+**CSS changes (`frontend/src/index.css`, in existing sections — no new
+file):**
+
+- New generic button size modifier, beside existing `.btn-lg`:
+  ```css
+  .btn-sm { padding: 0.375rem 0.75rem; font-size: 0.8125rem; border-radius: var(--radius-md); }
+  ```
+- New header-actions class, beside existing `.interview-header` and
+  `.interview-info` (in the INTERVIEW HEADER section):
+  ```css
+  .interview-header-actions { display: flex; align-items: center; gap: var(--space-md); flex-wrap: wrap; }
+  ```
+- New scoped subtitle class + heading-margin zero, beside above:
+  ```css
+  .interview-info h4 { margin: 0; }
+  .interview-info-subtitle { margin: 0; font-size: 0.8125rem; color: var(--text-tertiary); }
+  ```
+- New cascade rules beside existing `.turn-pill.ready` / `.turn-pill.live`
+  (the TURN PILL section):
+  ```css
+  .turn-pill.ready .turn-dot { background: var(--accent-green); }
+  .turn-pill.live  .turn-dot { background: var(--accent-rose); }
+  ```
+
+**JSX changes (`frontend/src/components/InterviewRoom.tsx`):**
+
+| Line | Change |
+|---|---|
+| `:435` | Delete `style` prop (parent `.iv-connect-state` already has `gap: var(--space-md)`) |
+| `:457` | Delete `style` prop (same reason) |
+| `:481` | `<h3 style={{ fontSize: '0.9375rem', marginBottom: '2px' }}>` → `<h4>` (ADR 0003 — correct semantic tag, scoped `.interview-info h4 { margin: 0; }` handles spacing) |
+| `:484` | `<p style={{...}}>` → `<p className="interview-info-subtitle">` |
+| `:490` | `<div style={{ display: 'flex', ... }}>` → `<div className="interview-header-actions">` |
+| `:511` | `<button className="btn btn-danger" style={{...}}>` → `<button className="btn btn-danger btn-sm">` |
+| `:604` | `<span className="turn-dot" style={{ background: 'var(--accent-green)' }} />` → `<span className="turn-dot" />` (parent cascade owns color) |
+| `:617` | Drop the `style` prop only; keep `className={`turn-dot ${isSilence ? '' : 'pulse'}`}` for the animation modifier |
+
+**Leave alone** (data-driven, must stay inline): `:626-630` voice-wave-bar
+height/opacity; `Dashboard.tsx:146` trend-bar height.
+
+**Verification before commit:**
+1. `npx tsc --noEmit` passes (per CLAUDE.md testing rule).
+2. Browser walk: terminated screen, lost-connection screen, header layout
+   at 360 / 768 / 1440 widths, all five turn-pill states (`connecting`,
+   `ai_speaking`, `ready`, `recording`, `transcribing`), confirm green dot
+   in "ready" and rose dot in "recording" still render.
+3. Log entry in `CHANGE.md` (Refactor type) — note that `.btn-sm` is a
+   deliberate pre-investment for C1 (Button primitive), not scope creep.
 
 ### C1 — Button primitive (after C5)
 

@@ -432,7 +432,6 @@ export function InterviewRoom() {
           <button
             className="btn btn-primary"
             onClick={() => navigate('/')}
-            style={{ marginTop: 'var(--space-md)' }}
           >
             Back to dashboard
           </button>
@@ -454,7 +453,6 @@ export function InterviewRoom() {
           <button
             className="btn btn-primary"
             onClick={() => navigate('/')}
-            style={{ marginTop: 'var(--space-md)' }}
           >
             Back to dashboard
           </button>
@@ -478,16 +476,14 @@ export function InterviewRoom() {
                 </svg>
               </div>
               <div>
-                <h3 style={{ fontSize: '0.9375rem', marginBottom: '2px' }}>
-                  Interview with {candidateName}
-                </h3>
-                <p style={{ fontSize: '0.8125rem', color: 'var(--text-tertiary)' }}>
+                <h4>Interview with {candidateName}</h4>
+                <p className="interview-info-subtitle">
                   {PHASE_NAMES[phase]} · Voice Interview
                 </p>
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+            <div className="interview-header-actions">
               <div className="progress-bar">
                 {[1, 2, 3, 4, 5].map((p, i) => (
                   <div key={p} className="progress-step">
@@ -506,9 +502,8 @@ export function InterviewRoom() {
               </div>
 
               <button
-                className="btn btn-danger"
+                className="btn btn-danger btn-sm"
                 onClick={handleEnd}
-                style={{ padding: '0.375rem 0.75rem', fontSize: '0.8125rem' }}
               >
                 End
               </button>
@@ -601,7 +596,7 @@ export function InterviewRoom() {
               {status === 'ready' && (
                 <>
                   <span className="turn-pill ready">
-                    <span className="turn-dot" style={{ background: 'var(--accent-green)' }} />
+                    <span className="turn-dot" />
                     Your turn
                   </span>
                   <div className="turn-title">Tap the mic to answer</div>
@@ -612,10 +607,7 @@ export function InterviewRoom() {
               {status === 'recording' && (
                 <>
                   <span className="turn-pill live">
-                    <span
-                      className={`turn-dot ${isSilence ? '' : 'pulse'}`}
-                      style={{ background: 'var(--accent-rose)' }}
-                    />
+                    <span className={`turn-dot ${isSilence ? '' : 'pulse'}`} />
                     {isSilence ? 'Listening…' : 'Speech detected'}
                   </span>
                   <div className="voice-wave" aria-hidden="true">

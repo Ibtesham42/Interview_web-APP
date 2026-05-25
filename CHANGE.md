@@ -23,6 +23,76 @@
 
 ---
 
+## 26/05/2026 — UI polish C5 · InterviewRoom inline-style purge
+Type: Refactor
+
+Second slice of the architecture-review-driven UI polish track. Mechanical
+cleanup of `style={{...}}` attributes in `InterviewRoom.tsx`, no
+architectural change. Stress-tested via `grill-with-docs` before
+implementation; resolutions recorded in `CURRENT_TASKS.md` C5 section.
+
+What changed:
+
+CSS (`frontend/src/index.css`, additions only, in existing sections):
+- New `.btn-sm` size modifier (`padding: 0.375rem 0.75rem; font-size: 0.8125rem`)
+  beside existing `.btn-lg`. Completes the half-built button size scale and
+  hands C1 (Button primitive, queued next) a ready-made `size="sm"` target.
+- New `.interview-header-actions` (mirror of `.interview-info` for the
+  right-hand cluster — progress dots + timer + End button).
+- New `.interview-info-subtitle` (font-size 0.8125rem, text-tertiary) plus
+  scoped `.interview-info h4 { margin: 0; }` to handle the heading-tag
+  semantic change.
+- New cascade rules `.turn-pill.ready .turn-dot { background: var(--accent-green); }`
+  and `.turn-pill.live .turn-dot { background: var(--accent-rose); }`. The
+  pill's state class is now the single source of truth for the dot color
+  — no per-instance class or inline style needed.
+
+JSX (`frontend/src/components/InterviewRoom.tsx`, 8 edits):
+- `:435`, `:457` — Deleted redundant `marginTop` inline (`.iv-connect-state`
+  already provides `gap: var(--space-md)`).
+- `:481` — `<h3 style={{ fontSize: '0.9375rem', marginBottom: '2px' }}>` →
+  `<h4>` per ADR 0003 ("future agents writing `<h1>Foo</h1>` get the
+  correct size automatically, with no class to remember"). The scoped
+  `.interview-info h4 { margin: 0; }` handles the spacing.
+- `:484` — `<p style={{...}}>` → `<p className="interview-info-subtitle">`.
+- `:490` — Inline flex container → `<div className="interview-header-actions">`.
+- `:511` — End button inline `padding` + `fontSize` → `btn btn-danger btn-sm`.
+- `:604`, `:617` — Inline `background` on `.turn-dot` removed; the new
+  cascade rules from `.turn-pill.ready` / `.turn-pill.live` own the color.
+  Kept `pulse` class on the recording-state dot for the speech-detected
+  animation.
+
+Left alone (data-driven, must stay inline): the voice-wave-bar
+height/opacity (now `:618`, was `:626` — line shifted) is computed from
+live audio level every render; it cannot be a static class.
+
+Verification:
+- `npx tsc --noEmit` passes (zero output).
+- Inline-style grep on `InterviewRoom.tsx` shows exactly one remaining hit
+  (the data-driven voice-wave-bar, as expected).
+- Browser walk **NOT** performed by the agent — needs manual verification
+  on the terminated screen, lost-connection screen, header layout at
+  360 / 768 / 1440 widths, and all five turn-pill states (`connecting`,
+  `ai_speaking`, `ready`, `recording`, `transcribing`).
+
+Affected files: `frontend/src/index.css`,
+`frontend/src/components/InterviewRoom.tsx`,
+`CURRENT_TASKS.md` (grill resolutions + implementation contract).
+
+Architectural impact: None — pure presentation cleanup. The new `.btn-sm`
+is a deliberate pre-investment for C1 (the Button primitive will compose
+`btn btn-{variant} btn-{size}`), not scope creep. Cascade-from-parent on
+`.turn-pill` state continues the project's preference for one canonical
+source of truth per concept (analogous to C4's deletion of bespoke
+`.page-title` / `.onboard-title` / `.panel-title` in favor of the global
+heading scale).
+
+Future considerations: C1 (Button primitive) is now unblocked and
+slightly cheaper — it inherits the completed `btn-sm`/`btn-lg` size
+modifier pair.
+
+---
+
 ## 25/05/2026 — UI polish C4 · heading scale &amp; typography rhythm
 Type: Refactor
 
