@@ -23,6 +23,67 @@
 
 ---
 
+## 26/05/2026 — Fix · CI backend job fails during pytest collection (missing env vars)
+Type: Fix
+
+**Symptom:** the `Backend (pytest)` job on GitHub Actions crashed during
+test collection — before any test ran — with a pydantic `ValidationError`
+on `GROQ_API_KEY` / `SUPABASE_URL` / `SUPABASE_KEY`.
+
+**Root cause:** four app modules construct `Settings()` at module-load
+time (`main.py:14`, `services/interview_orchestrator.py:9`,
+`services/resume_parser.py:6`, `services/voice_service.py:11`). When
+pytest imports `from app.services.interview_orchestrator import ...` to
+collect tests, the import chain calls `Settings()`, which fails because
+the CI runner has no env vars and no `.env` file. The test bodies
+themselves never need real credentials (they use `MagicMock` for
+Supabase and pure-function inputs for scoring), but collection dies
+before getting there.
+
+**Fix:** added `backend/tests/conftest.py` that calls
+`os.environ.setdefault(...)` for the three required vars with
+obviously-bogus placeholders. Pytest loads `conftest.py` before any
+test file in its directory, so the env vars are present by the time
+the import chain hits `Settings()`.
+
+**What this does NOT change:**
+- `app/config.py` is unchanged — `groq_api_key` / `supabase_url` /
+  `supabase_key` remain required fields; `_strip_env` validator
+  remains; pydantic-settings precedence is unchanged.
+- Production deployments are unaffected — `conftest.py` lives under
+  `tests/` and is never imported outside pytest. Render still requires
+  real credentials at boot.
+- Local devs with real `.env` or shell-exported env vars are
+  unaffected — `setdefault` only fills the gap when the var is missing.
+
+**Verified locally:**
+- `python -m pytest -q` with real `.env` present → 72 passed.
+- Same command with `.env` temporarily moved aside and credential env
+  vars cleared (simulating CI) → 72 passed. The conftest's `setdefault`
+  kicks in exactly as designed.
+
+Affected files: `backend/tests/conftest.py` (new, ~20 lines incl.
+docstring), `CHANGE.md`.
+
+Architectural impact: None. This is a test-environment bootstrap; the
+production code path doesn't see it.
+
+Future considerations:
+- The deeper smell is that `Settings()` is constructed at module-load
+  time in 4 places — an import-time validation side-effect. A more
+  principled fix would refactor those four modules to call
+  `get_settings()` lazily at first use, and let `main.py` own the
+  one early validation call for boot-time fail-fast. Tracked as
+  possible follow-up in CURRENT_TASKS (deferred — would touch the
+  realtime/voice pipeline which CLAUDE.md asks to keep stable, and
+  the conftest fix is sufficient for now).
+- If CI is later changed to use GitHub Actions repository secrets
+  (`secrets.GROQ_API_KEY` etc.) wired to the workflow's `env:` block,
+  the conftest's `setdefault` becomes a harmless no-op (real values
+  win) and can be left in place as a belt-and-suspenders default.
+
+---
+
 ## 26/05/2026 — UI polish C1 · Button primitive (first reusable component)
 Type: Feature
 
