@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { Button } from '../Button';
 
 const GoogleIcon = () => (
   <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
@@ -88,14 +89,15 @@ export function Login() {
 
           {error && <div className="error-message">{error}</div>}
 
-          <button
+          <Button
             type="submit"
-            className="btn btn-primary btn-lg"
-            style={{ width: '100%', marginTop: 'var(--space-sm)' }}
+            size="lg"
+            fullWidth
             disabled={submitting}
+            style={{ marginTop: 'var(--space-sm)' }}
           >
             {submitting ? 'Signing in…' : 'Sign in'}
-          </button>
+          </Button>
         </form>
 
         <div className="auth-divider">or</div>

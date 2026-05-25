@@ -23,6 +23,86 @@
 
 ---
 
+## 26/05/2026 — UI polish C1 · Button primitive (first reusable component)
+Type: Feature
+
+Third slice of the architecture-review-driven UI polish track. Introduces
+the first reusable presentational primitive: a `Button` component composing
+the existing `.btn` + `.btn-{variant}` + `.btn-{size}` CSS classes.
+Stress-tested via `grill-with-docs`; the resolutions trimmed the API far
+below the audit's original proposal — kept only what has a present
+consumer. Resolutions recorded in `CURRENT_TASKS.md` C1 section.
+
+What changed:
+
+New file `frontend/src/components/Button.tsx`:
+- API: `variant: "primary" | "secondary" | "danger"` (no `"ghost"` — no
+  CSS rule, no caller); `size: "sm" | "md" | "lg"` (md is the bare
+  `.btn`); `fullWidth: boolean` (composes new `.btn-block`); `className`
+  passthrough; all native button props via `...rest` (incl `style`,
+  `disabled`, `onClick`, `type`).
+- No polymorphism (`as` prop) — `<button>`-only. The first `<Link>` call
+  site to migrate will widen it.
+- No `loading` prop — existing app convention is text-swap + `disabled`,
+  not spinners. Callers continue `<Button disabled={x}>{x ? '…' : '…'}</Button>`.
+- No `.btn-google` variant — structural differences (full-width baked
+  in, neutral palette) make it a poor variant fit; Login/Signup Google
+  buttons stay as raw `<button className="btn btn-google btn-lg">`.
+
+CSS addition (`frontend/src/index.css`, BUTTONS section):
+- `.btn-block { width: 100%; }` — 5th button modifier, mirrors
+  `.btn-sm` / `.btn-lg`. Backs the `fullWidth` prop.
+
+Migrated `frontend/src/components/auth/Login.tsx`:
+- Submit button `<button className="btn btn-primary btn-lg" style={{ width: '100%', ... }} disabled={submitting}>`
+  → `<Button type="submit" size="lg" fullWidth disabled={submitting} style={{ marginTop: 'var(--space-sm)' }}>`.
+  The inline `width: 100%` is gone (handled by `fullWidth` →
+  `.btn-block`); the `marginTop: var(--space-sm)` stays inline as a
+  deliberate one-off (form spacing, not a generalizable pattern).
+- Google OAuth button at `:103` unchanged (out of scope per `.btn-google`
+  decision).
+- Added `import { Button } from '../Button'`.
+
+Scope discipline: Login is the *only* call site migrated in this PR.
+The other 23 call sites (Dashboard CTAs, Signup, CandidateUpload,
+InterviewRoom, Report, AdminDashboard, AdminUserDetail, App sign-out,
+CameraPreflight) keep their raw `<button className="btn …">` markup
+for now. Each migrates in a follow-up PR — or, in the case of `<Link>`
+call sites (Dashboard, Report, AdminUserDetail), the PR that needs
+them will also widen Button to be polymorphic.
+
+Verification:
+- `npx tsc --noEmit` passes (zero output).
+- Browser walk **NOT** performed by the agent — needs manual verification
+  on `/login`: submit renders full-width lg primary, "Sign in" ↔
+  "Signing in…" label swap during submit, disabled state visible, Google
+  button unchanged, layout identical to pre-migration.
+
+Affected files: `frontend/src/components/Button.tsx` (new),
+`frontend/src/index.css` (+1 line), `frontend/src/components/auth/Login.tsx`,
+`CURRENT_TASKS.md` (grill resolutions + implementation contract).
+
+Architectural impact: First reusable presentational primitive. Establishes
+the precedent that Button-shaped components compose existing CSS classes
+rather than inlining styles or duplicating CSS. The 8 grill decisions
+together codify a "build for the consumer in hand" stance — no
+speculative API surface — that the next primitive's grill should
+inherit.
+
+Future considerations:
+- The "two patterns in the codebase" smell (some buttons use `<Button>`,
+  most still use raw `<button className="btn …">`) is intentional and
+  acceptable for the bridge period.
+- The first follow-up PR that migrates a `<Link>` call site (likely
+  Dashboard's "New Interview" CTA) will widen Button to be polymorphic
+  (`as` prop accepting `Link`).
+- When the second primitive lands (Input? Card?), its grill answers
+  "introduce `src/components/ui/` subdir now?" against a real peer.
+- A proper `GoogleSignInButton` / `SocialButton` is the right eventual
+  shape for the 2 OAuth call sites — separate, scoped PR.
+
+---
+
 ## 26/05/2026 — UI polish C5 · InterviewRoom inline-style purge
 Type: Refactor
 

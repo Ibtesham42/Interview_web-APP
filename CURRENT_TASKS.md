@@ -64,8 +64,8 @@ Three small, sequential PRs — not batched. Each gets its own
 | # | Candidate | Status |
 |---|---|---|
 | C4 | Heading scale &amp; typography rhythm | **Shipped 2026-05-25** (ADR 0003) |
-| C5 | InterviewRoom inline-style purge | **Code complete 2026-05-26** — pending browser verification + commit |
-| C1 | Button primitive | **Next** (unblocked; `.btn-sm` already landed via C5) |
+| C5 | InterviewRoom inline-style purge | **Shipped 2026-05-26** (commit `7dc69cd`) |
+| C1 | Button primitive | **Code complete 2026-05-26** — pending browser verification + commit |
 
 ### C5 — InterviewRoom inline-style purge (next)
 
@@ -170,7 +170,8 @@ height/opacity; `Dashboard.tsx:146` trend-bar height.
 ### C1 — Button primitive (after C5)
 
 **Scope:** introduce `src/components/ui/Button.tsx` exposing
-`variant: "primary" | "secondary" | "ghost" | "danger"`,
+`variant: "primary" | "secondary" | "danger"` (**"ghost" dropped 2026-05-26
+grill** — no CSS rule, no caller, premature),
 `size: "sm" | "md" | "lg"`, plus an `as="a"` escape hatch for
 link-styled buttons and a `loading` prop. The CSS classes
 (`.btn`, `.btn-primary`, etc.) already exist — the component composes
@@ -198,6 +199,137 @@ them. Migrate call sites file-by-file over follow-up PRs if needed.
 **Sizing:** S for the primitive + 1 file migration. Subsequent
 file-by-file migrations are XS each; consider whether to ship them in
 this PR or as follow-ups.
+
+**Scope locked (2026-05-26 grill):** ship the primitive + migrate
+**`Login.tsx` only** as the reference. Login exercises submit-with-loading,
+the `.btn-google` OAuth special-case, `.btn-lg` size modifier, and the
+inline `style={{ width: '100%' }}` cleanup — broadest API surface in one
+contained file. Other 23 call sites migrate in follow-up PRs (mechanical;
+the smell of "two patterns in the codebase" is acceptable for the bridge
+period per phase rule).
+
+**Vitest render tests deferred** (2026-05-26 grill): project lacks
+`@testing-library/react` + jsdom + Vitest DOM config. Adding render-test
+infra for one presentational component is over-investment; revisit when
+the second presentational primitive (Input? Card?) gives a real reason.
+
+**Polymorphism deferred** (2026-05-26 grill): Button is `<button>`-only
+in this PR. Login.tsx (the only call site this PR migrates) has zero
+`<Link>` or anchor usage, so polymorphism is speculative. Retrofit is
+contained to `Button.tsx` internal typing (no call-site break) and is
+better designed against a real `<Link>` consumer than in the abstract.
+The first follow-up PR that migrates a `<Link>` call site (likely
+`Dashboard.tsx` "New Interview" CTA) widens the API.
+
+**`.btn-google` left ungoverned** (2026-05-26 grill): structural
+differences (built-in `width: 100%`, neutral palette) make it a poor
+fit as a `variant="google"`. Only 2 call sites (Login, Signup). The
+Login migration touches the submit button only; the Google OAuth
+button stays as raw `<button className="btn btn-google btn-lg">`. A
+proper `GoogleSignInButton` (or `SocialButton`) is the right eventual
+shape but out of scope for this PR.
+
+**`fullWidth` prop + `className` passthrough** (2026-05-26 grill):
+load-bearing — Login's submit currently has inline `style={{ width:
+'100%' }}` and migration would visually break the form without it.
+Compose to a new `.btn-block { width: 100%; }` CSS modifier (5th button
+modifier, mirroring `.btn-sm`/`.btn-lg`). `className` is always
+composable on a primitive — accept it and concatenate. The submit's
+`marginTop: 'var(--space-sm)'` stays as an inline one-off (genuine form
+spacing, not a block-button pattern); a follow-up could absorb it into
+a `.auth-form` scoped rule.
+
+**`loading` prop dropped** (2026-05-26 grill): existing app-wide
+convention for submit-state feedback is text-swap + `disabled` (Login,
+Signup, CandidateUpload start), not spinners. The audit's "loading
+replaces label with spinner OR renders next to label" framing
+mismatched the codebase. Callers continue `<Button
+disabled={submitting}>{submitting ? '…' : '…'}</Button>` — same visible
+pattern, no API magic. The single existing spinner-loading site
+(CandidateUpload upload) is not in this PR's migration scope; if it
+ever wants a `loading` prop, that PR adds it.
+
+**Flat file location** (2026-05-26 grill): `src/components/Button.tsx`,
+not `src/components/ui/Button.tsx`. A `ui/` subdir for one primitive
+is organizational scaffolding without a consumer; when the second
+primitive lands, that PR grills "introduce `ui/` now?" against a real
+peer. Existing convention is already mixed (top-level pages + feature
+subdirs); one primitive at the top level is acceptable.
+
+**InterviewRoom End button stays raw** (2026-05-26 grill): C5 left it
+as `<button className="btn btn-danger btn-sm">`. InterviewRoom is not
+in this PR's migration scope — the End button (plus the two
+"Back to dashboard" buttons at `:433`/`:454`) migrate in a follow-up.
+
+### C1 — implementation contract (post-grill 2026-05-26)
+
+All 8 grill questions resolved. Final scope:
+
+**New file `src/components/Button.tsx`:**
+
+```tsx
+import { ButtonHTMLAttributes, ReactNode } from 'react';
+
+type Variant = 'primary' | 'secondary' | 'danger';
+type Size = 'sm' | 'md' | 'lg';
+
+interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: Variant;
+  size?: Size;
+  fullWidth?: boolean;
+  children: ReactNode;
+}
+
+export function Button({
+  variant = 'primary',
+  size = 'md',
+  fullWidth = false,
+  className,
+  children,
+  ...rest
+}: ButtonProps) {
+  const classes = [
+    'btn',
+    `btn-${variant}`,
+    size !== 'md' && `btn-${size}`,
+    fullWidth && 'btn-block',
+    className,
+  ].filter(Boolean).join(' ');
+
+  return <button className={classes} {...rest}>{children}</button>;
+}
+```
+
+- No polymorphism (`as` prop) — `<button>` only.
+- No `loading` prop — callers continue `disabled={x}` + `{x ? '…' : '…'}`.
+- `style` is passed through automatically via `...rest` (caller can still
+  set one-off inline styles like `marginTop`).
+- `className` is composed (caller's class concatenates with the variant
+  classes, not replaces).
+
+**CSS addition to `src/index.css`** (in the BUTTONS section, alongside
+the existing `.btn-sm`/`.btn-lg`):
+
+```css
+.btn-block { width: 100%; }
+```
+
+**`Login.tsx` migration (only call site this PR touches):**
+
+| Line | Before | After |
+|---|---|---|
+| `:91-98` (submit) | `<button type="submit" className="btn btn-primary btn-lg" style={{ width: '100%', marginTop: 'var(--space-sm)' }} disabled={submitting}>` | `<Button type="submit" variant="primary" size="lg" fullWidth disabled={submitting} style={{ marginTop: 'var(--space-sm)' }}>` |
+| `:103-106` (Google OAuth) | `<button type="button" className="btn btn-google btn-lg" onClick={handleGoogle}>` | **No change** — out of scope per the `.btn-google` decision |
+
+The submit button keeps **one** inline style after migration (`marginTop`
+— deliberate per grill, genuine one-off form spacing).
+
+**Verification before commit:**
+1. `npx tsc --noEmit` passes.
+2. Browser walk on `/login`: submit button renders identical (full-width,
+   lg primary), `Sign in` ↔ `Signing in…` label swap still works,
+   disabled state visible during submit, Google button unchanged.
+3. Log entry in `CHANGE.md` (Feature type — *first reusable primitive*).
 
 ### How to pick up tomorrow
 

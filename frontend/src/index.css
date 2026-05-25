@@ -423,6 +423,8 @@ a:hover { color: var(--primary); }
   border-radius: var(--radius-md);
 }
 
+.btn-block { width: 100%; }
+
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
