@@ -131,6 +131,48 @@ class RecruiterCandidateRow(BaseModel):
     notes: str = ""
 
 
+class FunnelStage(BaseModel):
+    stage: str
+    count: int
+
+
+class FunnelConversionRates(BaseModel):
+    signed_up_to_started: float
+    started_to_completed: float
+    completed_to_shortlisted: float
+
+
+class FunnelFieldBreakdown(BaseModel):
+    stages: List[FunnelStage]
+    conversion_rates: FunnelConversionRates
+
+
+class HiringFunnelResponse(BaseModel):
+    stages: List[FunnelStage]
+    conversion_rates: FunnelConversionRates
+    by_field: Dict[str, FunnelFieldBreakdown] = {}
+
+
+class ScoresByFieldEntry(BaseModel):
+    field: str
+    candidate_count: int
+    average_score: float
+
+
+class ScoresByFieldResponse(BaseModel):
+    items: List[ScoresByFieldEntry]
+
+
+class IntegrityVolumeEntry(BaseModel):
+    event_type: str
+    count: int
+
+
+class IntegrityVolumeResponse(BaseModel):
+    items: List[IntegrityVolumeEntry]
+    total: int
+
+
 class RecruiterDecisionUpdate(BaseModel):
     decision: str = Field(..., description="shortlisted | rejected | undecided")
 

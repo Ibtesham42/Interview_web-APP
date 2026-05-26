@@ -23,6 +23,144 @@
 
 ---
 
+## 26/05/2026 — Recruiter rollout PR 6 · Hiring funnel + analytics (closes rollout)
+Type: Feature
+
+Closes the recruiter rollout. Three analytics endpoints + an Analytics
+screen with the 4-stage Hiring Funnel (per ADR 0004), funnel-by-field
+breakdown, score distribution by field, and integrity-event volume by
+event type.
+
+Backend:
+
+`backend/app/services/recruiter_analytics.py` (new): three bulk
+aggregations following PROJECT_STATE invariant #5 — N table rows
+resolve to a fixed number of SELECTs, never N+1.
+- `hiring_funnel(supabase)` — four SELECTs total (candidates,
+  interviews, completed-interviews filter, shortlisted-decisions
+  filter). 4 stages: signed_up / interview_started /
+  interview_completed / shortlisted. Conversion rates between
+  adjacent stages, percent-rounded-to-1dp, 0.0 on zero denominator
+  (never NaN — would break the chart and the JSON envelope). The
+  same funnel arithmetic is partitioned per field_specialization
+  for `by_field`. Two recruiters shortlisting the same Candidate
+  collapse to one — funnel is per-Candidate, not per-Decision.
+- `scores_by_field(supabase)` — averages each Candidate's BEST
+  completed score per field (matches the dashboard rule so the
+  chart and the list view never disagree). Composes the pinned
+  `score_interviews_bulk` (no modification).
+- `integrity_event_volume(supabase)` — counts by event_type sorted
+  desc. Wrapped in try/except so a missing
+  `interview_integrity_events` table (migration 002 not applied)
+  degrades to an empty list rather than 500.
+
+`backend/app/routers/recruiter.py`: three new GET endpoints —
+`/analytics/funnel`, `/analytics/scores`, `/analytics/integrity` —
+all gated by `get_current_recruiter` per the B1 matrix.
+
+`backend/app/models/schemas.py`: `FunnelStage`,
+`FunnelConversionRates`, `FunnelFieldBreakdown`, `HiringFunnelResponse`,
+`ScoresByFieldEntry`, `ScoresByFieldResponse`, `IntegrityVolumeEntry`,
+`IntegrityVolumeResponse`.
+
+`backend/tests/test_recruiter_analytics.py` (new): 20 pytest cases:
+- Empty state returns zero counts (not 500, not NaN).
+- ADR 0004 stage order pinned (so a future reorder breaks the test
+  before it breaks the chart).
+- Started includes any interview status (not just completed).
+- Completed requires `status='completed'`.
+- Multiple interviews per Candidate count once at every stage.
+- Shortlisted collapses across recruiters.
+- Non-shortlisted decisions don't count.
+- Conversion rates: zero denom → 0.0, otherwise percent-1dp.
+- by_field arithmetic isolated per partition; unset field → 'general'.
+- scores_by_field uses per-Candidate best; in-progress excluded; sort
+  desc by average.
+- Integrity grouping desc; missing-table swallowed; null event_type →
+  'unknown'.
+
+Frontend:
+
+`frontend/src/components/recruiter/RecruiterAnalytics.tsx` (new):
+- Page `<h1>` unclassed per ADR 0003.
+- Hiring Funnel panel: horizontal bars sized proportional to the
+  largest stage. Visible 2% minimum bar width when count > 0 so a
+  small-but-nonzero stage isn't invisible. Conversion-rate cards
+  in a 3-column auto-fit grid below.
+- Funnel-by-field panel: a compact funnel per field in an auto-fit
+  grid. Same bar component, "compact" variant.
+- Score distribution panel: average per field with a coloured fill
+  matching the existing rec-tier scoreClass thresholds (good ≥ 7,
+  mid ≥ 5.5, low below). Reuses `.score-bg-good/mid/low`.
+- Integrity panel: event counts by type, yellow fill matching the
+  existing integrity accent. Empty state per panel.
+- All three aggregations fetched in parallel (`Promise.all`) so
+  the screen lands in one round-trip; first failure stops the
+  whole load (analytics is read-only — partial state would be
+  misleading).
+- No chart libraries — pure div bars styled with CSS variables,
+  same approach as Dashboard.tsx trend bars.
+
+`frontend/src/types/index.ts` — 8 new types mirroring the backend
+schemas.
+
+`frontend/src/services/api.ts` — `recruiterApi.funnel / scores /
+integrity` helpers.
+
+`frontend/src/App.tsx`:
+- New route `/recruiter/analytics` gated by `['recruiter', 'admin']`.
+- Header nav: Recruiters and Admins now see Candidates + Analytics.
+  Candidates link uses `end` so it only highlights on the exact
+  list route, not the detail nor analytics sub-routes.
+
+`frontend/src/index.css` — RECRUITER ANALYTICS section: funnel bars
+(default + compact), conversion-rate cards, funnel-by-field grid,
+score bars, integrity bars. ~150 lines.
+
+Verification:
+- `python -m pytest -q` → 153 passed (was 133; +20 new analytics
+  tests).
+- `npx tsc --noEmit` clean.
+- Browser walk pending — needs at least a few candidates with
+  varying funnel positions to make the bars meaningful.
+
+Affected files: `backend/app/services/recruiter_analytics.py`
+(new, ~165 lines), `backend/app/routers/recruiter.py` (+25),
+`backend/app/models/schemas.py` (+40),
+`backend/tests/test_recruiter_analytics.py` (new, ~280 lines),
+`frontend/src/components/recruiter/RecruiterAnalytics.tsx`
+(new, ~230 lines),
+`frontend/src/services/api.ts` (+6),
+`frontend/src/types/index.ts` (+45),
+`frontend/src/App.tsx` (~8 net),
+`frontend/src/index.css` (+155).
+
+Architectural impact: Closes the recruiter rollout MVP (PRs 0–6).
+The funnel terminates at Shortlisted by deliberate scope decision
+(ADR 0004) — extending to Hire requires either an ATS integration
+(grill F4 deferred trigger) or a new `external_hire_events` table.
+The `formula_mixed` advisory from the list endpoint is intentionally
+absent from the analytics screen: aggregations are derived from
+the same underlying evaluations rows the list uses, so the formula
+mix is reflected in the numbers rather than warned about
+separately.
+
+Future considerations:
+- Time-series breakdown ("funnel by week / month") was scoped out —
+  the funnel currently shows the all-time snapshot. Triggers: a
+  request for trend tracking or a Recruiter complaining the numbers
+  don't tell them "is the platform speeding up?".
+- The funnel bar `linear-gradient` is the one place the design
+  language allows itself a gradient. If a future review tightens
+  the "no gradients" rule from CLAUDE.md, swap it for a solid
+  `var(--primary)` fill — the data conveys the funnel shape, not
+  the gradient.
+- Score distribution by field uses average — median or p25/p75
+  might be more honest at higher candidate counts. Defer until
+  someone calls it out.
+
+---
+
 ## 26/05/2026 — Recruiter rollout PR 5 · Candidate detail page (+ B1 access enforcement)
 Type: Feature
 

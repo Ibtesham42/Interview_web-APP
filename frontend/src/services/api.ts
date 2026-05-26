@@ -7,11 +7,14 @@ import type {
   AdminOverview,
   AdminUserDetail,
   Profile,
+  HiringFunnelResponse,
+  IntegrityVolumeResponse,
   RecruiterCandidateDetail,
   RecruiterDecision,
   RecruiterDecisionRow,
   RecruiterListParams,
   RecruiterListResponse,
+  ScoresByFieldResponse,
 } from '../types';
 import { supabase } from '../utils/supabase/client';
 
@@ -185,4 +188,9 @@ export const recruiterApi = {
       `/recruiter/candidates/${candidateId}/notes`,
       { method: 'PUT', body: JSON.stringify({ notes }) },
     ),
+
+  funnel: () => fetchJson<HiringFunnelResponse>('/recruiter/analytics/funnel'),
+  scores: () => fetchJson<ScoresByFieldResponse>('/recruiter/analytics/scores'),
+  integrity: () =>
+    fetchJson<IntegrityVolumeResponse>('/recruiter/analytics/integrity'),
 };

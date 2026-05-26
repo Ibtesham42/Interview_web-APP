@@ -1,6 +1,8 @@
 # Recruiter / Admin Candidate Management — Incremental Rollout
 
-**Status:** Planned. Grill complete 2026-05-26. No code shipped yet.
+**Status:** Code complete 2026-05-26. PRs 0–6 all shipped to `main`.
+Browser walks pending against a Supabase with migration 003 applied +
+a `role='recruiter'` profile.
 
 This is a **phase exception** within the declared stability + scalability
 phase (see [[project-stability-scalability-phase]] memory and `CLAUDE.md`).
@@ -310,7 +312,10 @@ Frontend:
 
 ### PR 6 — Hiring funnel + role-wise analytics
 
-**Status:** Not started. Depends on PR 4 (needs decision data populated).
+**Status:** Code complete 2026-05-26 (commit pending). **Closes the
+rollout.** 20 new pytest cases pin funnel arithmetic, conversion-rate
+math, by-field partitioning, score grouping, and integrity-volume
+behaviour. tsc clean.
 
 **Scope:** backend + frontend.
 

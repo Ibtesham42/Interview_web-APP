@@ -13,6 +13,7 @@ import { AdminDashboard } from './components/admin/AdminDashboard';
 import { AdminUserDetail } from './components/admin/AdminUserDetail';
 import { RecruiterDashboard } from './components/recruiter/RecruiterDashboard';
 import { RecruiterCandidateDetail } from './components/recruiter/RecruiterCandidateDetail';
+import { RecruiterAnalytics } from './components/recruiter/RecruiterAnalytics';
 import type { UserRole } from './types';
 
 function Header() {
@@ -45,11 +46,15 @@ function Header() {
           {role === 'admin' && (
             <>
               <NavLink to="/admin" className={navClass}>Admin</NavLink>
-              <NavLink to="/recruiter" className={navClass}>Candidates</NavLink>
+              <NavLink to="/recruiter" className={navClass} end>Candidates</NavLink>
+              <NavLink to="/recruiter/analytics" className={navClass}>Analytics</NavLink>
             </>
           )}
           {role === 'recruiter' && (
-            <NavLink to="/recruiter" className={navClass}>Candidates</NavLink>
+            <>
+              <NavLink to="/recruiter" className={navClass} end>Candidates</NavLink>
+              <NavLink to="/recruiter/analytics" className={navClass}>Analytics</NavLink>
+            </>
           )}
           {role === 'user' && (
             <>
@@ -144,6 +149,7 @@ function App() {
 
           {/* Recruiter (Admins inherit per the B1 access matrix) */}
           <Route path="/recruiter" element={protectedShell(<RecruiterDashboard />, ['recruiter', 'admin'])} />
+          <Route path="/recruiter/analytics" element={protectedShell(<RecruiterAnalytics />, ['recruiter', 'admin'])} />
           <Route path="/recruiter/candidates/:candidateId" element={protectedShell(<RecruiterCandidateDetail />, ['recruiter', 'admin'])} />
 
           <Route path="*" element={<Navigate to="/" replace />} />

@@ -21,14 +21,13 @@ deferred unless explicitly promoted out of the deferred section.
 
 ## Phase exceptions in flight
 
-- **Recruiter / admin candidate management** — bounded phase exception
-  approved 2026-05-26. 12 grill decisions settled; 7-PR rollout plan
-  in [`RECRUITER_ROLLOUT.md`](RECRUITER_ROLLOUT.md). New ADR 0004
-  (Hiring Funnel terminates at Shortlist). CONTEXT.md extended with
-  10 new domain terms (Candidate, Admin, Recruiter, Decision,
-  Shortlist, Reject, Bookmark, Recruiter Note, Hiring Funnel, Funnel
-  Stage). No code shipped yet — pick up at PR 0 (auth-gate report
-  endpoints, the security precursor).
+- **Recruiter / admin candidate management** — code complete
+  2026-05-26. All 7 PRs (0 through 6) shipped to `main`. ADR 0004
+  added; CONTEXT.md extended with 10 new domain terms. Browser
+  walks pending against a Supabase with migration 003 applied +
+  one profile promoted to `role='recruiter'`. See
+  [`RECRUITER_ROLLOUT.md`](RECRUITER_ROLLOUT.md) for the resolved
+  grill and PR-by-PR status.
 
 ## Now — pick from these
 

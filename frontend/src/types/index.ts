@@ -293,6 +293,52 @@ export interface RecruiterListResponse {
   formula_mixed: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// Recruiter analytics (PR 6 - hiring funnel + scores + integrity)
+// ---------------------------------------------------------------------------
+
+export interface FunnelStage {
+  stage: string;
+  count: number;
+}
+
+export interface FunnelConversionRates {
+  signed_up_to_started: number;
+  started_to_completed: number;
+  completed_to_shortlisted: number;
+}
+
+export interface FunnelFieldBreakdown {
+  stages: FunnelStage[];
+  conversion_rates: FunnelConversionRates;
+}
+
+export interface HiringFunnelResponse {
+  stages: FunnelStage[];
+  conversion_rates: FunnelConversionRates;
+  by_field: Record<string, FunnelFieldBreakdown>;
+}
+
+export interface ScoresByFieldEntry {
+  field: string;
+  candidate_count: number;
+  average_score: number;
+}
+
+export interface ScoresByFieldResponse {
+  items: ScoresByFieldEntry[];
+}
+
+export interface IntegrityVolumeEntry {
+  event_type: string;
+  count: number;
+}
+
+export interface IntegrityVolumeResponse {
+  items: IntegrityVolumeEntry[];
+  total: number;
+}
+
 export type RecruiterSortField =
   | 'final_score'
   | 'created_at'

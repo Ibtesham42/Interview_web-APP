@@ -18,12 +18,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth import _fetch_role, get_current_recruiter
 from app.models.schemas import (
+    HiringFunnelResponse,
+    IntegrityVolumeResponse,
     RecruiterBookmarkUpdate,
     RecruiterCandidateDetailResponse,
     RecruiterCandidateListResponse,
     RecruiterDecisionRow,
     RecruiterDecisionUpdate,
     RecruiterNotesUpdate,
+    ScoresByFieldResponse,
 )
 from app.services.recruiter import (
     RankFilters,
@@ -31,6 +34,11 @@ from app.services.recruiter import (
     get_candidate_detail,
     rank_candidates,
     upsert_recruiter_decision,
+)
+from app.services.recruiter_analytics import (
+    hiring_funnel,
+    integrity_event_volume,
+    scores_by_field,
 )
 from app.supabase_client import get_supabase
 
@@ -173,3 +181,23 @@ async def set_notes(
         supabase, str(candidate_id), user.id, notes=body.notes
     )
     return _to_row(row, candidate_id)
+
+
+# ---------------------------------------------------------------------------
+# Analytics (PR 6) — funnel + scores + integrity volume. All bulk-query
+# aggregations; see services/recruiter_analytics.py.
+# ---------------------------------------------------------------------------
+
+@router.get("/analytics/funnel", response_model=HiringFunnelResponse)
+async def analytics_funnel(user=Depends(get_current_recruiter)):
+    return hiring_funnel(get_supabase())
+
+
+@router.get("/analytics/scores", response_model=ScoresByFieldResponse)
+async def analytics_scores(user=Depends(get_current_recruiter)):
+    return scores_by_field(get_supabase())
+
+
+@router.get("/analytics/integrity", response_model=IntegrityVolumeResponse)
+async def analytics_integrity(user=Depends(get_current_recruiter)):
+    return integrity_event_volume(get_supabase())
