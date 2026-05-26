@@ -11,9 +11,11 @@ import { InterviewRoom } from './components/InterviewRoom';
 import { Report } from './components/Report';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 import { AdminUserDetail } from './components/admin/AdminUserDetail';
+import { RecruiterDashboard } from './components/recruiter/RecruiterDashboard';
+import type { UserRole } from './types';
 
 function Header() {
-  const { user, profile, isAdmin, signOut } = useAuth();
+  const { user, profile, signOut } = useAuth();
   const navigate = useNavigate();
 
   const handleSignOut = async () => {
@@ -22,6 +24,7 @@ function Header() {
   };
 
   const displayName = profile?.full_name || user?.email || 'Account';
+  const role = (profile?.role as UserRole | undefined) ?? 'user';
   const navClass = ({ isActive }: { isActive: boolean }) =>
     `header-link${isActive ? ' active' : ''}`;
 
@@ -38,9 +41,16 @@ function Header() {
           <h1 className="header-title">Interview Platform</h1>
         </div>
         <nav className="header-nav">
-          {isAdmin ? (
-            <NavLink to="/admin" className={navClass}>Admin</NavLink>
-          ) : (
+          {role === 'admin' && (
+            <>
+              <NavLink to="/admin" className={navClass}>Admin</NavLink>
+              <NavLink to="/recruiter" className={navClass}>Candidates</NavLink>
+            </>
+          )}
+          {role === 'recruiter' && (
+            <NavLink to="/recruiter" className={navClass}>Candidates</NavLink>
+          )}
+          {role === 'user' && (
             <>
               <NavLink to="/dashboard" className={navClass}>Dashboard</NavLink>
               <NavLink to="/new" className={navClass}>New Interview</NavLink>
@@ -49,7 +59,8 @@ function Header() {
         </nav>
       </div>
       <div className="header-user">
-        {isAdmin && <span className="role-badge role-admin">Admin</span>}
+        {role === 'admin' && <span className="role-badge role-admin">Admin</span>}
+        {role === 'recruiter' && <span className="role-badge role-recruiter">Recruiter</span>}
         <span className="header-user-name">{displayName}</span>
         <button className="btn btn-secondary" onClick={handleSignOut}>Sign out</button>
       </div>
@@ -82,9 +93,9 @@ function NewInterview() {
   );
 }
 
-// Sends each user to the right home: admins manage, candidates interview.
+// Sends each user to the right home for their role.
 function RoleHome() {
-  const { profileLoading, isAdmin } = useAuth();
+  const { profileLoading, profile } = useAuth();
   if (profileLoading) {
     return (
       <div className="auth-loading">
@@ -93,10 +104,13 @@ function RoleHome() {
       </div>
     );
   }
-  return <Navigate to={isAdmin ? '/admin' : '/dashboard'} replace />;
+  const role = profile?.role ?? 'user';
+  if (role === 'admin') return <Navigate to="/admin" replace />;
+  if (role === 'recruiter') return <Navigate to="/recruiter" replace />;
+  return <Navigate to="/dashboard" replace />;
 }
 
-function protectedShell(element: ReactNode, restrictTo?: 'user' | 'admin') {
+function protectedShell(element: ReactNode, restrictTo?: UserRole | UserRole[]) {
   return (
     <ProtectedRoute restrictTo={restrictTo}>
       <AppShell>{element}</AppShell>
@@ -126,6 +140,9 @@ function App() {
           {/* Admin-only */}
           <Route path="/admin" element={protectedShell(<AdminDashboard />, 'admin')} />
           <Route path="/admin/users/:userId" element={protectedShell(<AdminUserDetail />, 'admin')} />
+
+          {/* Recruiter (Admins inherit per the B1 access matrix) */}
+          <Route path="/recruiter" element={protectedShell(<RecruiterDashboard />, ['recruiter', 'admin'])} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

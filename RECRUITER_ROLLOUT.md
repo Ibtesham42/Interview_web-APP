@@ -204,7 +204,11 @@ Modified files:
 
 ### PR 3 — Frontend recruiter dashboard (list UI)
 
-**Status:** Not started. Depends on PR 2.
+**Status:** Code complete 2026-05-26 (commit pending). tsc clean.
+Multi-role `ProtectedRoute`, new RecruiterDashboard with debounced
+search + filter pills + sortable table + pagination, role-recruiter
+badge + Recruiter nav, role-aware RoleHome. Browser walk pending
+against a Supabase profile promoted to `role='recruiter'`.
 
 **Scope:** frontend only.
 

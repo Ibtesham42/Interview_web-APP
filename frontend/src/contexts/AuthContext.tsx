@@ -17,6 +17,7 @@ interface AuthContextValue {
   loading: boolean;
   profileLoading: boolean;
   isAdmin: boolean;
+  isRecruiter: boolean;
   signUp: (email: string, password: string, fullName: string) => Promise<SignUpResult>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signInWithGoogle: () => Promise<{ error: string | null }>;
@@ -121,6 +122,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading,
     profileLoading,
     isAdmin: profile?.role === 'admin',
+    isRecruiter: profile?.role === 'recruiter' || profile?.role === 'admin',
     signUp,
     signIn,
     signInWithGoogle,

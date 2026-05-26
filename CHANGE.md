@@ -23,6 +23,123 @@
 
 ---
 
+## 26/05/2026 — Recruiter rollout PR 3 · Frontend recruiter dashboard (list UI)
+Type: Feature
+
+The Recruiter-facing screen that consumes PR 2's
+`GET /api/recruiter/candidates`. Search-bar + inline filter pills +
+sortable table + pagination, per the B3 grill resolution
+(Lever/Greenhouse pattern).
+
+What changed:
+
+New `frontend/src/components/recruiter/RecruiterDashboard.tsx`:
+- Search input debounced 300ms (local `useEffect` setTimeout —
+  search-as-you-type isn't a pattern reused elsewhere yet, so it stays
+  inline rather than being lifted to a `useDebounce` hook).
+- Filter pill rows for field (auto-derived from the page's results +
+  baseline fallbacks), decision (incl. independent `bookmarked`
+  selector per F3), and integrity (with / without / any).
+- Sort by Score / Signed up / Name / Decision / Integrity columns —
+  clicking the active column flips direction; switching columns
+  defaults to `desc` for everything except Name (which defaults to
+  `asc`).
+- Score column shows a 8px coloured dot + score + recommendation tier
+  via the existing `scoreClass` heuristic (good ≥ 7, mid ≥ 5.5, low
+  below). Matches the rec-tier from `recommendation_for` so the dot
+  and the label can't disagree.
+- Reuses the existing `.integrity-flag-chip` styling from
+  `AdminUserDetail.tsx:112-118` for the integrity column.
+- `formula_mixed: true` from the API → renders a one-line advisory in
+  the result-count row (grill F5).
+- Pagination uses the C1 `<Button>` primitive (Previous / Next +
+  "Page X of Y" label). Hides itself when the result set fits a
+  single page.
+- Row click navigates to `/recruiter/candidates/:id` (the detail view
+  in PR 5 — until that lands, the link 404s harmlessly via the
+  catch-all redirect).
+- All UI conventions per CLAUDE.md: dark / understated; `<h1>` left
+  unclassed (ADR 0003 — auto-styled 1.75rem 600); 300ms motion;
+  semantic HTML; `aria-label`s on icon-only and sort buttons.
+
+Modified `frontend/src/types/index.ts`:
+- `UserRole` widened to `'user' | 'admin' | 'recruiter'`.
+- New `RecruiterCandidate`, `RecruiterListResponse`,
+  `RecruiterListParams`, `RecruiterSortField`,
+  `RecruiterIntegrityFilter`, `RecruiterDecisionFilter`,
+  `RecruiterDecision` shapes mirroring the backend models.
+
+Modified `frontend/src/services/api.ts`:
+- New `recruiterApi.candidates(params)` helper. `URLSearchParams`
+  drops `undefined / null / ''` entries so the backend only sees the
+  filters that actually carry intent.
+
+Modified `frontend/src/contexts/AuthContext.tsx`:
+- Added `isRecruiter` (true when role is `'recruiter'` or `'admin'`,
+  per the B1 access matrix — Admins inherit Recruiter capabilities).
+
+Modified `frontend/src/components/auth/ProtectedRoute.tsx`:
+- `restrictTo` now accepts `UserRole | UserRole[]`. The previous
+  "admin → /dashboard / user → /admin" hard-coded redirects are
+  replaced by a single redirect to `/` (RoleHome) — which already
+  knows where each role belongs, so we don't have to teach the gate.
+
+Modified `frontend/src/App.tsx`:
+- Header nav: admins see Admin + Candidates; recruiters see
+  Candidates; users see Dashboard + New Interview.
+- New role badge for `role-recruiter`.
+- `RoleHome` extended: admins → `/admin`, recruiters → `/recruiter`,
+  users → `/dashboard`.
+- New route `/recruiter` gated by `['recruiter', 'admin']`.
+
+Modified `frontend/src/index.css`:
+- New `.role-recruiter` badge (sky-blue).
+- New section "RECRUITER DASHBOARD" — filter bar, pills (default +
+  active states), result-line, formula-mixed advisory, sortable table
+  headers, score dot, bookmark flag, decision chips (shortlisted /
+  rejected / undecided), pagination row. ~140 lines, all using the
+  existing CSS variable tokens.
+
+Verification:
+- `npx tsc --noEmit` clean.
+- `python -m pytest -q` → 105 passed (no backend regressions; PR 3 is
+  frontend-only).
+- Browser walk pending — needs a Supabase profile row with role set
+  to `'recruiter'` (migration 003 widened the CHECK constraint in
+  PR 1, but no rows have been promoted yet).
+
+Affected files: `frontend/src/components/recruiter/RecruiterDashboard.tsx`
+(new, ~340 lines), `frontend/src/types/index.ts` (+50),
+`frontend/src/services/api.ts` (+18),
+`frontend/src/contexts/AuthContext.tsx` (+2),
+`frontend/src/components/auth/ProtectedRoute.tsx` (refactor; ~15
+net), `frontend/src/App.tsx` (~25 net),
+`frontend/src/index.css` (+150).
+
+Architectural impact: First Recruiter-facing UI. `ProtectedRoute` is
+now multi-role capable and the previous binary "user vs admin"
+home-redirect logic is consolidated to a single `RoleHome` call.
+This makes the next role (if ever needed) a one-liner — a new badge,
+a new RoleHome branch, and a new `restrictTo`.
+
+Future considerations:
+- PR 4 adds row-level actions (Shortlist / Reject / Bookmark / Notes
+  with B2 confirmation dialog). The current row click navigates to
+  the detail page (PR 5); inline actions land in the row's right
+  edge in PR 4.
+- The `fieldOptions` pill list is derived from the current page,
+  which means a recruiter on page 2 may see a different field-pill
+  set than on page 1 if there are rare fields. Acceptable for MVP;
+  pull from a backend `/recruiter/fields` aggregate if it becomes
+  confusing.
+- A `useDebounce` hook should be extracted the second another caller
+  needs debounced input — single-use abstraction would be premature.
+- Row link `/recruiter/candidates/:id` will be live in PR 5; until
+  then the route catch-all sends them home. Avoiding a "(detail
+  view coming soon)" guard prevents stale messaging when PR 5 ships.
+
+---
+
 ## 26/05/2026 — Recruiter rollout PR 2 · Backend recruiter router + list endpoint
 Type: Feature
 

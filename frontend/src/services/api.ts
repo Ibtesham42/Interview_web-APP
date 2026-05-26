@@ -7,6 +7,8 @@ import type {
   AdminOverview,
   AdminUserDetail,
   Profile,
+  RecruiterListParams,
+  RecruiterListResponse,
 } from '../types';
 import { supabase } from '../utils/supabase/client';
 
@@ -143,4 +145,20 @@ export const adminApi = {
 // so it never depends on client-side RLS.
 export const profileApi = {
   me: () => fetchJson<Profile>('/auth/me'),
+};
+
+// Recruiter API — list endpoint backs the recruiter dashboard. Write
+// endpoints (Shortlist / Reject / Bookmark / Notes) come in PR 4.
+export const recruiterApi = {
+  candidates: (params: RecruiterListParams = {}) => {
+    const qs = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (value === undefined || value === null || value === '') continue;
+      qs.append(key, String(value));
+    }
+    const query = qs.toString();
+    return fetchJson<RecruiterListResponse>(
+      `/recruiter/candidates${query ? `?${query}` : ''}`,
+    );
+  },
 };

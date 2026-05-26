@@ -1,4 +1,4 @@
-export type UserRole = 'user' | 'admin';
+export type UserRole = 'user' | 'admin' | 'recruiter';
 
 export interface Profile {
   id: string;
@@ -202,6 +202,65 @@ export interface AdminUserInterview {
 export interface AdminUserDetail {
   user: AdminUser;
   interviews: AdminUserInterview[];
+}
+
+// ---------------------------------------------------------------------------
+// Recruiter dashboard (PR 3 — recruiter rollout)
+// ---------------------------------------------------------------------------
+
+export type RecruiterDecision = 'shortlisted' | 'rejected' | 'undecided';
+
+export interface RecruiterCandidate {
+  candidate_id: string;
+  name: string;
+  email: string | null;
+  field_specialization: string | null;
+  created_at: string | null;
+  interview_count: number;
+  completed_count: number;
+  final_score: number;
+  recommendation: string;
+  latest_interview_at: string | null;
+  integrity_warnings: number;
+  decision: RecruiterDecision;
+  bookmarked: boolean;
+  notes: string;
+}
+
+export interface RecruiterListResponse {
+  items: RecruiterCandidate[];
+  page: number;
+  page_size: number;
+  total_count: number;
+  formula_mixed: boolean;
+}
+
+export type RecruiterSortField =
+  | 'final_score'
+  | 'created_at'
+  | 'name'
+  | 'decision'
+  | 'integrity_warnings';
+
+export type RecruiterIntegrityFilter = 'any' | 'with_warnings' | 'without_warnings';
+
+// 'bookmarked' is a workflow filter (independent of decision string) per
+// grill F3 — Recruiters can bookmark an 'undecided' Candidate.
+export type RecruiterDecisionFilter = RecruiterDecision | 'bookmarked';
+
+export interface RecruiterListParams {
+  search?: string;
+  field?: string;
+  decision?: RecruiterDecisionFilter;
+  min_score?: number;
+  max_score?: number;
+  integrity?: RecruiterIntegrityFilter;
+  date_from?: string;
+  date_to?: string;
+  sort?: RecruiterSortField;
+  order?: 'asc' | 'desc';
+  page?: number;
+  page_size?: number;
 }
 
 export interface PhaseScores {

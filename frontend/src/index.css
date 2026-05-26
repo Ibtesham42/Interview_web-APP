@@ -2674,6 +2674,11 @@ a.iv-row:hover {
   color: var(--text-secondary);
 }
 
+.role-recruiter {
+  background: rgba(56, 189, 248, 0.14);
+  color: #38bdf8;
+}
+
 .back-link {
   display: inline-block;
   font-size: 0.8125rem;
@@ -2949,4 +2954,167 @@ a.iv-row:hover {
 .integrity-flag-chip.terminated {
   background: rgba(220, 38, 38, 0.16);
   color: var(--accent-rose, #dc2626);
+}
+
+/* ========================================
+   RECRUITER DASHBOARD
+   ======================================== */
+.recruiter-filter-bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+.recruiter-search {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-default);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 0.9375rem;
+}
+
+.recruiter-search:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-subtle);
+}
+
+.recruiter-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.filter-pill {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  padding: 5px 12px;
+  border-radius: var(--radius-full);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
+}
+
+.filter-pill:hover { color: var(--text-primary); border-color: var(--border-strong, var(--border-default)); }
+
+.filter-pill.active {
+  background: var(--primary-subtle);
+  border-color: var(--primary);
+  color: var(--primary-light);
+}
+
+.recruiter-result-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+  color: var(--text-tertiary);
+  font-size: 0.8125rem;
+  margin-bottom: var(--space-sm);
+}
+
+.formula-mixed-advisory {
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
+  border-left: 2px solid var(--border-default);
+  padding-left: var(--space-sm);
+}
+
+.recruiter-table .sort-header {
+  background: none;
+  border: none;
+  color: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+}
+
+.recruiter-table .sort-header:hover { color: var(--text-primary); }
+
+.recruiter-table .sort-header.active { color: var(--text-primary); }
+
+.sort-arrow {
+  display: inline-block;
+  min-width: 0.75rem;
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
+
+.recruiter-table .sort-header.active .sort-arrow {
+  color: var(--primary-light);
+}
+
+.cell-score {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.score-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.score-rec {
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
+}
+
+.bookmark-flag {
+  display: inline-block;
+  margin-left: 6px;
+  color: #eab308;
+  font-size: 0.875rem;
+}
+
+.decision-chip {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: var(--radius-full);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+.decision-chip.decision-shortlisted {
+  background: rgba(34, 197, 94, 0.14);
+  color: var(--accent-green, #22c55e);
+}
+
+.decision-chip.decision-rejected {
+  background: rgba(220, 38, 38, 0.14);
+  color: var(--accent-rose, #dc2626);
+}
+
+.decision-chip.decision-undecided {
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+}
+
+.recruiter-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  border-top: 1px solid var(--border-default);
+}
+
+.recruiter-page-label {
+  font-size: 0.8125rem;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
 }
