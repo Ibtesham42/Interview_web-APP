@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { recruiterApi } from '../../services/api';
 import { Button } from '../Button';
 import type {
   RecruiterCandidate,
+  RecruiterDecision,
   RecruiterDecisionFilter,
   RecruiterIntegrityFilter,
   RecruiterListParams,
@@ -34,20 +35,19 @@ function formatDate(d: string | null): string {
   });
 }
 
-function decisionLabel(decision: RecruiterCandidate['decision']): string {
+function decisionLabel(decision: RecruiterDecision): string {
   if (decision === 'shortlisted') return 'Shortlisted';
   if (decision === 'rejected') return 'Rejected';
   return 'Undecided';
 }
 
-interface PillProps<T extends string> {
+interface PillProps {
   active: boolean;
   onClick: () => void;
   children: React.ReactNode;
-  label?: T;
 }
 
-function Pill<T extends string>({ active, onClick, children }: PillProps<T>) {
+function Pill({ active, onClick, children }: PillProps) {
   return (
     <button
       type="button"
@@ -83,12 +83,18 @@ const INTEGRITY_OPTIONS: { value: RecruiterIntegrityFilter | ''; label: string }
 
 const DEFAULT_PAGE_SIZE = 25;
 
+// Workflow signals the actions mutate locally before/without a refetch.
+type RowOverride = Partial<Pick<RecruiterCandidate, 'decision' | 'bookmarked' | 'notes'>>;
+
+interface PendingShortlist {
+  candidateId: string;
+  name: string;
+  warnings: number;
+}
+
 export function RecruiterDashboard() {
   const navigate = useNavigate();
 
-  // Filter state — held in component-local state so a single user keystroke
-  // doesn't refetch immediately (search is debounced; pill clicks are
-  // immediate).
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [field, setField] = useState('');
@@ -102,16 +108,22 @@ export function RecruiterDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Debounce the search box — 300ms per RECRUITER_ROLLOUT spec. The debounce
-  // is intentionally local to this component since search-as-you-type isn't a
-  // pattern used elsewhere in the app yet.
+  // Optimistic local overrides per candidate. The server is the source of
+  // truth, but the user shouldn't wait a round-trip to see their own click
+  // land. On API failure we revert; on success we keep the override until
+  // the next fetch refreshes the row anyway.
+  const [overrides, setOverrides] = useState<Record<string, RowOverride>>({});
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [pendingShortlist, setPendingShortlist] = useState<PendingShortlist | null>(null);
+  const [expandedNotes, setExpandedNotes] = useState<string | null>(null);
+  const [notesDraft, setNotesDraft] = useState('');
+  const [notesSaving, setNotesSaving] = useState(false);
+
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchInput.trim()), 300);
     return () => clearTimeout(timer);
   }, [searchInput]);
 
-  // Reset to page 1 whenever the result-shape changes — otherwise a user
-  // sitting on page 3 with a new filter applied sees a blank page.
   useEffect(() => {
     setPage(1);
   }, [debouncedSearch, field, decision, integrity, sort, order]);
@@ -137,7 +149,12 @@ export function RecruiterDashboard() {
     recruiterApi
       .candidates(params)
       .then((resp) => {
-        if (!cancelled) setData(resp);
+        if (!cancelled) {
+          setData(resp);
+          // A fresh fetch wins over stale overrides - the server reflects
+          // every committed change at this point.
+          setOverrides({});
+        }
       })
       .catch((e) => {
         if (!cancelled) {
@@ -153,17 +170,22 @@ export function RecruiterDashboard() {
     };
   }, [params]);
 
-  // Collect the distinct fields seen in the current page so the field-filter
-  // pills surface what's actually present. Falls back to a small fixed set
-  // when no data has loaded yet, so the row of pills doesn't pop in.
+  const rows: RecruiterCandidate[] = useMemo(() => {
+    if (!data) return [];
+    return data.items.map((row) => {
+      const override = overrides[row.candidate_id];
+      return override ? { ...row, ...override } : row;
+    });
+  }, [data, overrides]);
+
   const fieldOptions = useMemo(() => {
     const seen = new Set<string>();
-    for (const row of data?.items ?? []) {
+    for (const row of rows) {
       if (row.field_specialization) seen.add(row.field_specialization);
     }
     if (seen.size === 0) return ['ml', 'web_dev', 'general'];
     return Array.from(seen).sort();
-  }, [data]);
+  }, [rows]);
 
   const hasActiveFilters =
     !!debouncedSearch || !!field || !!decision || !!integrity;
@@ -181,6 +203,93 @@ export function RecruiterDashboard() {
     } else {
       setSort(value);
       setOrder(value === 'name' ? 'asc' : 'desc');
+    }
+  };
+
+  // Apply an override immediately, fire the API call, roll back on error.
+  const applyOverride = (candidateId: string, patch: RowOverride) =>
+    setOverrides((prev) => ({
+      ...prev,
+      [candidateId]: { ...prev[candidateId], ...patch },
+    }));
+
+  const rollbackOverride = (candidateId: string, previous: RowOverride) =>
+    setOverrides((prev) => ({
+      ...prev,
+      [candidateId]: { ...prev[candidateId], ...previous },
+    }));
+
+  const writeDecision = async (row: RecruiterCandidate, next: RecruiterDecision) => {
+    setActionError(null);
+    const previous: RowOverride = { decision: row.decision };
+    applyOverride(row.candidate_id, { decision: next });
+    try {
+      await recruiterApi.setDecision(row.candidate_id, next);
+    } catch (e) {
+      rollbackOverride(row.candidate_id, previous);
+      setActionError(e instanceof Error ? e.message : 'Could not save decision');
+    }
+  };
+
+  const handleShortlistClick = (row: RecruiterCandidate) => {
+    // B2: soft-warn on shortlisting an integrity-flagged Candidate.
+    if (row.integrity_warnings > 0) {
+      setPendingShortlist({
+        candidateId: row.candidate_id,
+        name: row.name,
+        warnings: row.integrity_warnings,
+      });
+      return;
+    }
+    void writeDecision(row, 'shortlisted');
+  };
+
+  const confirmPendingShortlist = async () => {
+    if (!pendingShortlist) return;
+    const row = rows.find((r) => r.candidate_id === pendingShortlist.candidateId);
+    setPendingShortlist(null);
+    if (row) await writeDecision(row, 'shortlisted');
+  };
+
+  const handleReject = (row: RecruiterCandidate) => {
+    void writeDecision(row, row.decision === 'rejected' ? 'undecided' : 'rejected');
+  };
+
+  const handleBookmarkToggle = async (row: RecruiterCandidate) => {
+    setActionError(null);
+    const previous: RowOverride = { bookmarked: row.bookmarked };
+    const next = !row.bookmarked;
+    applyOverride(row.candidate_id, { bookmarked: next });
+    try {
+      await recruiterApi.setBookmark(row.candidate_id, next);
+    } catch (e) {
+      rollbackOverride(row.candidate_id, previous);
+      setActionError(e instanceof Error ? e.message : 'Could not save bookmark');
+    }
+  };
+
+  const handleNotesToggle = (row: RecruiterCandidate) => {
+    if (expandedNotes === row.candidate_id) {
+      setExpandedNotes(null);
+      return;
+    }
+    setExpandedNotes(row.candidate_id);
+    setNotesDraft(row.notes ?? '');
+  };
+
+  const handleNotesSave = async (row: RecruiterCandidate) => {
+    setActionError(null);
+    setNotesSaving(true);
+    const previous: RowOverride = { notes: row.notes };
+    applyOverride(row.candidate_id, { notes: notesDraft });
+    try {
+      await recruiterApi.setNotes(row.candidate_id, notesDraft);
+      setExpandedNotes(null);
+    } catch (e) {
+      rollbackOverride(row.candidate_id, previous);
+      setActionError(e instanceof Error ? e.message : 'Could not save notes');
+    } finally {
+      setNotesSaving(false);
     }
   };
 
@@ -269,6 +378,12 @@ export function RecruiterDashboard() {
         )}
       </div>
 
+      {actionError && (
+        <div className="recruiter-action-error" role="alert">
+          {actionError}
+        </div>
+      )}
+
       {error ? (
         <div className="empty-state">
           <h3>Couldn't load candidates</h3>
@@ -308,67 +423,173 @@ export function RecruiterDashboard() {
                     );
                   })}
                   <th>Field</th>
+                  <th aria-label="Actions" />
                 </tr>
               </thead>
               <tbody>
-                {data?.items.map((row) => (
-                  <tr
-                    key={row.candidate_id}
-                    onClick={() => navigate(`/recruiter/candidates/${row.candidate_id}`)}
-                    aria-label={`Open ${row.name}`}
-                  >
-                    <td>
-                      <div className="cell-score">
-                        {row.final_score > 0 ? (
-                          <>
-                            <span
-                              className={`score-dot score-bg-${scoreClass(row.final_score)}`}
-                              aria-hidden="true"
-                            />
-                            <span className={`score-${scoreClass(row.final_score)}`}>
-                              {row.final_score.toFixed(1)}
-                            </span>
-                            <span className="score-rec">{row.recommendation}</span>
-                          </>
-                        ) : (
-                          <span className="cell-sub">—</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="cell-sub">{formatDate(row.created_at)}</td>
-                    <td>
-                      <div className="cell-name">
-                        {row.name}
-                        {row.bookmarked && (
-                          <span
-                            className="bookmark-flag"
-                            aria-label="Bookmarked"
-                            title="Bookmarked"
-                          >
-                            ★
+                {rows.map((row) => {
+                  const isExpanded = expandedNotes === row.candidate_id;
+                  return (
+                    <Fragment key={row.candidate_id}>
+                      <tr
+                        onClick={() => navigate(`/recruiter/candidates/${row.candidate_id}`)}
+                        aria-label={`Open ${row.name}`}
+                      >
+                        <td>
+                          <div className="cell-score">
+                            {row.final_score > 0 ? (
+                              <>
+                                <span
+                                  className={`score-dot score-bg-${scoreClass(row.final_score)}`}
+                                  aria-hidden="true"
+                                />
+                                <span className={`score-${scoreClass(row.final_score)}`}>
+                                  {row.final_score.toFixed(1)}
+                                </span>
+                                <span className="score-rec">{row.recommendation}</span>
+                              </>
+                            ) : (
+                              <span className="cell-sub">—</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="cell-sub">{formatDate(row.created_at)}</td>
+                        <td>
+                          <div className="cell-name">
+                            {row.name}
+                            {row.bookmarked && (
+                              <span
+                                className="bookmark-flag"
+                                aria-label="Bookmarked"
+                                title="Bookmarked"
+                              >
+                                ★
+                              </span>
+                            )}
+                          </div>
+                          <div className="cell-sub">{row.email || '—'}</div>
+                        </td>
+                        <td>
+                          <span className={`decision-chip decision-${row.decision}`}>
+                            {decisionLabel(row.decision)}
                           </span>
-                        )}
-                      </div>
-                      <div className="cell-sub">{row.email || '—'}</div>
-                    </td>
-                    <td>
-                      <span className={`decision-chip decision-${row.decision}`}>
-                        {decisionLabel(row.decision)}
-                      </span>
-                    </td>
-                    <td>
-                      {row.integrity_warnings > 0 ? (
-                        <span className="integrity-flag-chip">
-                          {row.integrity_warnings} warning
-                          {row.integrity_warnings === 1 ? '' : 's'}
-                        </span>
-                      ) : (
-                        <span className="cell-sub">—</span>
+                        </td>
+                        <td>
+                          {row.integrity_warnings > 0 ? (
+                            <span className="integrity-flag-chip">
+                              {row.integrity_warnings} warning
+                              {row.integrity_warnings === 1 ? '' : 's'}
+                            </span>
+                          ) : (
+                            <span className="cell-sub">—</span>
+                          )}
+                        </td>
+                        <td className="cell-sub">{fieldLabel(row.field_specialization)}</td>
+                        <td
+                          className="recruiter-actions-cell"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="recruiter-actions">
+                            <Button
+                              variant={row.decision === 'shortlisted' ? 'primary' : 'secondary'}
+                              size="sm"
+                              onClick={() =>
+                                row.decision === 'shortlisted'
+                                  ? void writeDecision(row, 'undecided')
+                                  : handleShortlistClick(row)
+                              }
+                              aria-pressed={row.decision === 'shortlisted'}
+                              title={
+                                row.decision === 'shortlisted'
+                                  ? 'Remove from shortlist'
+                                  : 'Shortlist'
+                              }
+                            >
+                              {row.decision === 'shortlisted' ? '✓ Shortlisted' : 'Shortlist'}
+                            </Button>
+                            <Button
+                              variant={row.decision === 'rejected' ? 'danger' : 'secondary'}
+                              size="sm"
+                              onClick={() => handleReject(row)}
+                              aria-pressed={row.decision === 'rejected'}
+                              title={row.decision === 'rejected' ? 'Clear rejection' : 'Reject'}
+                            >
+                              {row.decision === 'rejected' ? '✗ Rejected' : 'Reject'}
+                            </Button>
+                            <button
+                              type="button"
+                              className={`icon-btn${row.bookmarked ? ' active' : ''}`}
+                              onClick={() => void handleBookmarkToggle(row)}
+                              aria-label={
+                                row.bookmarked ? 'Remove bookmark' : 'Bookmark candidate'
+                              }
+                              aria-pressed={row.bookmarked}
+                              title={row.bookmarked ? 'Bookmarked' : 'Bookmark'}
+                            >
+                              {row.bookmarked ? '★' : '☆'}
+                            </button>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => handleNotesToggle(row)}
+                              aria-expanded={isExpanded}
+                              title={row.notes ? 'View / edit notes' : 'Add notes'}
+                            >
+                              {row.notes ? `Notes (${row.notes.length})` : 'Notes'}
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr
+                          className="recruiter-notes-row"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <td colSpan={7}>
+                            <div className="recruiter-notes-editor">
+                              <label
+                                className="recruiter-notes-label"
+                                htmlFor={`notes-${row.candidate_id}`}
+                              >
+                                Notes about {row.name}
+                                <span className="cell-sub">
+                                  {' '}
+                                  · only you can read these
+                                </span>
+                              </label>
+                              <textarea
+                                id={`notes-${row.candidate_id}`}
+                                className="recruiter-notes-textarea"
+                                value={notesDraft}
+                                onChange={(e) => setNotesDraft(e.target.value)}
+                                rows={4}
+                                maxLength={4000}
+                                placeholder="Strengths, follow-ups, comparisons…"
+                              />
+                              <div className="recruiter-notes-actions">
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={() => setExpandedNotes(null)}
+                                >
+                                  Cancel
+                                </Button>
+                                <Button
+                                  variant="primary"
+                                  size="sm"
+                                  disabled={notesSaving || notesDraft === (row.notes ?? '')}
+                                  onClick={() => void handleNotesSave(row)}
+                                >
+                                  {notesSaving ? 'Saving…' : 'Save notes'}
+                                </Button>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
                       )}
-                    </td>
-                    <td className="cell-sub">{fieldLabel(row.field_specialization)}</td>
-                  </tr>
-                ))}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -396,6 +617,35 @@ export function RecruiterDashboard() {
               </Button>
             </div>
           )}
+        </div>
+      )}
+
+      {pendingShortlist && (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="shortlist-confirm-title"
+          onClick={() => setPendingShortlist(null)}
+        >
+          <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
+            <h3 id="shortlist-confirm-title">Shortlist a flagged candidate?</h3>
+            <p>
+              <strong>{pendingShortlist.name}</strong> has{' '}
+              {pendingShortlist.warnings} integrity warning
+              {pendingShortlist.warnings === 1 ? '' : 's'} on file. Shortlisting
+              is your call — the signal is advisory, not a hard block. Review
+              the interview report before deciding.
+            </p>
+            <div className="modal-actions">
+              <Button variant="secondary" onClick={() => setPendingShortlist(null)}>
+                Cancel
+              </Button>
+              <Button variant="primary" onClick={() => void confirmPendingShortlist()}>
+                Shortlist anyway
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>

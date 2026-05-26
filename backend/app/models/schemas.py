@@ -131,6 +131,28 @@ class RecruiterCandidateRow(BaseModel):
     notes: str = ""
 
 
+class RecruiterDecisionUpdate(BaseModel):
+    decision: str = Field(..., description="shortlisted | rejected | undecided")
+
+
+class RecruiterBookmarkUpdate(BaseModel):
+    bookmarked: bool
+
+
+class RecruiterNotesUpdate(BaseModel):
+    notes: str = Field(default="", max_length=4000)
+
+
+class RecruiterDecisionRow(BaseModel):
+    """Workflow state for one (Candidate, Recruiter) pair after an upsert."""
+    candidate_id: UUID
+    decision: str
+    bookmarked: bool
+    notes: str
+    decided_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
 class RecruiterCandidateListResponse(BaseModel):
     items: List[RecruiterCandidateRow]
     page: int

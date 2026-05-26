@@ -3118,3 +3118,138 @@ a.iv-row:hover {
   color: var(--text-tertiary);
   font-variant-numeric: tabular-nums;
 }
+
+.recruiter-action-error {
+  background: rgba(220, 38, 38, 0.10);
+  color: var(--accent-rose, #dc2626);
+  border: 1px solid rgba(220, 38, 38, 0.30);
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  font-size: 0.8125rem;
+  margin-bottom: var(--space-sm);
+}
+
+.recruiter-actions-cell { cursor: default; }
+
+.recruiter-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.icon-btn {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-md);
+  font-size: 0.9375rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
+}
+
+.icon-btn:hover { color: var(--text-primary); }
+
+.icon-btn.active {
+  background: rgba(234, 179, 8, 0.14);
+  border-color: rgba(234, 179, 8, 0.40);
+  color: #eab308;
+}
+
+.recruiter-notes-row td {
+  background: var(--bg-secondary);
+  padding: var(--space-md);
+}
+
+.recruiter-notes-row:hover td { background: var(--bg-secondary) !important; }
+
+.recruiter-notes-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.recruiter-notes-label {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.recruiter-notes-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.875rem;
+  resize: vertical;
+}
+
+.recruiter-notes-textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-subtle);
+}
+
+.recruiter-notes-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-xs);
+}
+
+/* ========================================
+   MODAL
+   ======================================== */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: var(--space-md);
+  animation: modal-fade 150ms ease-out;
+}
+
+@keyframes modal-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.modal-panel {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg, 12px);
+  max-width: 480px;
+  width: 100%;
+  padding: var(--space-lg, 24px);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.40);
+}
+
+.modal-panel h3 {
+  margin: 0 0 var(--space-sm) 0;
+}
+
+.modal-panel p {
+  color: var(--text-secondary);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  margin: 0 0 var(--space-md) 0;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-xs);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-backdrop { animation: none; }
+}

@@ -23,6 +23,125 @@
 
 ---
 
+## 26/05/2026 — Recruiter rollout PR 4 · Workflow write endpoints + UI actions
+Type: Feature
+
+Three Recruiter write endpoints (Shortlist / Reject / Bookmark /
+Notes) + the corresponding row-level actions on the dashboard. With
+this PR the recruiter MVP is functionally complete; PRs 5–6 add the
+candidate detail page and analytics on top.
+
+Backend:
+
+`backend/app/services/recruiter.py` — new `upsert_recruiter_decision`
+shared by all three write endpoints. Single contract:
+- Each named field is only touched when its argument is non-None.
+  `setBookmark` cannot clobber Notes; `setNotes` cannot clobber a
+  Decision. This is the load-bearing invariant — three endpoints
+  sharing one row would otherwise be a foot-gun.
+- Terminal Decisions (`shortlisted` | `rejected`) stamp `decided_at`;
+  reverting to `undecided` clears it so PR 6 funnel analytics don't
+  double-count a Candidate who was shortlisted then un-shortlisted.
+- Inserts apply the same DEFAULTs the migration would (so the service
+  is testable end-to-end without round-tripping to a real DB).
+- Also added `candidate_exists()` so the write endpoints can surface
+  a clean 404 instead of leaking a Postgres FK violation.
+
+`backend/app/routers/recruiter.py` — three PUT endpoints:
+`/api/recruiter/candidates/{id}/decision`,
+`.../{id}/bookmark`, `.../{id}/notes`. All gated by
+`get_current_recruiter`; all pre-check `candidate_exists()`; all
+return the upserted row as `RecruiterDecisionRow`.
+
+`backend/app/models/schemas.py` — three request shapes
+(`RecruiterDecisionUpdate`, `RecruiterBookmarkUpdate`,
+`RecruiterNotesUpdate`) plus the `RecruiterDecisionRow` response.
+Notes are capped at 4000 characters (server-side soft limit; matches
+the textarea `maxLength`).
+
+`backend/tests/test_recruiter_upsert.py` — 14 new pytest cases pinning
+the upsert contract: insert vs update, terminal-stamps-decided_at,
+undecided-clears-decided_at, switching terminal decisions re-stamps,
+each setter doesn't clobber the other two fields, invalid decision
+raises (mapped to 400), candidate_exists helper presence/absence.
+
+Frontend:
+
+`frontend/src/components/recruiter/RecruiterDashboard.tsx` reworked:
+- New Actions column at the row's right edge with Shortlist /
+  Reject / Bookmark / Notes controls. Action cell stops event
+  propagation so the row's navigate-to-detail click still works on
+  the rest of the row.
+- Buttons reflect current state (Shortlist toggles to "✓ Shortlisted"
+  in the primary variant; Reject toggles to "✗ Rejected" in danger).
+  Re-clicking a terminal state reverts to `undecided` — matches the
+  upsert contract on the backend, so a single click round-trips.
+- Bookmark is a star icon-button using the existing yellow accent
+  (matches `.bookmark-flag` in the name cell).
+- Notes button opens an inline expandable row beneath the candidate
+  with a textarea (4000-char cap), Save disabled when the draft
+  equals the saved value.
+- B2 confirmation dialog: clicking Shortlist on a Candidate with
+  `integrity_warnings > 0` opens a modal explaining the integrity
+  signal is advisory; cancel / "Shortlist anyway" continues the
+  action. Hard-block was deliberately rejected at the grill — the
+  policy call belongs to the recruiter, not the engine.
+- Optimistic UI: row state mutates immediately via a local
+  `overrides` map; the network call follows. On error the previous
+  value is rolled back and an error banner surfaces above the table.
+  On the next refetch the overrides are cleared (server now reflects
+  every committed change).
+
+`frontend/src/services/api.ts` — three new methods on `recruiterApi`:
+`setDecision`, `setBookmark`, `setNotes`. JSON body, PUT verb.
+
+`frontend/src/types/index.ts` — added `RecruiterDecisionRow`.
+
+`frontend/src/index.css` — new CSS for action cell + icon button +
+notes editor + modal (backdrop + panel + actions). Modal honours
+`prefers-reduced-motion`.
+
+Verification:
+- `python -m pytest -q` → 119 passed (was 105; +14 new upsert tests).
+- `npx tsc --noEmit` clean.
+- Browser walk pending: needs a Supabase profile with role='recruiter',
+  migration 003 applied, and at least one candidate with
+  integrity_warnings > 0 to exercise the B2 dialog.
+
+Affected files: `backend/app/services/recruiter.py` (+135),
+`backend/app/routers/recruiter.py` (+75),
+`backend/app/models/schemas.py` (+22),
+`backend/tests/test_recruiter_upsert.py` (new, ~240 lines),
+`frontend/src/components/recruiter/RecruiterDashboard.tsx`
+(substantial rewrite, ~540 lines total now),
+`frontend/src/services/api.ts` (+18),
+`frontend/src/types/index.ts` (+10),
+`frontend/src/index.css` (+125).
+
+Architectural impact: Recruiters can now make and reverse Decisions;
+the workflow row in `recruiter_decisions` becomes meaningful data
+for PR 5 (candidate detail) and PR 6 (funnel analytics). The
+upsert-with-partial-update pattern is the contract those PRs will
+read from — particularly that `decided_at IS NOT NULL` is a clean
+signal for "this Recruiter has actually decided", which the funnel
+counts on. The optimistic-UI override pattern in the dashboard is
+narrow enough to stay inline; if a second screen needs it, lift it
+to a small hook.
+
+Future considerations:
+- A row-level "Saving…" indicator was deliberately omitted — the
+  optimistic update gives instant feedback and errors surface in
+  the banner. If users report uncertainty about whether their click
+  landed, add a per-row spinner.
+- The B2 dialog currently only confirms on Shortlist. If Reject on
+  a candidate with strong scores ever needs a confirmation, this
+  same `pendingShortlist` state can generalise to a
+  `pendingAction` discriminated union.
+- Notes are written-by/read-by the same Recruiter only (per B1) —
+  read-back of other Recruiters' Notes lands in PR 5's detail view.
+
+---
+
 ## 26/05/2026 — Recruiter rollout PR 3 · Frontend recruiter dashboard (list UI)
 Type: Feature
 

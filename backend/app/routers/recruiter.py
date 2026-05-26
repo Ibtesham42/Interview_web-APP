@@ -1,19 +1,35 @@
 """Recruiter API.
 
-Read-only in this PR: a single paginated list endpoint backing the
-Recruiter dashboard. Write endpoints (Shortlist / Reject / Bookmark /
-Notes) come in PR 4 per RECRUITER_ROLLOUT.md.
+List endpoint + workflow write endpoints (Shortlist / Reject /
+Bookmark / Notes). All routes gated by `get_current_recruiter` —
+Admins inherit Recruiter capabilities additively (B1 access matrix).
 
-Auth posture: gated by `get_current_recruiter`. Admins inherit Recruiter
-capabilities additively (B1 access matrix).
+Per the F3 grill resolution, each Recruiter owns exactly one
+`recruiter_decisions` row per Candidate (UNIQUE constraint at the
+DB layer). The three workflow fields (decision / bookmarked / notes)
+share that row and are partial-updated through the same
+`upsert_recruiter_decision` service so a Bookmark toggle never blows
+away a Note, and vice versa.
 """
 from typing import Optional
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth import get_current_recruiter
-from app.models.schemas import RecruiterCandidateListResponse
-from app.services.recruiter import RankFilters, rank_candidates
+from app.models.schemas import (
+    RecruiterBookmarkUpdate,
+    RecruiterCandidateListResponse,
+    RecruiterDecisionRow,
+    RecruiterDecisionUpdate,
+    RecruiterNotesUpdate,
+)
+from app.services.recruiter import (
+    RankFilters,
+    candidate_exists,
+    rank_candidates,
+    upsert_recruiter_decision,
+)
 from app.supabase_client import get_supabase
 
 router = APIRouter()
@@ -64,3 +80,75 @@ async def list_candidates(
         return rank_candidates(get_supabase(), user.id, filters)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+def _ensure_candidate(supabase, candidate_id: UUID) -> None:
+    """Surface 404 for stale candidate ids before the upsert hits a FK
+    violation. Keeps the API error contract clean (404 vs 500)."""
+    if not candidate_exists(supabase, str(candidate_id)):
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+
+def _to_row(row: dict, candidate_id: UUID) -> RecruiterDecisionRow:
+    return RecruiterDecisionRow(
+        candidate_id=candidate_id,
+        decision=row.get("decision", "undecided"),
+        bookmarked=bool(row.get("bookmarked", False)),
+        notes=row.get("notes", "") or "",
+        decided_at=row.get("decided_at"),
+        updated_at=row.get("updated_at"),
+    )
+
+
+@router.put(
+    "/candidates/{candidate_id}/decision",
+    response_model=RecruiterDecisionRow,
+)
+async def set_decision(
+    candidate_id: UUID,
+    body: RecruiterDecisionUpdate,
+    user=Depends(get_current_recruiter),
+):
+    supabase = get_supabase()
+    _ensure_candidate(supabase, candidate_id)
+    try:
+        row = upsert_recruiter_decision(
+            supabase, str(candidate_id), user.id, decision=body.decision
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return _to_row(row, candidate_id)
+
+
+@router.put(
+    "/candidates/{candidate_id}/bookmark",
+    response_model=RecruiterDecisionRow,
+)
+async def set_bookmark(
+    candidate_id: UUID,
+    body: RecruiterBookmarkUpdate,
+    user=Depends(get_current_recruiter),
+):
+    supabase = get_supabase()
+    _ensure_candidate(supabase, candidate_id)
+    row = upsert_recruiter_decision(
+        supabase, str(candidate_id), user.id, bookmarked=body.bookmarked
+    )
+    return _to_row(row, candidate_id)
+
+
+@router.put(
+    "/candidates/{candidate_id}/notes",
+    response_model=RecruiterDecisionRow,
+)
+async def set_notes(
+    candidate_id: UUID,
+    body: RecruiterNotesUpdate,
+    user=Depends(get_current_recruiter),
+):
+    supabase = get_supabase()
+    _ensure_candidate(supabase, candidate_id)
+    row = upsert_recruiter_decision(
+        supabase, str(candidate_id), user.id, notes=body.notes
+    )
+    return _to_row(row, candidate_id)

@@ -210,6 +210,15 @@ export interface AdminUserDetail {
 
 export type RecruiterDecision = 'shortlisted' | 'rejected' | 'undecided';
 
+export interface RecruiterDecisionRow {
+  candidate_id: string;
+  decision: RecruiterDecision;
+  bookmarked: boolean;
+  notes: string;
+  decided_at: string | null;
+  updated_at: string | null;
+}
+
 export interface RecruiterCandidate {
   candidate_id: string;
   name: string;

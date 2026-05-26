@@ -241,7 +241,11 @@ Modified files:
 
 ### PR 4 — Recruiter workflow write endpoints + UI actions (Shortlist/Reject/Bookmark/Notes)
 
-**Status:** Not started. Depends on PR 3.
+**Status:** Code complete 2026-05-26 (commit pending). 14 new pytest
+cases on upsert semantics (partial-update isolation, terminal
+decided_at stamping, undecided clears it). tsc clean. Browser walk
+pending — needs migration 003 applied + a role='recruiter' profile +
+a candidate with integrity_warnings > 0 to exercise the B2 dialog.
 
 **Scope:** backend + frontend.
 

@@ -7,6 +7,8 @@ import type {
   AdminOverview,
   AdminUserDetail,
   Profile,
+  RecruiterDecision,
+  RecruiterDecisionRow,
   RecruiterListParams,
   RecruiterListResponse,
 } from '../types';
@@ -161,4 +163,22 @@ export const recruiterApi = {
       `/recruiter/candidates${query ? `?${query}` : ''}`,
     );
   },
+
+  setDecision: (candidateId: string, decision: RecruiterDecision) =>
+    fetchJson<RecruiterDecisionRow>(
+      `/recruiter/candidates/${candidateId}/decision`,
+      { method: 'PUT', body: JSON.stringify({ decision }) },
+    ),
+
+  setBookmark: (candidateId: string, bookmarked: boolean) =>
+    fetchJson<RecruiterDecisionRow>(
+      `/recruiter/candidates/${candidateId}/bookmark`,
+      { method: 'PUT', body: JSON.stringify({ bookmarked }) },
+    ),
+
+  setNotes: (candidateId: string, notes: string) =>
+    fetchJson<RecruiterDecisionRow>(
+      `/recruiter/candidates/${candidateId}/notes`,
+      { method: 'PUT', body: JSON.stringify({ notes }) },
+    ),
 };

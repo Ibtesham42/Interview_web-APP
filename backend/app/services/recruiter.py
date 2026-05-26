@@ -20,12 +20,18 @@ Recruiter is actually looking at.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from app.services.interview_orchestrator import (
     recommendation_for,
     score_interviews_bulk,
 )
+
+
+# Terminal decisions stamp `decided_at`; reverting to 'undecided' clears it.
+TERMINAL_DECISIONS = {"shortlisted", "rejected"}
+WRITABLE_DECISIONS = {"shortlisted", "rejected", "undecided"}
 
 
 VALID_SORTS = {
@@ -345,3 +351,102 @@ def rank_candidates(supabase, recruiter_id: str, filters: RankFilters) -> Dict[s
         "total_count": total_count,
         "formula_mixed": formula_mixed,
     }
+
+
+def candidate_exists(supabase, candidate_id: str) -> bool:
+    """Used by the write endpoints to surface a clean 404 rather than a
+    raw Postgres FK violation when a stale candidate id slips through.
+    """
+    rows = (
+        supabase.table("candidates")
+        .select("id")
+        .eq("id", candidate_id)
+        .execute()
+        .data
+        or []
+    )
+    return bool(rows)
+
+
+def upsert_recruiter_decision(
+    supabase,
+    candidate_id: str,
+    recruiter_id: str,
+    *,
+    decision: Optional[str] = None,
+    bookmarked: Optional[bool] = None,
+    notes: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Partial-update the (candidate_id, recruiter_id) workflow row.
+
+    Three independent write endpoints (decision / bookmark / notes) all
+    funnel here so the upsert semantics live in one place:
+
+    - Each named field is updated only when its argument is non-None;
+      `setBookmark` cannot accidentally clear Notes, and so on.
+    - Setting `decision` to a terminal value stamps `decided_at = now`.
+      Reverting to `undecided` clears `decided_at` so the funnel
+      analytics in PR 6 do not double-count a Candidate who was
+      shortlisted then un-shortlisted.
+    - On insert, every column gets a sensible default — same shape the
+      migration's DEFAULTs would produce, but stamped here so the
+      service is testable without round-tripping to a real DB.
+
+    Returns the upserted row as it now sits.
+    """
+    if decision is not None and decision not in WRITABLE_DECISIONS:
+        raise ValueError(f"invalid decision '{decision}'")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    existing = (
+        supabase.table("recruiter_decisions")
+        .select("*")
+        .eq("candidate_id", candidate_id)
+        .eq("recruiter_id", recruiter_id)
+        .execute()
+        .data
+        or []
+    )
+
+    if existing:
+        update_payload: Dict[str, Any] = {"updated_at": now_iso}
+        if decision is not None:
+            update_payload["decision"] = decision
+            update_payload["decided_at"] = (
+                now_iso if decision in TERMINAL_DECISIONS else None
+            )
+        if bookmarked is not None:
+            update_payload["bookmarked"] = bookmarked
+        if notes is not None:
+            update_payload["notes"] = notes
+
+        result = (
+            supabase.table("recruiter_decisions")
+            .update(update_payload)
+            .eq("id", existing[0]["id"])
+            .execute()
+        )
+        rows = result.data or []
+        # Some Supabase configurations return [] from .update() — fall
+        # back to merging the payload onto the prior row so the API
+        # response stays consistent regardless.
+        return rows[0] if rows else {**existing[0], **update_payload}
+
+    insert_payload: Dict[str, Any] = {
+        "candidate_id": candidate_id,
+        "recruiter_id": recruiter_id,
+        "decision": decision or "undecided",
+        "bookmarked": bool(bookmarked) if bookmarked is not None else False,
+        "notes": notes if notes is not None else "",
+    }
+    if decision in TERMINAL_DECISIONS:
+        insert_payload["decided_at"] = now_iso
+
+    result = (
+        supabase.table("recruiter_decisions")
+        .insert(insert_payload)
+        .execute()
+    )
+    rows = result.data or []
+    return rows[0] if rows else insert_payload
