@@ -168,7 +168,10 @@ alter table public.recruiter_decisions enable row level security;
 
 ### PR 2 — Backend recruiter router + list endpoint
 
-**Status:** Not started. Depends on PR 1.
+**Status:** Code complete 2026-05-26 (commit pending). 33 new pytest
+cases cover filter validation, sort, pagination edges, and
+`formula_mixed`. Manual JWT walk pending against a Supabase with
+migration 003 applied.
 
 **Scope:** backend only.
 

@@ -107,6 +107,42 @@ class MLQuestionResponse(MLQuestionBase):
         from_attributes = True
 
 
+class RecruiterCandidateRow(BaseModel):
+    """One Candidate as seen on the Recruiter dashboard list.
+
+    Aggregates candidate-level facts (name, field, signup date) with
+    interview-derived signals (best score, integrity warnings) and the
+    current Recruiter's workflow state for this Candidate (decision,
+    bookmarked).
+    """
+    candidate_id: UUID
+    name: str
+    email: Optional[str] = None
+    field_specialization: Optional[str] = "general"
+    created_at: Optional[datetime] = None
+    interview_count: int = 0
+    completed_count: int = 0
+    final_score: float = 0.0
+    recommendation: str = ""
+    latest_interview_at: Optional[datetime] = None
+    integrity_warnings: int = 0
+    decision: str = "undecided"
+    bookmarked: bool = False
+    notes: str = ""
+
+
+class RecruiterCandidateListResponse(BaseModel):
+    items: List[RecruiterCandidateRow]
+    page: int
+    page_size: int
+    total_count: int
+    # True when the page mixes layer-aware (post-Matryoshka) and legacy
+    # formula interviews — see grill F5 in RECRUITER_ROLLOUT.md. The UI
+    # renders a one-line advisory in that case so a Recruiter understands
+    # the score column compares two slightly different formulas.
+    formula_mixed: bool = False
+
+
 class FinalReportResponse(BaseModel):
     interview_id: UUID
     candidate_name: str

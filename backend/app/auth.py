@@ -46,23 +46,55 @@ def get_current_user(authorization: str = Header(None)):
     return user
 
 
+def _fetch_role(user_id: str) -> str | None:
+    """Read the role for a given user from the `profiles` table.
+
+    Returns None if the profile row is missing or the lookup fails — callers
+    decide how to map that to an HTTP response.
+    """
+    supabase = get_supabase()
+    try:
+        result = supabase.table("profiles").select("role").eq("id", user_id).execute()
+    except Exception:
+        return None
+    return result.data[0].get("role") if result.data else None
+
+
 def get_current_admin(user=Depends(get_current_user)):
     """FastAPI dependency: require an authenticated user with the 'admin' role.
 
     Raises 403 for non-admin users. The role lives on the `profiles` table.
     """
-    supabase = get_supabase()
-    try:
-        result = supabase.table("profiles").select("role").eq("id", user.id).execute()
-    except Exception:
+    role = _fetch_role(user.id)
+    if role is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Could not verify account role",
         )
-    role = result.data[0].get("role") if result.data else None
     if role != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",
+        )
+    return user
+
+
+def get_current_recruiter(user=Depends(get_current_user)):
+    """FastAPI dependency: require an authenticated user with the 'recruiter'
+    or 'admin' role.
+
+    Per the B1 access matrix (RECRUITER_ROLLOUT.md), Admins inherit Recruiter
+    capabilities additively — both roles pass this gate.
+    """
+    role = _fetch_role(user.id)
+    if role is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Could not verify account role",
+        )
+    if role not in ("recruiter", "admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Recruiter access required",
         )
     return user

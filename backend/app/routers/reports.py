@@ -11,16 +11,15 @@ router = APIRouter()
 
 
 def _authorize_report_access(interview_id: UUID, user) -> None:
-    """Allow the report to be read only by its owner or an admin.
+    """Allow the report to be read only by its owner, an admin, or a recruiter.
 
     Before rollout PR 0 (recruiter rollout, 2026-05-26) these endpoints
     were UNAUTHENTICATED — anyone holding an interview_id UUID could pull
     a candidate's full report including the transcript. This gate closes
     that leak.
 
-    The 'recruiter' role arm is intentionally absent here; it joins in
-    rollout PR 2 when the role is actually populated in the profiles
-    table (see RECRUITER_ROLLOUT.md).
+    The 'recruiter' arm was added in rollout PR 2 per the B1 access matrix
+    (Recruiters need report read for the candidate-detail view).
     """
     supabase = get_supabase()
 
@@ -36,12 +35,12 @@ def _authorize_report_access(interview_id: UUID, user) -> None:
     if owner_id == user.id:
         return
 
-    # Non-owner: must be admin.
+    # Non-owner: must be admin or recruiter.
     profile_resp = supabase.table("profiles").select("role").eq(
         "id", user.id
     ).execute()
     role = profile_resp.data[0].get("role") if profile_resp.data else None
-    if role != "admin":
+    if role not in ("admin", "recruiter"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
 

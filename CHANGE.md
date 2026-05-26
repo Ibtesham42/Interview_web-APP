@@ -23,6 +23,105 @@
 
 ---
 
+## 26/05/2026 — Recruiter rollout PR 2 · Backend recruiter router + list endpoint
+Type: Feature
+
+Read-only recruiter list endpoint behind a role gate. Backs the Phase B
+recruiter dashboard (PR 3). Write endpoints (Shortlist / Reject /
+Bookmark / Notes) come in PR 4.
+
+What changed:
+
+New `backend/app/services/recruiter.py` — the hybrid wrapper from grill
+A1 (RECRUITER_ROLLOUT.md):
+- SQL `where` for the cheap, indexable filters (field exact match,
+  candidate created_at range, multi-word AND-of-ORs ILIKE search across
+  name / field_specialization / resume_text per grill A2).
+- One bulk score pass via the pinned `score_interviews_bulk` (ADR 0001;
+  no modification).
+- One additional bulk query per request for integrity-event counts
+  (mirrors the admin router pattern), one for this Recruiter's
+  `recruiter_decisions` rows, and one extra bulk query for the
+  page-only `formula_mixed` (grill F5) — which checks whether any
+  `evaluations.details.layer` is present in the completed interviews
+  on the page.
+- Python-side filters for score range, integrity (any / with /
+  without), and decision (incl. independent `bookmarked` selector).
+- Sort + paginate with grill A3 defaults (page=1, page_size=50, max=100).
+  `created_at` nulls always sort to the bottom regardless of direction —
+  the partition-then-sort trick avoids the inversion bug a single key
+  with a sentinel suffers under `reverse=True`.
+
+New `backend/app/routers/recruiter.py` — `GET /api/recruiter/candidates`.
+Gated by the new `get_current_recruiter` dependency. Query params are
+validated via `RankFilters.normalise`, illegal values surface as 400.
+
+Modified `backend/app/auth.py`:
+- Extracted `_fetch_role(user_id)` helper so both admin and recruiter
+  gates share one Supabase round-trip pattern.
+- Added `get_current_recruiter` — gate is `role in ('recruiter',
+  'admin')` per the B1 access matrix (Admins inherit Recruiter
+  capabilities additively).
+
+Modified `backend/app/routers/reports.py` — extended PR 0's
+`_authorize_report_access` to allow `role in ('admin', 'recruiter')` for
+non-owner reads. The recruiter detail view (PR 5) reuses this gate.
+
+Modified `backend/app/models/schemas.py` — new
+`RecruiterCandidateRow` and `RecruiterCandidateListResponse` (items,
+page, page_size, total_count, formula_mixed).
+
+Modified `backend/app/main.py` — registered the new router at
+`/api/recruiter`.
+
+New `backend/tests/test_recruiter_service.py` — 33 tests covering:
+filter validation (sort/order/decision/integrity reject illegal
+values), Python-side filters (score range, integrity, decision incl.
+bookmarked-independent-of-decision), sort key behaviour (final_score,
+name, decision rank, created_at None-sorts-last regardless of
+direction), pagination edges (page beyond range still reports
+total_count), formula_mixed (true only when the page mixes layer-aware
++ legacy completed interviews; in-progress runs are excluded). Faked
+Supabase routes per `.table(name)` so multi-table queries can be
+exercised in pure-unit form.
+
+Verification:
+- `python -m pytest -q` → 105 passed (was 72; +33 new).
+- `python -c "from app.main import app"` imports cleanly; route
+  `/api/recruiter/candidates` registers.
+- Manual JWT walk (recruiter / admin / user) pending against a Supabase
+  with migration 003 applied and a 'recruiter' profile populated.
+
+Affected files: `backend/app/services/recruiter.py` (new, ~270 lines),
+`backend/app/routers/recruiter.py` (new, ~70 lines),
+`backend/app/auth.py` (refactor + `get_current_recruiter`, ~25 net),
+`backend/app/routers/reports.py` (gate widened, +1 line of intent),
+`backend/app/models/schemas.py` (+30 lines),
+`backend/app/main.py` (+2 lines), `backend/tests/test_recruiter_service.py`
+(new, ~430 lines).
+
+Architectural impact: First Recruiter-facing surface in the backend.
+Composes the pinned scoring helpers (no modification per CLAUDE.md
+engineering rule and ADR 0001). The `_authorize_report_access` widening
+is the one place the recruiter rollout extends an existing security
+gate — done deliberately here rather than in PR 5 so the report
+endpoint already accepts Recruiter JWTs when the detail page lands.
+
+Future considerations:
+- PR 3 (frontend list UI) and PR 4 (write endpoints) consume this.
+- PR 4 introduces `upsert_recruiter_decision` in the same service file.
+- Scale ceiling per grill A1/A2: ~1000 candidates. Upgrade triggers
+  (materialised `final_score` column, pg_trgm + GIN search index) are
+  documented in RECRUITER_ROLLOUT.md "After the rollout — known
+  follow-up triggers".
+- Search input is currently passed through to `or_(...)` ILIKE unescaped
+  for the per-token pattern. Tokens containing PostgREST or-syntax
+  reserved characters (commas, parentheses) could cause a 400 from
+  Supabase. Realistic recruiter searches do not contain these; if it
+  ever bites, sanitize tokens at the service boundary.
+
+---
+
 ## 26/05/2026 — Recruiter rollout PR 1 · Migration 003 (recruiter role + recruiter_decisions table)
 Type: Feature
 
