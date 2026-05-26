@@ -143,6 +143,56 @@ class RecruiterNotesUpdate(BaseModel):
     notes: str = Field(default="", max_length=4000)
 
 
+class RecruiterCandidateInterview(BaseModel):
+    interview_id: UUID
+    status: str
+    completed: bool
+    created_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    score: float
+    questions: int
+    recommendation: str
+    integrity_warnings: int
+    integrity_terminated: bool
+
+
+class RecruiterCandidateHeader(BaseModel):
+    id: UUID
+    name: str
+    email: Optional[str] = None
+    field_specialization: Optional[str] = None
+    created_at: Optional[datetime] = None
+    resume_excerpt: Optional[str] = None
+
+
+class RecruiterDecisionAttribution(BaseModel):
+    recruiter_id: UUID
+    recruiter_name: str
+    decision: str
+    bookmarked: bool
+    decided_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    is_you: bool
+
+
+class RecruiterNotesEntry(BaseModel):
+    recruiter_id: UUID
+    recruiter_name: str
+    notes: str
+    updated_at: Optional[datetime] = None
+
+
+class RecruiterCandidateDetailResponse(BaseModel):
+    candidate: RecruiterCandidateHeader
+    interviews: List[RecruiterCandidateInterview]
+    decisions: List[RecruiterDecisionAttribution]
+    my_notes: str = ""
+    # Only populated for Admin viewers per the B1 access matrix. `None` for
+    # Recruiters; the client uses that as a "you cannot see other notes"
+    # signal without round-tripping a separate role check.
+    all_notes: Optional[List[RecruiterNotesEntry]] = None
+
+
 class RecruiterDecisionRow(BaseModel):
     """Workflow state for one (Candidate, Recruiter) pair after an upsert."""
     candidate_id: UUID

@@ -3253,3 +3253,46 @@ a.iv-row:hover {
 @media (prefers-reduced-motion: reduce) {
   .modal-backdrop { animation: none; }
 }
+
+/* ========================================
+   RECRUITER CANDIDATE DETAIL
+   ======================================== */
+.recruiter-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  flex-wrap: wrap;
+}
+
+.recruiter-notes-detail .recruiter-notes-textarea {
+  background: var(--bg-secondary);
+}
+
+.all-notes-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  padding: var(--space-md);
+}
+
+.all-notes-entry {
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+
+.all-notes-meta {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-xs);
+}
+
+.all-notes-body {
+  margin: 0;
+  white-space: pre-wrap;
+  color: var(--text-secondary);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}

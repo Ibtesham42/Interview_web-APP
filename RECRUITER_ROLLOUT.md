@@ -275,7 +275,10 @@ Frontend:
 
 ### PR 5 — Recruiter candidate detail page
 
-**Status:** Not started. Depends on PR 4.
+**Status:** Code complete 2026-05-26 (commit pending). 14 new pytest
+cases pin the B1 access matrix (Recruiter Notes private; Admin sees
+all_notes; Decisions always visible with attribution). tsc clean.
+Closes the broken row navigation reported during PR 4 verification.
 
 **Scope:** backend + frontend.
 

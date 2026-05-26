@@ -23,6 +23,145 @@
 
 ---
 
+## 26/05/2026 — Recruiter rollout PR 5 · Candidate detail page (+ B1 access enforcement)
+Type: Feature
+
+The per-Candidate detail view a Recruiter lands on after clicking a
+row in the dashboard. Closes the broken navigation reported during
+PR 4 verification: row click was going to `/recruiter/candidates/:id`
+but no route existed, so the catch-all sent the user back home.
+
+Backend:
+
+`backend/app/services/recruiter.py` — new `get_candidate_detail`:
+- Pulls the Candidate header, every interview (scored via the pinned
+  `score_interviews_bulk`, with integrity counts attached via the
+  same bulk pattern as the list endpoint), every Decision row (with
+  author attribution), the viewer's own Notes (always), and — only
+  for Admins — every Recruiter's Notes (`all_notes`).
+- Returns None for an unknown candidate so the router maps to 404
+  without leaking existence.
+- Resume excerpt is truncated to 1500 chars — the detail view is a
+  preview, not the full document. Recruiters who need the full text
+  click through to the interview report (now auth-gated since PR 0
+  and recruiter-allowed since PR 2).
+- Author name resolution is a single bulk profiles query keyed on
+  the distinct recruiter_ids seen on the candidate.
+
+`backend/app/routers/recruiter.py` — new
+`GET /api/recruiter/candidates/{candidate_id}`. Gated by
+`get_current_recruiter`. The viewer's role is read via `_fetch_role`
+in the endpoint (rather than threading role through the auth
+dependency) so the existing routes don't change shape.
+
+`backend/app/models/schemas.py` — new response shapes:
+`RecruiterCandidateHeader`, `RecruiterCandidateInterview`,
+`RecruiterDecisionAttribution`, `RecruiterNotesEntry`,
+`RecruiterCandidateDetailResponse`. The discriminator that drives
+the access-matrix UI is `all_notes: Optional[List[...]]` — `None`
+for Recruiters, a (possibly empty) list for Admins.
+
+`backend/tests/test_recruiter_detail.py` — 14 new pytest cases pinning
+the B1 access matrix:
+- Missing candidate → None (→ 404).
+- Resume excerpt truncates at 1500 chars; null when empty.
+- Interview scoring + integrity counts attach correctly.
+- Recruiter sees only their own Notes (`all_notes is None`).
+- Recruiter still sees every Decision row with attribution
+  (accountability is preserved by attribution, not by hiding rows).
+- `is_you` flag on Decision rows reflects the viewer.
+- Admin sees every Recruiter's Notes in `all_notes`.
+- An Admin who hasn't decided sees their own `my_notes` as empty
+  but `all_notes` populated.
+- Author name falls back: full_name → email → "Recruiter" label.
+- Brand-new candidate with no decisions: clean empty state, with
+  `all_notes` being `[]` for Admins and `None` for Recruiters
+  (the role signal must survive the empty case).
+
+Frontend:
+
+`frontend/src/components/recruiter/RecruiterCandidateDetail.tsx`
+(new, route `/recruiter/candidates/:candidateId`):
+- Header: back link → Candidates, name (`<h1>` unclassed per
+  ADR 0003), one-line meta (field · email · joined date), and the
+  per-actor action group (Shortlist / Reject / Bookmark) — mirrors
+  the dashboard's Actions cell so the muscle memory transfers.
+- Stat grid: interviews / completed / integrity warnings /
+  recruiter decisions count.
+- Interview history list reuses the `iv-list` pattern from
+  AdminUserDetail — completed rows link to `/report/:id`, in-progress
+  rows render as inert blocks.
+- Decisions panel: every Recruiter's Decision row with attribution.
+  Current viewer is flagged with " (you)" inline. Bookmark star
+  shows when set.
+- "Your notes" panel: textarea (4000 char cap) + Save (disabled
+  when clean). Saving refetches so the canonical state and the
+  draft re-converge.
+- Admin-only "All recruiters' notes" panel — only renders when
+  `all_notes` is a non-empty array. The Recruiter view never even
+  considers it (`null` short-circuits).
+- B2 confirm dialog reused from the dashboard: shortlisting from
+  the detail view also pauses if `integrity_warnings > 0`.
+- Refetch-after-write (rather than dashboard's optimistic-with-
+  rollback): this view is single-Candidate, the surface area is
+  small, and an actual server round-trip costs the same; the
+  consistency benefit outweighs the latency feel.
+
+`frontend/src/types/index.ts` — 5 new types: header, interview,
+decision attribution, notes entry, detail response.
+
+`frontend/src/services/api.ts` — `recruiterApi.detail(candidateId)`.
+
+`frontend/src/App.tsx` — new gated route
+`/recruiter/candidates/:candidateId`. The catch-all-to-home behaviour
+that previously trapped the user is now bypassed by an actual route.
+
+`frontend/src/index.css` — RECRUITER CANDIDATE DETAIL section: header
+action group, notes textarea variant, all-notes list + entry.
+
+Verification:
+- `python -m pytest -q` → 133 passed (was 119; +14 new detail tests).
+- `npx tsc --noEmit` clean.
+- Bug reported in this thread (admin clicking a row showed the list
+  again) is now structurally impossible — there is a route to land on.
+- Browser walk pending: needs migration 003 applied; a
+  `role='recruiter'` profile; ideally a Candidate with multiple
+  Recruiter decisions so the Decisions panel attribution is visible.
+
+Affected files: `backend/app/services/recruiter.py` (+155),
+`backend/app/routers/recruiter.py` (+22),
+`backend/app/models/schemas.py` (+48),
+`backend/tests/test_recruiter_detail.py` (new, ~240 lines),
+`frontend/src/components/recruiter/RecruiterCandidateDetail.tsx`
+(new, ~340 lines),
+`frontend/src/services/api.ts` (+3),
+`frontend/src/types/index.ts` (+44),
+`frontend/src/App.tsx` (+2),
+`frontend/src/index.css` (+45).
+
+Architectural impact: B1 access matrix now has a concrete UI
+embodiment (Recruiter ↔ Recruiter Notes privacy; Admin override).
+The `all_notes: list | null` discriminator is a small but durable
+contract: the frontend never has to ask "am I an admin?" for the
+notes view — it asks the *data*, which is single-source-of-truth.
+PR 6 (analytics) can reuse `get_candidate_detail` for its
+per-candidate drill-down without re-deriving the access shape.
+
+Future considerations:
+- The interview history list uses the same `iv-list` patterns as
+  AdminUserDetail. If those two views ever diverge in real UX
+  ways, lift the inner row to a shared component; not yet.
+- Resume excerpt is currently a simple `[:1500]` slice. If
+  Recruiters complain about ugly cut-offs mid-word, slice on the
+  nearest sentence boundary — but cheap to defer.
+- An "edit decision" history (who shortlisted, then un-shortlisted,
+  and when) is intentionally NOT surfaced in this PR; it depends
+  on the `recruiter_decision_history` table that grill F3 deferred.
+  When (if) that table lands, the Decisions panel gains a "history"
+  expand.
+
+---
+
 ## 26/05/2026 — Recruiter rollout PR 4 · Workflow write endpoints + UI actions
 Type: Feature
 

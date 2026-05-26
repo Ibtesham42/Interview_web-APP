@@ -353,6 +353,155 @@ def rank_candidates(supabase, recruiter_id: str, filters: RankFilters) -> Dict[s
     }
 
 
+def get_candidate_detail(
+    supabase, candidate_id: str, viewer_id: str, viewer_role: str
+) -> Optional[Dict[str, Any]]:
+    """Per-Candidate detail view for the Recruiter dashboard.
+
+    Returns the candidate header, all interviews (scored + integrity counts
+    via the same bulk path the list uses), every Decision row (with author
+    attribution), the viewer's own Notes, and — only for Admins per B1 —
+    every Recruiter's Notes (`all_notes`).
+
+    Returns None if the candidate does not exist so the router can map to a
+    clean 404 without leaking existence.
+
+    The list endpoint shows one row per Candidate; here we surface the
+    underlying data without re-deriving the displayed score. Recruiters
+    open the detail page to *judge*, not to filter — so the rows below are
+    intentionally rich rather than denormalised summaries.
+    """
+    cand_rows = (
+        supabase.table("candidates")
+        .select("id,name,email,field_specialization,created_at,resume_text")
+        .eq("id", candidate_id)
+        .execute()
+        .data
+        or []
+    )
+    if not cand_rows:
+        return None
+    candidate = cand_rows[0]
+
+    interviews_raw = (
+        supabase.table("interviews")
+        .select("id,status,created_at,completed_at")
+        .eq("candidate_id", candidate_id)
+        .order("created_at", desc=True)
+        .execute()
+        .data
+        or []
+    )
+    interview_ids = [iv["id"] for iv in interviews_raw]
+    iv_scores = score_interviews_bulk(supabase, interview_ids)
+
+    integrity_counts: Dict[str, int] = {}
+    if interview_ids:
+        try:
+            rows = (
+                supabase.table("interview_integrity_events")
+                .select("interview_id")
+                .in_("interview_id", interview_ids)
+                .execute()
+                .data
+                or []
+            )
+            for row in rows:
+                iid = row.get("interview_id")
+                if iid:
+                    integrity_counts[iid] = integrity_counts.get(iid, 0) + 1
+        except Exception:
+            integrity_counts = {}
+
+    interviews: List[Dict[str, Any]] = []
+    for iv in interviews_raw:
+        scored = iv_scores.get(iv["id"], {"score": 0, "questions": 0})
+        completed = iv.get("status") == "completed"
+        interviews.append({
+            "interview_id": iv["id"],
+            "status": iv.get("status", ""),
+            "completed": completed,
+            "created_at": iv.get("created_at"),
+            "completed_at": iv.get("completed_at"),
+            "score": scored["score"],
+            "questions": scored["questions"],
+            "recommendation": recommendation_for(scored["score"]) if completed else "",
+            "integrity_warnings": integrity_counts.get(iv["id"], 0),
+            "integrity_terminated": iv.get("status") == "terminated_integrity",
+        })
+
+    # All Decisions on this Candidate, with author attribution. Both
+    # Admins and Recruiters can read this list per B1 — accountability
+    # depends on the recruiter_id stamp, never anonymised.
+    decision_rows = (
+        supabase.table("recruiter_decisions")
+        .select("recruiter_id,decision,bookmarked,notes,decided_at,updated_at")
+        .eq("candidate_id", candidate_id)
+        .execute()
+        .data
+        or []
+    )
+
+    # Resolve author names in one bulk profiles query.
+    recruiter_ids = list({row["recruiter_id"] for row in decision_rows})
+    authors: Dict[str, Dict[str, Any]] = {}
+    if recruiter_ids:
+        profile_rows = (
+            supabase.table("profiles")
+            .select("id,full_name,email")
+            .in_("id", recruiter_ids)
+            .execute()
+            .data
+            or []
+        )
+        authors = {p["id"]: p for p in profile_rows}
+
+    decisions: List[Dict[str, Any]] = []
+    my_notes = ""
+    all_notes: List[Dict[str, Any]] = []
+    for row in decision_rows:
+        recruiter_id = row["recruiter_id"]
+        author = authors.get(recruiter_id, {})
+        decisions.append({
+            "recruiter_id": recruiter_id,
+            "recruiter_name": author.get("full_name") or author.get("email") or "Recruiter",
+            "decision": row.get("decision", "undecided"),
+            "bookmarked": bool(row.get("bookmarked", False)),
+            "decided_at": row.get("decided_at"),
+            "updated_at": row.get("updated_at"),
+            "is_you": recruiter_id == viewer_id,
+        })
+        if recruiter_id == viewer_id:
+            my_notes = row.get("notes", "") or ""
+        if viewer_role == "admin":
+            all_notes.append({
+                "recruiter_id": recruiter_id,
+                "recruiter_name": author.get("full_name") or author.get("email") or "Recruiter",
+                "notes": row.get("notes", "") or "",
+                "updated_at": row.get("updated_at"),
+            })
+
+    return {
+        "candidate": {
+            "id": candidate["id"],
+            "name": candidate.get("name", "Candidate"),
+            "email": candidate.get("email"),
+            "field_specialization": candidate.get("field_specialization"),
+            "created_at": candidate.get("created_at"),
+            # Resume text intentionally truncated — the detail view shows a
+            # preview, not the full document. Recruiters who need the full
+            # text can request the interview report.
+            "resume_excerpt": (candidate.get("resume_text") or "")[:1500] or None,
+        },
+        "interviews": interviews,
+        "decisions": decisions,
+        "my_notes": my_notes,
+        # Only present for admins per B1. None (not []) so the frontend can
+        # detect role without checking the viewer's profile separately.
+        "all_notes": all_notes if viewer_role == "admin" else None,
+    }
+
+
 def candidate_exists(supabase, candidate_id: str) -> bool:
     """Used by the write endpoints to surface a clean 404 rather than a
     raw Postgres FK violation when a stale candidate id slips through.

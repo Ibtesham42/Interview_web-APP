@@ -236,6 +236,55 @@ export interface RecruiterCandidate {
   notes: string;
 }
 
+export interface RecruiterCandidateHeader {
+  id: string;
+  name: string;
+  email: string | null;
+  field_specialization: string | null;
+  created_at: string | null;
+  resume_excerpt: string | null;
+}
+
+export interface RecruiterCandidateInterview {
+  interview_id: string;
+  status: string;
+  completed: boolean;
+  created_at: string | null;
+  completed_at: string | null;
+  score: number;
+  questions: number;
+  recommendation: string;
+  integrity_warnings: number;
+  integrity_terminated: boolean;
+}
+
+export interface RecruiterDecisionAttribution {
+  recruiter_id: string;
+  recruiter_name: string;
+  decision: RecruiterDecision;
+  bookmarked: boolean;
+  decided_at: string | null;
+  updated_at: string | null;
+  is_you: boolean;
+}
+
+export interface RecruiterNotesEntry {
+  recruiter_id: string;
+  recruiter_name: string;
+  notes: string;
+  updated_at: string | null;
+}
+
+export interface RecruiterCandidateDetail {
+  candidate: RecruiterCandidateHeader;
+  interviews: RecruiterCandidateInterview[];
+  decisions: RecruiterDecisionAttribution[];
+  my_notes: string;
+  // Admin-only per the B1 matrix. `null` for Recruiters - the client
+  // uses null vs [] as the role signal without a separate profile fetch.
+  all_notes: RecruiterNotesEntry[] | null;
+}
+
 export interface RecruiterListResponse {
   items: RecruiterCandidate[];
   page: number;

@@ -12,6 +12,7 @@ import { Report } from './components/Report';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 import { AdminUserDetail } from './components/admin/AdminUserDetail';
 import { RecruiterDashboard } from './components/recruiter/RecruiterDashboard';
+import { RecruiterCandidateDetail } from './components/recruiter/RecruiterCandidateDetail';
 import type { UserRole } from './types';
 
 function Header() {
@@ -143,6 +144,7 @@ function App() {
 
           {/* Recruiter (Admins inherit per the B1 access matrix) */}
           <Route path="/recruiter" element={protectedShell(<RecruiterDashboard />, ['recruiter', 'admin'])} />
+          <Route path="/recruiter/candidates/:candidateId" element={protectedShell(<RecruiterCandidateDetail />, ['recruiter', 'admin'])} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

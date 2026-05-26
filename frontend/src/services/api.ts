@@ -7,6 +7,7 @@ import type {
   AdminOverview,
   AdminUserDetail,
   Profile,
+  RecruiterCandidateDetail,
   RecruiterDecision,
   RecruiterDecisionRow,
   RecruiterListParams,
@@ -163,6 +164,9 @@ export const recruiterApi = {
       `/recruiter/candidates${query ? `?${query}` : ''}`,
     );
   },
+
+  detail: (candidateId: string) =>
+    fetchJson<RecruiterCandidateDetail>(`/recruiter/candidates/${candidateId}`),
 
   setDecision: (candidateId: string, decision: RecruiterDecision) =>
     fetchJson<RecruiterDecisionRow>(

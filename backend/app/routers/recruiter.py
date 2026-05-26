@@ -16,9 +16,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.auth import get_current_recruiter
+from app.auth import _fetch_role, get_current_recruiter
 from app.models.schemas import (
     RecruiterBookmarkUpdate,
+    RecruiterCandidateDetailResponse,
     RecruiterCandidateListResponse,
     RecruiterDecisionRow,
     RecruiterDecisionUpdate,
@@ -27,6 +28,7 @@ from app.models.schemas import (
 from app.services.recruiter import (
     RankFilters,
     candidate_exists,
+    get_candidate_detail,
     rank_candidates,
     upsert_recruiter_decision,
 )
@@ -80,6 +82,25 @@ async def list_candidates(
         return rank_candidates(get_supabase(), user.id, filters)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get(
+    "/candidates/{candidate_id}",
+    response_model=RecruiterCandidateDetailResponse,
+)
+async def get_candidate(candidate_id: UUID, user=Depends(get_current_recruiter)):
+    """Per-Candidate detail view. The B1 access matrix is enforced here:
+    Recruiters get only `my_notes`; Admins additionally get `all_notes`
+    with author attribution. Both see every Recruiter's Decision row
+    (accountability is preserved by attribution, not by hiding rows)."""
+    supabase = get_supabase()
+    # Role is read once here rather than threaded through
+    # get_current_recruiter, so the existing endpoints don't change shape.
+    role = _fetch_role(user.id) or "user"
+    detail = get_candidate_detail(supabase, str(candidate_id), user.id, role)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    return detail
 
 
 def _ensure_candidate(supabase, candidate_id: UUID) -> None:
