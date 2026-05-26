@@ -23,6 +23,62 @@
 
 ---
 
+## 26/05/2026 — Recruiter rollout PR 1 · Migration 003 (recruiter role + recruiter_decisions table)
+Type: Feature
+
+Foundational schema migration for the recruiter rollout
+(`RECRUITER_ROLLOUT.md`). Adds the `'recruiter'` role and the
+`recruiter_decisions` table that holds the Recruiter workflow state
+(Decision / Bookmark / Notes) per the F3 grill resolution.
+
+What changed:
+
+New file `backend/app/migrations/003_recruiter.sql`:
+- Widens `profiles.role` CHECK from `('user','admin')` to
+  `('user','admin','recruiter')`. Existing rows unaffected — CHECK is
+  widened, not narrowed. Idempotent via `drop constraint if exists` +
+  re-create.
+- Creates `public.recruiter_decisions` table:
+  - PK `id` (uuid, default gen_random_uuid())
+  - `candidate_id` FK → `candidates(id)` on delete cascade
+  - `recruiter_id` FK → `auth.users(id)` on delete cascade
+  - `decision` text CHECK in (`'shortlisted'`, `'rejected'`,
+    `'undecided'`), default `'undecided'`
+  - `bookmarked` boolean, default false
+  - `notes` text, default `''`
+  - `decided_at` timestamptz (null while undecided)
+  - `created_at`, `updated_at` timestamptz default now()
+  - UNIQUE (candidate_id, recruiter_id) — enforces "one row per
+    Recruiter per Candidate" per the F3 decision-state shape.
+- Three indexes:
+  - `(candidate_id)` — detail view "all Decisions on this candidate".
+  - `(recruiter_id, updated_at desc)` — recruiter's recent activity.
+  - Partial `(decision) where decision <> 'undecided'` — funnel
+    analytics (PR 6) frequently counts shortlisted; undecided is the
+    overwhelming default row and not worth indexing for that query.
+- RLS: enabled, no client policies. Mirrors the `interview_integrity_events`
+  pattern (migration 002) — service-role backend writes; clients are
+  denied by default; ownership enforced at the API layer (PR 4).
+
+Affected files: `backend/app/migrations/003_recruiter.sql` (new),
+`CHANGE.md`.
+
+Architectural impact: First schema migration for the recruiter rollout.
+Strictly additive — no existing table or column touched (CHECK
+constraint widening is not a column change). Existing 'user' and 'admin'
+profile rows continue working unchanged.
+
+Future considerations:
+- PR 2 (backend list endpoint) and PR 4 (write endpoints) consume this
+  schema. PR 4 enforces (recruiter_id == current_user.id) at the API
+  layer for writes; no client-side RLS policy needed because the
+  backend uses the service-role key.
+- A `recruiter_decision_history` audit-log table is intentionally NOT
+  added at MVP per the F3 deferral; revisit when compliance asks for
+  "who decided what when" history.
+
+---
+
 ## 26/05/2026 — Recruiter rollout PR 0 · Auth-gate /reports endpoints (security precursor)
 Type: Fix
 

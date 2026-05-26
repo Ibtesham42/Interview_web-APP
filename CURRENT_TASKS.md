@@ -19,6 +19,17 @@ deferred unless explicitly promoted out of the deferred section.
 
 ---
 
+## Phase exceptions in flight
+
+- **Recruiter / admin candidate management** — bounded phase exception
+  approved 2026-05-26. 12 grill decisions settled; 7-PR rollout plan
+  in [`RECRUITER_ROLLOUT.md`](RECRUITER_ROLLOUT.md). New ADR 0004
+  (Hiring Funnel terminates at Shortlist). CONTEXT.md extended with
+  10 new domain terms (Candidate, Admin, Recruiter, Decision,
+  Shortlist, Reject, Bookmark, Recruiter Note, Hiring Funnel, Funnel
+  Stage). No code shipped yet — pick up at PR 0 (auth-gate report
+  endpoints, the security precursor).
+
 ## Now — pick from these
 
 ### Maintainability
