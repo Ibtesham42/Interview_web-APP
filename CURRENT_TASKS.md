@@ -39,7 +39,6 @@ _All items burned down this phase — see "Done" section below._
 
 | Item | Size | Notes |
 |---|---|---|
-| Wrap the synchronous Groq client in a thread executor | M | Currently blocks the single-worker event loop per turn; serialises concurrent interviews. Known scaling cliff above ~5 simultaneous candidates. |
 | Audit `score_interviews_bulk` and admin aggregations for N+1 regressions | S | Invariant #5 ("aggregations are bulk queries") is load-bearing; a one-time read-through is cheap insurance. |
 
 ### Reliability
@@ -358,6 +357,13 @@ visual report back, or just work from this section.
 ## Done in this phase
 
 (Update as items land. Newest at the top.)
+
+- 2026-05-26 — Shipped scaling-safety PR 7: wrap synchronous Groq
+  client (`chat.completions.create` + `audio.transcriptions.create`)
+  in `asyncio.to_thread`. All 17 callsites across orchestrator,
+  resume parser, and voice service now await thin wrappers in
+  `services/groq_async.py`. Concurrent interviews no longer
+  serialise on Groq round-trips. +7 pytest cases (160 total).
 
 - 2026-05-25 — Shipped UI polish C4 (heading scale + typography rhythm).
   Global h1–h4 scale dropped to premium-app sizes (1.75 / 1.375 / 1.125

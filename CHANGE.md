@@ -23,6 +23,104 @@
 
 ---
 
+## 26/05/2026 — PR 7 · Wrap synchronous Groq client in a thread executor (scaling-safety)
+Type: Refactor
+
+Closes the scaling-safety item from `CURRENT_TASKS.md`. The Groq SDK
+is synchronous; every `self.client.chat.completions.create(...)` and
+`self.client.audio.transcriptions.create(...)` was blocking the
+single-worker uvicorn event loop for the duration of the call
+(~1-2s typical, up to 30s on the timeout boundary). Concurrent
+interviews were strictly serialised on Groq calls — candidate B's
+turn waited on candidate A's regardless of what either was doing.
+
+What changed:
+
+New `backend/app/services/groq_async.py` (~50 lines):
+- `acompletion(client, **kwargs)` runs `client.chat.completions.create`
+  via `asyncio.to_thread`.
+- `atranscription(client, **kwargs)` does the same for
+  `client.audio.transcriptions.create`.
+- Exceptions propagate untouched — callers keep their existing
+  try/except surface.
+
+`backend/app/services/interview_orchestrator.py`:
+- All 11 Groq callsites converted (3 in `generate_question`, 1 each
+  in `_derive_field_info`, `_evaluate_background`,
+  `_evaluate_socratic_depth`, `_evaluate_technical`,
+  `_evaluate_behavioral`, `transcribe_audio`,
+  `generate_empathy_nudge`).
+- `_derive_field_info` → `async`; the helpers reaching it
+  (`_resolve_field_info`, `get_interviewer_prompt`) also went async
+  in a contained ripple — both are only called from the two existing
+  async paths (`generate_question`, `_evaluate_technical`).
+
+`backend/app/services/resume_parser.py`:
+- Both `self.client.chat.completions.create` calls (`_parse_with_file_id`,
+  `_parse_text`) converted. Both methods were already `async def`.
+
+`backend/app/services/voice_service.py`:
+- Four converted: two `audio.transcriptions.create`
+  (`transcribe_audio`, `transcribe_with_timestamps`) and two
+  `chat.completions.create` (`generate_empathy_nudge`,
+  `analyze_sentiment_hint`). All already async.
+
+`backend/tests/test_groq_async.py` (new, 7 cases):
+- kwargs forwarded unchanged (chat + audio).
+- Exceptions propagate.
+- Sync call runs on a **different thread** than the event loop
+  (verified via `threading.get_ident()` rather than wall-clock — the
+  defining contract of this PR).
+- Two concurrent acompletions complete in ~one sleep period rather
+  than two (the regression-guard against accidentally removing the
+  thread executor). 180ms threshold leaves headroom for thread-pool
+  spin-up under CI while still catching a serialisation regression.
+
+Verification:
+- `python -c "from app.main import app"` imports cleanly.
+- `python -m pytest -q` → 160 passed (was 153; +7 new).
+- Manual interview walk pending — needs the deployed backend to
+  exercise the realtime pipeline with the new thread-executor path.
+  The orchestrator's invariants are unchanged: turn sequencing is
+  still strictly serial (AI speaks → playback ends → user records →
+  STT → next question). The change is that *between* interviews,
+  the event loop is no longer frozen for the duration of each
+  Groq round-trip.
+
+Affected files: `backend/app/services/groq_async.py` (new),
+`backend/app/services/interview_orchestrator.py` (11 sites + 3
+helper methods async),
+`backend/app/services/resume_parser.py` (2 sites + import),
+`backend/app/services/voice_service.py` (4 sites + import),
+`backend/tests/test_groq_async.py` (new, ~180 lines),
+`CURRENT_TASKS.md` (mark item done).
+
+Architectural impact: The single-worker event loop is no longer the
+serialisation point for concurrent interviews — the worker thread
+pool absorbs the IO wait. Default `asyncio.to_thread` uses the
+default `ThreadPoolExecutor` (max workers = min(32, cpu+4)). At
+Groq's ~1-2s per call, that ceiling is far above any realistic
+concurrent-interview count this project will see in the medium
+term. If we ever feel the upper bound, raise it via
+`loop.set_default_executor(ThreadPoolExecutor(max_workers=N))` in
+`main.py` startup — but that's a tuning knob, not a redesign.
+
+Future considerations:
+- Scope was deliberately limited to IO-bound Groq calls. CPU-bound
+  work in the services (prompt assembly, evaluation parsing) stays
+  on the event loop; moving those to threads would cost more in
+  overhead than they save.
+- If Groq's async SDK ever becomes available and stable, prefer it
+  over `asyncio.to_thread` (one fewer thread hop per call). Until
+  then, the wrappers are the cleanest seam.
+- The realtime pipeline (WebSocket interview session) is untouched
+  per CLAUDE.md ("keep stable, change only when a fix genuinely
+  requires it"). PR 7 only widens what was already async-shaped —
+  it doesn't change turn sequencing, recovery, or the message
+  contract.
+
+---
+
 ## 26/05/2026 — Recruiter rollout PR 6 · Hiring funnel + analytics (closes rollout)
 Type: Feature
 

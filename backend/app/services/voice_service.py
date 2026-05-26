@@ -7,6 +7,7 @@ from typing import Optional, Dict, Any
 import httpx
 import edge_tts
 from app.config import get_settings, get_groq_client
+from app.services.groq_async import acompletion, atranscription
 
 settings = get_settings()
 
@@ -165,12 +166,13 @@ class SpeechToTextService:
         try:
             with open(temp_path, "rb") as audio_file:
                 # Use Whisper-1 with language hint for better accuracy
-                transcript = self.client.audio.transcriptions.create(
+                transcript = await atranscription(
+                    self.client,
                     model="whisper-large-v3",
                     file=audio_file,
                     language="en",
                     response_format="text",
-                    temperature=0.0  # More deterministic output
+                    temperature=0.0,  # More deterministic output
                 )
             # With response_format="text" the SDK returns a plain string,
             # not an object with a `.text` attribute.
@@ -191,13 +193,14 @@ class SpeechToTextService:
 
         try:
             with open(temp_path, "rb") as audio_file:
-                transcript = self.client.audio.transcriptions.create(
+                transcript = await atranscription(
+                    self.client,
                     model="whisper-large-v3",
                     file=audio_file,
                     language="en",
                     response_format="verbose_json",
                     timestamp_granularities=["word"],
-                    temperature=0.0
+                    temperature=0.0,
                 )
             return {
                 "text": transcript.text,
@@ -260,9 +263,10 @@ Generate a brief, professional encouragement message to help them relax.
 Keep it under 15 words. Be warm but professional. Do not be overly enthusiastic.
 """
 
-        response = self.client.chat.completions.create(
+        response = await acompletion(
+            self.client,
             model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "user", "content": prompt}],
         )
 
         return response.choices[0].message.content.strip()
@@ -283,9 +287,10 @@ Return JSON with:
 Return ONLY valid JSON, no markdown.
 """
 
-        response = self.client.chat.completions.create(
+        response = await acompletion(
+            self.client,
             model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "user", "content": prompt}],
         )
 
         import json

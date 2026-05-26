@@ -2,6 +2,7 @@ import base64
 import io
 from typing import Dict, Any, List, Optional
 from app.config import get_settings, get_groq_client
+from app.services.groq_async import acompletion
 
 settings = get_settings()
 
@@ -58,7 +59,8 @@ Return your response as a JSON object with these exact keys:
 Be thorough and extract ALL information visible in the resume.
 """
 
-        response = self.client.chat.completions.create(
+        response = await acompletion(
+            self.client,
             model="llama-3.3-70b-versatile",
             messages=[
                 {
@@ -70,7 +72,7 @@ Be thorough and extract ALL information visible in the resume.
                         }
                     ]
                 }
-            ]
+            ],
         )
 
         return self._parse_response(response.choices[0].message.content)
@@ -118,9 +120,10 @@ Resume text:
 Be thorough and extract ALL information.
 """
 
-        response = self.client.chat.completions.create(
+        response = await acompletion(
+            self.client,
             model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "user", "content": prompt}],
         )
 
         return self._parse_response(response.choices[0].message.content)

@@ -4,6 +4,7 @@ from enum import Enum
 from dataclasses import dataclass
 
 from app.config import get_settings, get_groq_client
+from app.services.groq_async import acompletion, atranscription
 from app.supabase_client import get_supabase
 
 settings = get_settings()
@@ -503,13 +504,15 @@ class InterviewOrchestrator:
 
         return "\n".join(context)
 
-    def _resolve_field_info(self) -> Dict[str, str]:
+    async def _resolve_field_info(self) -> Dict[str, str]:
         """Resolve the candidate's domain to {role, topics, technical_questions}.
 
         Hybrid (ADR 0001): the 9 curated FIELD_PROMPTS entries are a zero-risk
         fast path; any other domain is LLM-derived once and cached in-memory on
         this orchestrator, so business / design / marketing / research /
         management — any field — works without a hardcoded table.
+
+        Async since PR 7 — the LLM-derive branch awaits a Groq call.
         """
         if self._field_info is not None:
             return self._field_info
@@ -517,10 +520,10 @@ class InterviewOrchestrator:
         if field_spec in FIELD_PROMPTS:
             self._field_info = FIELD_PROMPTS[field_spec]
         else:
-            self._field_info = self._derive_field_info(field_spec)
+            self._field_info = await self._derive_field_info(field_spec)
         return self._field_info
 
-    def _derive_field_info(self, field_spec: str) -> Dict[str, str]:
+    async def _derive_field_info(self, field_spec: str) -> Dict[str, str]:
         """LLM-derive role/topics for a domain not in the curated table."""
         pretty = field_spec.replace("_", " ").replace("-", " ").strip().title() or "General"
         try:
@@ -532,7 +535,8 @@ class InterviewOrchestrator:
                 '"technical_questions" (a comma-separated list of specific '
                 "concepts or skills to probe). Keep each value concise."
             )
-            response = self.client.chat.completions.create(
+            response = await acompletion(
+                self.client,
                 model="llama-3.3-70b-versatile",
                 messages=[{"role": "user", "content": prompt}],
             )
@@ -578,15 +582,17 @@ class InterviewOrchestrator:
                     labels.append(label[:80])
         return labels
 
-    def get_interviewer_prompt(self, phase: int) -> str:
+    async def get_interviewer_prompt(self, phase: int) -> str:
         """Return the system prompt for the interviewer for the given phase.
 
         Warm-professional register (ADR 0001): supportive and conversational,
         never a cold interrogation. The per-turn layer/topic directive is built
         separately by `_build_question_directive`.
+
+        Async since PR 7 — _resolve_field_info may await a Groq call.
         """
         resume_context = self.get_resume_context()
-        field_info = self._resolve_field_info()
+        field_info = await self._resolve_field_info()
         role = field_info["role"]
         topics = field_info["topics"]
         technical_questions = field_info["technical_questions"]
@@ -847,7 +853,7 @@ Explore the candidate's growth, collaboration, how they handle challenges, and t
             return "[Interview Complete]"
 
         messages = [
-            {"role": "system", "content": self.get_interviewer_prompt(self.current_phase)}
+            {"role": "system", "content": await self.get_interviewer_prompt(self.current_phase)}
         ]
 
         # Add recent conversation history for context
@@ -877,9 +883,10 @@ Explore the candidate's growth, collaboration, how they handle challenges, and t
 
         messages.append({"role": "user", "content": prompt})
 
-        response = self.client.chat.completions.create(
+        response = await acompletion(
+            self.client,
             model="llama-3.3-70b-versatile",
-            messages=messages
+            messages=messages,
         )
 
         question = response.choices[0].message.content.strip()
@@ -898,9 +905,10 @@ Explore the candidate's growth, collaboration, how they handle challenges, and t
             # Regenerate with different prompt
             alt_prompt = "Ask a DIFFERENT question about a new topic. Do NOT repeat the previous question."
             messages[-1] = {"role": "user", "content": alt_prompt}
-            response = self.client.chat.completions.create(
+            response = await acompletion(
+                self.client,
                 model="llama-3.3-70b-versatile",
-                messages=messages
+                messages=messages,
             )
             question = response.choices[0].message.content.strip()
             # Also extract first question if multiple
@@ -915,9 +923,10 @@ Explore the candidate's growth, collaboration, how they handle challenges, and t
             # Ask a different question about a new aspect
             alt_prompt = prompt + " IMPORTANT: Do not repeat the previous question. Ask about a different aspect or topic."
             messages[-1] = {"role": "user", "content": alt_prompt}
-            response = self.client.chat.completions.create(
+            response = await acompletion(
+                self.client,
                 model="llama-3.3-70b-versatile",
-                messages=messages
+                messages=messages,
             )
             question = response.choices[0].message.content.strip()
 
@@ -981,9 +990,10 @@ Evaluate each dimension 0-10:
 
 Return JSON: {{"relevance": X, "specificity": X, "clarity": X, "depth": X}}
 """
-        response = self.client.chat.completions.create(
+        response = await acompletion(
+            self.client,
             model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "user", "content": prompt}],
         )
 
         import json, re
@@ -1071,9 +1081,10 @@ Evaluate each dimension 0-10:
 Return JSON ONLY: {{"correctness": X, "depth": X, "specificity": X, "clarity": X, "is_superficial": true/false, "struggling": true/false}}
 """
 
-        response = self.client.chat.completions.create(
+        response = await acompletion(
+            self.client,
             model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "user", "content": prompt}],
         )
 
         import json, re
@@ -1109,7 +1120,7 @@ Return JSON ONLY: {{"correctness": X, "depth": X, "specificity": X, "clarity": X
         field info are injected so the LLM scores against the right ground
         (a marketing answer is not judged on ML terminology).
         """
-        field_info = self._resolve_field_info()
+        field_info = await self._resolve_field_info()
         role = field_info["role"]
         topics = field_info["topics"]
         prompt = f"""Evaluate this {role} technical interview response rigorously.
@@ -1144,9 +1155,10 @@ Evaluate each dimension 0-10:
 Return JSON: {{"correctness": X, "completeness": X, "precision": X, "practical": X}}
 """
 
-        response = self.client.chat.completions.create(
+        response = await acompletion(
+            self.client,
             model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "user", "content": prompt}],
         )
 
         import json, re
@@ -1188,9 +1200,10 @@ Evaluate:
 Return JSON: {{"vision": X, "team": X, "self_awareness": X, "proactivity": X, "communication": X}}
 """
 
-        response = self.client.chat.completions.create(
+        response = await acompletion(
+            self.client,
             model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "user", "content": prompt}],
         )
 
         import json, re
@@ -1279,9 +1292,10 @@ class VoiceEmpathyProcessor:
 
         try:
             with open(temp_path, "rb") as audio_file:
-                transcript = self.client.audio.transcriptions.create(
+                transcript = await atranscription(
+                    self.client,
                     model="whisper-large-v3",
-                    file=audio_file
+                    file=audio_file,
                 )
             return transcript.text
         finally:
@@ -1321,9 +1335,10 @@ Generate a brief, professional encouragement message to help them relax.
 Keep it under 15 words. Be warm but professional.
 """
 
-        response = self.client.chat.completions.create(
+        response = await acompletion(
+            self.client,
             model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "user", "content": prompt}],
         )
 
         return response.choices[0].message.content.strip()
