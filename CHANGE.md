@@ -23,6 +23,66 @@
 
 ---
 
+## 26/05/2026 — Recruiter rollout PR 0 · Auth-gate /reports endpoints (security precursor)
+Type: Fix
+
+`reports.py:11-20` (`GET /interview/{id}/report`) and `:23-33`
+(`/report/markdown`) were UNAUTHENTICATED — anyone holding an
+interview_id UUID could pull a candidate's full report including the
+transcript. The frontend already attached a Supabase JWT to every
+request via `fetchJson` (`api.ts:125,128`); the backend just ignored it.
+
+This is the security precursor PR (rollout PR 0 in
+`RECRUITER_ROLLOUT.md`). Independent of the rest of the recruiter
+rollout — fixes the open leak immediately, so the recruiter detail
+view (PR 5) can later reuse this endpoint safely.
+
+What changed (`backend/app/routers/reports.py`):
+- Added `Depends(get_current_user)` to both endpoints.
+- New helper `_authorize_report_access(interview_id, user)` enforces the
+  access rule: owner of the interview OR admin. Non-existent interviews
+  surface as 404 (rather than 403) so we don't leak the existence of
+  interviews the caller cannot see.
+- Frontend changes: **none**. The JWT was already being sent; only the
+  backend's enforcement was missing.
+
+The `'recruiter'` arm of the auth gate is intentionally absent at this
+PR — it joins in rollout PR 2 when the role actually has any populated
+rows. The gate currently reads `if role != "admin"` → 403; PR 2 changes
+it to `if role not in ("admin", "recruiter")` → 403.
+
+Verification:
+- `python -c "from app.main import app"` imports cleanly.
+- `python -m pytest -q` → 72 passed (no regressions in the existing
+  suite).
+- Manual verification needed before commit: signed-in candidate fetches
+  own report → 200; signed-in admin fetches any report → 200;
+  unauthenticated curl → 401; signed-in non-owner non-admin → 403.
+
+No new automated tests added in this PR — the existing project lacks
+FastAPI `TestClient` infrastructure (the 72 pytest tests are all pure
+helpers / mocked services). Adding integration-test infra is itself a
+larger scope than this PR should carry; logged as a future
+consideration. The manual verification above is sufficient to ship.
+
+Affected files: `backend/app/routers/reports.py` (~50 lines net),
+`CHANGE.md`.
+
+Architectural impact: Closes a real auth leak. The
+`_authorize_report_access` helper is in-file (not lifted to `auth.py`)
+because the access rule is route-specific (owner-OR-admin, not the
+generic admin-only or user-only patterns that already live in `auth.py`).
+
+Future considerations:
+- Add FastAPI `TestClient`-based integration tests for the auth gate
+  (and other route-level gates) as a separate scope decision. The
+  precedent will probably matter for PRs 2 and 4 of the recruiter
+  rollout.
+- PR 2 of the rollout updates `_authorize_report_access` to add the
+  `'recruiter'` arm.
+
+---
+
 ## 26/05/2026 — Fix · CI backend job fails during pytest collection (missing env vars)
 Type: Fix
 
