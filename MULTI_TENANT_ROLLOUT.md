@@ -1,6 +1,7 @@
 # Multi-Tenant Companies + Email Outreach — Incremental Rollout
 
-**Status:** Planning. Open grill questions below. No code shipped yet.
+**Status:** Grills resolved 2026-05-27. PR 0 (migration 004) is the
+next thing to ship. No code shipped yet.
 
 **Phase posture:** This is a **phase exception** within the declared
 stability + scalability phase (see `CURRENT_TASKS.md` and the
@@ -55,10 +56,39 @@ What's being added on top of today's system:
 
 ---
 
-## Open grill questions (settle BEFORE PR 0 ships)
+## Grill resolutions (12 decisions — settled 2026-05-27)
 
-These are blocking — no code lands until each one has a recorded
-resolution, just like the 12 recruiter grills were recorded.
+| # | Decision | Resolution | Why |
+|---|---|---|---|
+| A1 | Backfill posture for existing data | **Default company.** Create a single "Default" company; backfill every existing row into it; `company_id` becomes NOT NULL. | Preserves existing test data + recruiter-rollout seed. No data loss. One-line `INSERT ... SELECT` to backfill. |
+| A2 | Tenant isolation enforcement | **Backend + RLS, both.** Backend always filters by `caller.company_id` (primary enforcement, since the service-role key bypasses RLS). RLS policies added as defense-in-depth for any future direct-client read path. | Mirrors today's auth posture: backend is authoritative, RLS is a safety net. |
+| A3 | `company_id` placement | **Denormalise everywhere.** Add `company_id` to candidates, interviews, evaluations, recruiter_decisions, integrity_events. | Candidate's company never changes (no update path), so the denorm is safe. One-hop filter is faster + simpler than join chains. RLS policies stay table-local. |
+| C1 | Does B2C `user` flow survive? | **Both coexist.** `role='user' AND company_id IS NULL` = B2C self-directed candidate (existing flow). `role='user' AND company_id IS NOT NULL` = B2B applicant who arrived via /apply/{slug}. **No new role string for applicant** — the `company_id` predicate distinguishes them. | Avoids destruction of existing B2C product surface. No CHECK constraint churn — applicant is just a `user` with a company. |
+| C2 | Existing global `recruiter` role | **Becomes `company_recruiter`** (tenant-scoped). Existing recruiter profiles migrate to `company_recruiter` of the Default company. Two tiers per tenant: `company_admin` (settings + signup + everything recruiter does) and `company_recruiter` (reviews candidates only). | Mirrors Lever/Greenhouse ATS shape. Keeps the recruiter rollout that just shipped functional — only its scope narrows from global to tenant-local. |
+| C3 | Super-admin (existing `admin` role) | **Stays platform-wide.** `role='admin'` keeps unconditional cross-tenant access; `company_id` is NULL for admins. Docs call this `platform_admin`; DB value stays `admin` (no schema churn). | Operational necessity — you (the deployer) need to debug across tenants. Treating admin as a tenant adds friction without product value. |
+| L1 | Apply link URL shape | **Human slug** at `/apply/{slug}`. Company picks the slug at signup; UNIQUE constraint enforces collisions. If a slug is leaked/abused, the company picks a new one (URL break is acceptable — abuse is rare). | Memorable + shareable. UUID hedge deferred until the first real abuse appears. |
+| L2 | One link per company or job-specific? | **One link per company** for the rollout. | Job postings are a child concept that can be added later as `/apply/{slug}/{job}` without breaking the existing slug. Scope-control move. |
+| E1 | Resend from-email | **Sandbox sender as default** (`onboarding@resend.dev`). Code reads `RESEND_FROM_EMAIL` env var with sandbox as the fallback. | Unblocks the email feature end-to-end without DNS work. Real domain verification (SPF/DKIM) becomes an infra task, not a code blocker. |
+| E2 | Email templates | **Platform-wide default**, editable per-send in the composer. Default lives in `services/email_templates.py`. | Per-company templates need a table + settings UI for a customization most early admins won't ask for. Additive follow-up. |
+| E3 | Draft persistence | **Client-side only.** Composer holds edits in React state; closing the tab loses them. | No draft table, no autosave endpoint, no conflict handling. Add server-side drafts when a real user complains. |
+| E4 | Audit log shape | **Full body in outbox.** `email_outbox` stores subject + body + recipient + sender + sent_at + resend_message_id. | Reproducible from DB alone — no Resend API dependency to view a sent email. PII duplication is acceptable for an audit log that's already in the same DB as the candidate row. |
+
+### Sub-resolutions (recorded for reference)
+
+- **Role CHECK constraint** after the rollout:
+  `role IN ('user', 'recruiter', 'admin', 'company_admin', 'company_recruiter')`.
+  The existing `'recruiter'` value is kept *temporarily* during the
+  migration window — PR 1 migrates all `'recruiter'` rows to
+  `'company_recruiter'`, after which the value is dropped from the
+  CHECK in PR 2.
+- **`company_id` nullability:** NULL for `role='admin'` (platform
+  super-admin) and `role='user' AND no company` (B2C). NOT NULL for
+  every other role.
+- **B2C applicant onboarding via apply link:** the SAME `/signup`
+  endpoint handles both flows; the only difference is whether the
+  signup URL carries a `?company=slug` query param. If yes, the new
+  profile gets stamped with that `company_id` on creation. If no, it's
+  a B2C signup.
 
 ### Architecture / data model
 
@@ -283,17 +313,20 @@ verifies the candidate's `company_id` matches the caller's on connect.
 
 ---
 
-## How to pick up after the user grills the open questions
+## How to pick up next session
 
-1. Resolve grills A1, A2, A3, C1, C2, C3, L1, L2, E1, E2, E3, E4
-   (12 in total, mirroring the recruiter rollout).
-2. Once all resolved, update this document with the resolutions (same
-   format as `RECRUITER_ROLLOUT.md`'s "Grill resolutions" table).
-3. Draft `docs/adr/0005-multi-tenant-companies.md` capturing the
-   schema-level decisions (A1, A2, A3) — the irreversible ones.
-4. Ship PR 0 (migration only). Verify.
-5. Ship subsequent PRs in sequence.
+1. Draft `docs/adr/0005-multi-tenant-companies.md` capturing A1, A2,
+   A3 — the irreversible schema-level decisions. (One short ADR; the
+   resolutions table above carries the why.)
+2. Ship PR 0 (migration only). Verify on a fresh Supabase.
+3. Ship subsequent PRs in sequence — each in its own session.
 
-`platform_admin` documentation: update `CLAUDE.md`'s role list once
-the rollout is on PR 3 (when the new role string exists in the DB).
-Don't update it preemptively.
+Documentation updates that happen AS the rollout progresses:
+
+- After PR 0: extend `CONTEXT.md` with the new domain terms (Company,
+  Tenant, Apply Link, Company Admin, Company Recruiter, Platform Admin,
+  Email Outbox).
+- After PR 3 (when `company_admin` role string lives in the DB):
+  update `CLAUDE.md`'s role list. Don't update preemptively.
+- After PR 6: document the Resend env vars in `.env.example` +
+  `PROJECT_STATE.md`.

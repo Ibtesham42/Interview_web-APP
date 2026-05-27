@@ -23,6 +23,49 @@
 
 ---
 
+## 27/05/2026 — Multi-tenant rollout · 12 grills resolved
+Type: Decision
+
+All 12 grill questions in `MULTI_TENANT_ROLLOUT.md` resolved this
+session. User accepted the recommended default on every one — the
+plan was coherent end-to-end, no contradictions surfaced.
+
+Key irreversible decisions (full table in `MULTI_TENANT_ROLLOUT.md`):
+
+- **A1:** Default-company backfill (no data loss; existing rows
+  stay visible).
+- **A2:** Backend filter (primary) + RLS policies (defense-in-depth).
+- **A3:** `company_id` denormalised onto candidates, interviews,
+  evaluations, recruiter_decisions, integrity_events.
+- **C1:** B2C `user` flow survives. B2C = `role='user'` with NULL
+  `company_id`; B2B applicant = same role with non-NULL `company_id`.
+  No new role string for applicant.
+- **C2:** Existing `recruiter` role becomes `company_recruiter`
+  (tenant-scoped). Two-tier per tenant: `company_admin` +
+  `company_recruiter`.
+- **C3:** Existing `admin` stays platform-wide (NULL `company_id`).
+- **L1:** Apply link is `/apply/{slug}` with a human-picked unique
+  slug.
+- **L2:** One link per company; job-specific links deferred.
+- **E1:** Resend with sandbox sender default (`onboarding@resend.dev`)
+  so the feature is unblocked from DNS work.
+- **E2:** Platform-wide default email template, editable per-send.
+- **E3:** Client-side drafts only.
+- **E4:** Full body stored in `email_outbox` for audit reproducibility.
+
+PR 0 (migration 004) is the next thing to ship. Will be authored in
+the next session; nothing else changed in this commit.
+
+Affected files:
+- `MULTI_TENANT_ROLLOUT.md` — resolutions table + sub-resolutions
+  added; "how to pick up" section rewritten for the post-grill state.
+
+Architectural impact: None yet (still all planning). Decisions
+locked; deviation from any of the 12 in subsequent PRs requires
+re-grilling.
+Future considerations: see `MULTI_TENANT_ROLLOUT.md` for the
+provisional 8-PR contract.
+
 ## 27/05/2026 — Multi-tenant companies + email outreach · planning (phase override)
 Type: Decision
 
