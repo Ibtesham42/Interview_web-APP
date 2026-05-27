@@ -31,7 +31,7 @@ function slugProblem(slug: string): string | null {
 
 export function CompanySignup() {
   const navigate = useNavigate();
-  const { profile, refreshProfile } = useAuth();
+  const { profile, refreshProfile, can } = useAuth();
 
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
@@ -83,10 +83,11 @@ export function CompanySignup() {
     }
   };
 
-  // Defensive: if the route's role gate is bypassed somehow, surface a
-  // friendly message instead of letting the user trip the server-side
-  // 403 silently.
-  if (profile && profile.role !== 'user') {
+  // Capability gate (ADR 0006) — `create_company` requires role='user'
+  // AND company_id IS NULL. Any other caller (admin / company_admin /
+  // recruiter / B2B applicant) gets the friendly explanation instead
+  // of the form. Backend re-checks on submit; this is UX, not auth.
+  if (profile && !can('create_company')) {
     return (
       <div className="page">
         <div className="page-head">

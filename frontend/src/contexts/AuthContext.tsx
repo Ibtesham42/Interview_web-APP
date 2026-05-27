@@ -3,6 +3,8 @@ import type { ReactNode } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../utils/supabase/client';
 import { companiesApi, profileApi } from '../services/api';
+import { can as capabilityCan } from '../services/capabilities';
+import type { CapabilityName } from '../services/capabilities';
 import type { Company, Profile } from '../types';
 
 interface SignUpResult {
@@ -43,6 +45,10 @@ interface AuthContextValue {
   // from PR 3) so the SPA's role-aware routing updates without a page
   // refresh.
   refreshProfile: () => Promise<void>;
+  // Capability check — mirrors the backend `can(ctx, name)` (ADR 0006).
+  // Returns false when profile is still loading so transient renders
+  // don't flash controls the user shouldn't see.
+  can: (capability: CapabilityName) => boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -189,6 +195,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const role = profile?.role;
+  // `can` closes over the current profile. While profile is still
+  // loading, every capability returns false — defensive against
+  // transient renders flashing a button the user can't trigger.
+  const can = (capability: CapabilityName): boolean => {
+    if (!profile) return false;
+    return capabilityCan(
+      { role: profile.role, company_id: profile.company_id ?? null },
+      capability,
+    );
+  };
   const value: AuthContextValue = {
     session,
     user: session?.user ?? null,
@@ -204,6 +220,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signInWithGoogle,
     signOut,
     refreshProfile,
+    can,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

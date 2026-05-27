@@ -20,7 +20,7 @@ import { Apply } from './components/apply/Apply';
 import type { UserRole } from './types';
 
 function Header() {
-  const { user, profile, company, signOut } = useAuth();
+  const { user, profile, company, signOut, can } = useAuth();
   const navigate = useNavigate();
 
   const handleSignOut = async () => {
@@ -46,22 +46,24 @@ function Header() {
           <h1 className="header-title">Interview Platform</h1>
         </div>
         <nav className="header-nav">
-          {(role === 'admin' || role === 'company_admin') && (
+          {/* Admin overview — TENANT_ADMINS see this. */}
+          {can('see_admin_overview') && (
+            <NavLink to="/admin" className={navClass}>Admin</NavLink>
+          )}
+          {/* Candidates + Analytics — anyone with hiring capabilities.
+              Surfaces Candidates to `recruiter` (already worked) AND
+              `company_admin` / `admin` (who inherit via HIRING_ROLES). */}
+          {can('manage_candidates') && (
             <>
-              <NavLink to="/admin" className={navClass}>Admin</NavLink>
               <NavLink to="/recruiter" className={navClass} end>Candidates</NavLink>
               <NavLink to="/recruiter/analytics" className={navClass}>Analytics</NavLink>
-              {/* Settings only useful for tenant-scoped admins (PR 5). */}
-              {role === 'company_admin' && (
-                <NavLink to="/admin/settings" className={navClass}>Settings</NavLink>
-              )}
             </>
           )}
-          {role === 'recruiter' && (
-            <>
-              <NavLink to="/recruiter" className={navClass} end>Candidates</NavLink>
-              <NavLink to="/recruiter/analytics" className={navClass}>Analytics</NavLink>
-            </>
+          {/* Settings only visible when the caller can actually manage
+              them — capability requires both role AND tenant. Platform
+              admin (no tenant) sees nothing here. */}
+          {can('manage_company_settings') && (
+            <NavLink to="/admin/settings" className={navClass}>Settings</NavLink>
           )}
           {role === 'user' && (
             <>

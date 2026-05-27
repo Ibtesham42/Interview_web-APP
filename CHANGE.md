@@ -23,6 +23,108 @@
 
 ---
 
+## 28/05/2026 — Capability module + CONTEXT.md/ADR 0006 (deepening)
+Type: Refactor
+
+Post-rollout architecture deepening. Collapses the three-layer role
+disagreement (route gate / component guard / handler precondition)
+into a single `capabilities` module consumed by the React UI and the
+FastAPI handlers. Produced by an `improve-codebase-architecture` +
+`grill-with-docs` pass on 2026-05-28; design decisions G1-G10
+recorded in ADR 0006.
+
+Concrete user-visible fix: a `recruiter` will now see the Settings
+nav link + the Invite card on /admin/settings, because the
+capability `'invite_candidate'` admits them (matching what the
+backend already accepted). A platform `admin` without a tenant will
+NOT see the Settings link or the Invite card — the honest dead-end
+documented in ADR 0006 D3 (ADR 0005 grill C3 preserved).
+
+What landed:
+
+Backend:
+- `backend/app/capabilities.py` (new) — TENANT_ADMINS + HIRING_ROLES
+  role-sets, CAPABILITIES dict (5 predicates: create_company,
+  invite_candidate, manage_company_settings, see_admin_overview,
+  manage_candidates), `can(ctx, name)`, `requires(capability_name)`
+  FastAPI dependency factory.
+- `backend/app/auth.py` — `get_current_admin` /
+  `get_current_recruiter` source their role-sets from
+  `capabilities.py` via late import (breaks the circular import).
+  Call sites and behaviour unchanged.
+- `backend/tests/test_capabilities.py` (new, +26 cases) — matrix
+  tests per capability + role-set sanity + requires() factory
+  semantics + matrix-completeness guard.
+
+Frontend:
+- `frontend/src/services/capabilities.ts` (new) — TS mirror of the
+  Python module. Same role-sets, same predicates, same names.
+- `frontend/src/contexts/AuthContext.tsx` — new `can(capability)`
+  selector that closes over the current profile. Returns false
+  while loading (defensive against flash-of-affordance).
+- `frontend/src/App.tsx` — Header nav switches from hand-rolled
+  `role === ...` checks to `can('see_admin_overview')`,
+  `can('manage_candidates')`, `can('manage_company_settings')`.
+- `frontend/src/components/companies/Settings.tsx` — Invite card
+  wrapped with `can('invite_candidate')`. Platform admin without a
+  tenant sees no Invite card (honest dead-end).
+- `frontend/src/components/companies/CompanySignup.tsx` — the
+  "you cannot create a company because..." defensive branch
+  switches from `profile.role !== 'user'` to `!can('create_company')`.
+
+Docs:
+- `CONTEXT.md` — new Multi-tenant section with Company, Company
+  Admin, Apply Link definitions. Surgical updates to existing Admin
+  + Recruiter to clarify multi-tenant scoping + the C2 rename
+  deferral. Tenant becomes `_Avoid_` alternative.
+- `docs/adr/0006-capability-module.md` (new) — full design record
+  documenting D1 (verb names), D2 (pure predicate + named
+  role-sets), D3 (admin tenant-requiring capabilities fail honestly,
+  ADR 0005 C3 preserved), D4 (generic 403 + handler-specific 400s),
+  D5 (existing role deps become wrappers), D6 (frontend uses can()
+  at component layer; routes keep restrictTo).
+
+Verification:
+- Backend: 255/255 pytest pass (229 prior + 26 new).
+- Frontend: `npx tsc --noEmit` clean.
+- No migration; no rewrite of stable code (interview pipeline,
+  scoring, recruiter rollout untouched).
+
+Affected files:
+- `backend/app/auth.py`
+- `backend/app/capabilities.py` (new)
+- `backend/tests/test_capabilities.py` (new)
+- `frontend/src/App.tsx`
+- `frontend/src/components/companies/CompanySignup.tsx`
+- `frontend/src/components/companies/Settings.tsx`
+- `frontend/src/contexts/AuthContext.tsx`
+- `frontend/src/services/capabilities.ts` (new)
+- `CONTEXT.md`
+- `docs/adr/0006-capability-module.md` (new)
+- `CHANGE.md`
+
+Architectural impact: role/tenant logic now has one source of truth
+across both layers. The same string `'invite_candidate'` is the
+predicate name in Python and TypeScript; the predicate body in both
+returns the same bool for the same inputs. Adding `company_recruiter`
+later = one line in `HIRING_ROLES` (Python) + one line in the same
+constant (TypeScript). Adding a new capability = one entry in
+CAPABILITIES + one matching entry in the TS file + one test.
+
+Future considerations:
+- Candidate 2 from the architecture review (platform admin "act as"
+  picker) would inject an `acting_as_company_id` into TenantContext.
+  Tenant-requiring capabilities would light up for admin
+  automatically with zero changes to the capability module. The
+  capability module is the seam where that feature plugs in.
+- Existing routes (App.tsx) still use `restrictTo: UserRole[]` for
+  the route gate. Opportunistic migration to `requires(capability)`
+  is welcome but not forced; routes are coarse admission gates and
+  ADR 0006 D6 explicitly preserves that.
+- The TS mirror is kept in sync by hand. A generated source-of-truth
+  (one YAML + codegen to both) is the natural next step if the
+  capability count exceeds ~15.
+
 ## 27/05/2026 — Invite candidate by email (no migration) — post-rollout follow-up
 Type: Feature
 

@@ -24,7 +24,7 @@ import { companiesApi } from '../../services/api';
  * have a company.
  */
 export function Settings() {
-  const { company, profile } = useAuth();
+  const { company, profile, can } = useAuth();
   const [copied, setCopied] = useState(false);
 
   // Invite-a-candidate card state. Email is required; name is the
@@ -164,6 +164,10 @@ export function Settings() {
           </div>
         </div>
 
+        {/* Invite card is gated by the `invite_candidate` capability —
+            requires both a hiring role AND a tenant. Platform admin
+            without a company sees no card (ADR 0006). */}
+        {can('invite_candidate') && (
         <div className="card">
           <h3>Invite a candidate</h3>
           <p className="page-sub" style={{ marginTop: 'var(--space-xs)' }}>
@@ -225,6 +229,7 @@ export function Settings() {
             </button>
           </form>
         </div>
+        )}
 
         <div className="card">
           <h3>Company</h3>

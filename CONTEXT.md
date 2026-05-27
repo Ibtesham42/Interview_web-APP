@@ -52,19 +52,27 @@ _Avoid_: User (ambiguous — `auth.users` is the auth-layer concept; "candidate"
 is the domain actor).
 
 **Admin**:
-Platform operator. Reads platform-wide analytics (user counts, completion rates,
-average scores per field). Does NOT operate on candidates as a recruiter would
-— their lens is the system, not the hiring funnel. Role string: `'admin'`.
-_Avoid_: Owner, superuser.
+Platform operator. Reads platform-wide analytics across all Companies (user
+counts, completion rates, average scores per field). Tenant-agnostic — has
+no Company affiliation (NULL `company_id`). Their lens is the system, not the
+hiring funnel. Inherits Recruiter capabilities via role-gating but cannot
+perform Company-scoped actions (invite a Candidate, manage Company Settings)
+without a tenant context — the distinction surfaces in the capability gates
+(see ADR 0006). Role string: `'admin'`.
+_Avoid_: Owner, Superuser, "Platform admin" (use "Admin"; "platform admin"
+is documentation-only when distinguishing from Company Admin).
 
 **Recruiter**:
-Workflow operator who reviews completed interviews and decides which candidates
-to advance. Acts ON candidates via the recruiter workflow (Shortlist, Reject,
-Bookmark, recruiter Notes). Distinct from Admin because the *job* is different
-— Admin sees the platform; Recruiter sees the candidate pool. Admins MAY
-inherit Recruiter capabilities via additive role-gating, but every workflow
-action carries the actor's identity so accountability survives the overlap.
-Role string: `'recruiter'`.
+Workflow operator who reviews completed interviews and decides which Candidates
+to advance. Acts ON Candidates via the recruiter workflow (Shortlist, Reject,
+Bookmark, Recruiter Notes). Distinct from Admin because the *job* is different
+— Admin sees the platform; Recruiter sees the candidate pool **scoped to the
+Recruiter's Company** (a Recruiter at Acme cannot see Wayne Enterprises'
+Candidates). Admin and Company Admin both inherit Recruiter capabilities via
+role-gating; every workflow action carries the actor's identity so
+accountability survives the overlap. Role string: `'recruiter'` (kept as-is;
+the planned rename to `'company_recruiter'` was deferred — see the
+migration 005 header for the deviation note).
 _Avoid_: Reviewer (overloaded with the AI evaluator's review of an answer),
 Hiring manager (a downstream role we don't model).
 
@@ -115,7 +123,44 @@ branch off Completed, distinct from forward funnel progression.
 _Avoid_: Phase (collides with the interview engine's Phase 1–5),
 Step, Status (already overloaded with `interviews.status`).
 
-## Flagged ambiguities
+## Multi-tenant
+
+The platform supports multiple Companies on one deployment. This section
+captures the multi-tenant vocabulary added by the 2026-05-27 rollout. See
+ADR 0005 for the schema decisions.
+
+**Company** (a.k.a. Tenant):
+A hiring organization with its own Candidates, Recruiters, and Apply Link.
+Created via `/companies/signup` by a `'user'` who flips to `'company_admin'`
+on creation. Identified by an immutable UUID + a human-readable Slug. A
+Candidate belongs to exactly one Company (or to no Company if B2C).
+_Avoid_: Tenant — use Company in domain conversation; "tenant" survives as
+an architecture term (e.g. tenant-scoped query, `TenantContext`) but the
+*noun* is a Company. Also avoid: Org, Workspace, Account (ambiguous with
+`auth.users`).
+
+**Company Admin**:
+The Admin of one specific Company. Operates ONLY within their Company —
+sees their Candidates, manages their Settings (Apply Link, contact info),
+invites Candidates, and inherits Recruiter capabilities (Shortlist / Reject
+/ Bookmark / Notes) within that Company. Distinct from Admin (platform):
+the Company Admin's lens is one tenant's hiring funnel, not the system as
+a whole. Role string: `'company_admin'`. Created by `/companies/signup`;
+never inhabits more than one Company at a time.
+_Avoid_: Owner, Tenant admin, Workspace admin.
+
+**Apply Link**:
+The public URL `/apply/{slug}` that a Company shares with prospective
+Candidates. Visiting the link lands on a no-auth page showing the Company's
+name + contact info; clicking Apply routes to `/signup?company={slug}`,
+which stamps the new Candidate's profile with the Company's id on signup.
+The Slug is chosen at Company creation and is part of the schema contract
+— renaming a Slug breaks outstanding links.
+_Avoid_: Invite URL (Apply Link is shared broadly; the Invite is an email
+sent to a specific Candidate's address via `POST /api/companies/invite`),
+Application page, Job link (we don't model jobs yet).
+
+
 
 - "Depth" was overloaded: the evaluation rubric scores a 0–10 **depth dimension**
   of an answer's quality, which is distinct from the 1–5 **Layer** the question
