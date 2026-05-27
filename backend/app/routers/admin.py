@@ -15,18 +15,34 @@ from app.services.interview_orchestrator import score_interviews_bulk
 router = APIRouter()
 
 
+def _tenant_scope(ctx):
+    """Translate a TenantContext into the `company_id` filter to apply.
+
+    Returns `None` for platform admins (grill C3) and the caller's
+    `company_id` otherwise. Today every caller of these endpoints is a
+    platform admin (the only role that passes `get_current_admin`), so the
+    return is always None. When PR 3 widens the admin gate to admit
+    `company_admin`, this transparently scopes the queries below.
+    """
+    if ctx.is_platform_admin:
+        return None
+    return ctx.company_id
+
+
 @router.get("/overview")
 async def admin_overview(admin=Depends(get_current_admin)):
     supabase = get_supabase()
+    tenant = _tenant_scope(admin)
 
-    profiles = (
-        supabase.table("profiles").select("*").order("created_at", desc=True)
-        .execute().data or []
-    )
-    interviews = (
-        supabase.table("interviews").select("id,user_id,candidate_id,status,created_at")
-        .execute().data or []
-    )
+    profiles_q = supabase.table("profiles").select("*").order("created_at", desc=True)
+    if tenant is not None:
+        profiles_q = profiles_q.eq("company_id", tenant)
+    profiles = profiles_q.execute().data or []
+
+    iv_q = supabase.table("interviews").select("id,user_id,candidate_id,status,created_at")
+    if tenant is not None:
+        iv_q = iv_q.eq("company_id", tenant)
+    interviews = iv_q.execute().data or []
 
     candidate_ids = list({iv["candidate_id"] for iv in interviews if iv.get("candidate_id")})
     candidates = {}
@@ -113,17 +129,26 @@ async def admin_overview(admin=Depends(get_current_admin)):
 @router.get("/users/{user_id}")
 async def admin_user_detail(user_id: UUID, admin=Depends(get_current_admin)):
     supabase = get_supabase()
+    tenant = _tenant_scope(admin)
 
-    profile_rows = supabase.table("profiles").select("*").eq("id", str(user_id)).execute().data
+    # If the caller is tenant-scoped (post-PR 3 company_admin), the target
+    # user must belong to the same tenant — cross-tenant id falls through
+    # to 404 without leaking existence.
+    profile_q = supabase.table("profiles").select("*").eq("id", str(user_id))
+    if tenant is not None:
+        profile_q = profile_q.eq("company_id", tenant)
+    profile_rows = profile_q.execute().data
     if not profile_rows:
         raise HTTPException(status_code=404, detail="User not found")
     profile = profile_rows[0]
 
-    interviews = (
+    iv_q = (
         supabase.table("interviews").select("*")
         .eq("user_id", str(user_id)).order("created_at", desc=True)
-        .execute().data or []
     )
+    if tenant is not None:
+        iv_q = iv_q.eq("company_id", tenant)
+    interviews = iv_q.execute().data or []
 
     candidate_ids = list({iv["candidate_id"] for iv in interviews if iv.get("candidate_id")})
     candidates = {}

@@ -20,7 +20,7 @@ Shortlisted. ATS integration is a deferred trigger, not in-scope work.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from app.services.interview_orchestrator import score_interviews_bulk
 
@@ -56,35 +56,31 @@ def _conversion_rates(counts: Dict[str, int]) -> Dict[str, float]:
     }
 
 
-def hiring_funnel(supabase) -> Dict[str, Any]:
+def hiring_funnel(supabase, company_id: Optional[str] = None) -> Dict[str, Any]:
     """Bulk-aggregate the 4-stage funnel.
 
     Four SELECTs total (candidates, interviews, completed-interviews,
     shortlisted-decisions) — that's `O(stages)` queries, not
     `O(candidates)`.
+
+    `company_id` (multi-tenant PR 1): when non-None, every SELECT filters
+    by it so a tenant-scoped recruiter sees only their company's funnel.
+    `None` = no scope (platform admin / tests).
     """
-    candidates = (
-        supabase.table("candidates")
-        .select("id,field_specialization")
-        .execute()
-        .data
-        or []
-    )
-    interviews = (
-        supabase.table("interviews")
-        .select("candidate_id,status")
-        .execute()
-        .data
-        or []
-    )
-    decisions = (
+    cand_q = supabase.table("candidates").select("id,field_specialization")
+    iv_q = supabase.table("interviews").select("candidate_id,status")
+    dec_q = (
         supabase.table("recruiter_decisions")
         .select("candidate_id,decision")
         .eq("decision", "shortlisted")
-        .execute()
-        .data
-        or []
     )
+    if company_id is not None:
+        cand_q = cand_q.eq("company_id", company_id)
+        iv_q = iv_q.eq("company_id", company_id)
+        dec_q = dec_q.eq("company_id", company_id)
+    candidates = cand_q.execute().data or []
+    interviews = iv_q.execute().data or []
+    decisions = dec_q.execute().data or []
 
     field_of: Dict[str, str] = {
         c["id"]: (c.get("field_specialization") or _UNCLASSIFIED_FIELD)
@@ -142,21 +138,21 @@ def hiring_funnel(supabase) -> Dict[str, Any]:
     }
 
 
-def scores_by_field(supabase) -> Dict[str, Any]:
+def scores_by_field(supabase, company_id: Optional[str] = None) -> Dict[str, Any]:
     """Average best-completed score per field.
 
     'Best-completed' matches the dashboard rule: per Candidate, take the
     max final_score across their completed interviews; then average
     those per field. This keeps the analytics chart consistent with what
     the Recruiter sees on the list.
+
+    `company_id` (multi-tenant PR 1): when non-None, candidate + interview
+    queries filter by it. `None` = no scope.
     """
-    candidates = (
-        supabase.table("candidates")
-        .select("id,field_specialization")
-        .execute()
-        .data
-        or []
-    )
+    cand_q = supabase.table("candidates").select("id,field_specialization")
+    if company_id is not None:
+        cand_q = cand_q.eq("company_id", company_id)
+    candidates = cand_q.execute().data or []
     if not candidates:
         return {"items": []}
 
@@ -165,13 +161,10 @@ def scores_by_field(supabase) -> Dict[str, Any]:
         for c in candidates
     }
 
-    interviews = (
-        supabase.table("interviews")
-        .select("id,candidate_id,status")
-        .execute()
-        .data
-        or []
-    )
+    iv_q = supabase.table("interviews").select("id,candidate_id,status")
+    if company_id is not None:
+        iv_q = iv_q.eq("company_id", company_id)
+    interviews = iv_q.execute().data or []
     interview_ids = [iv["id"] for iv in interviews]
     iv_scores = score_interviews_bulk(supabase, interview_ids)
 
@@ -205,18 +198,19 @@ def scores_by_field(supabase) -> Dict[str, Any]:
     return {"items": items}
 
 
-def integrity_event_volume(supabase) -> Dict[str, Any]:
+def integrity_event_volume(supabase, company_id: Optional[str] = None) -> Dict[str, Any]:
     """Counts of integrity events broken down by event_type, sorted by
     volume desc. Swallows a missing table cleanly so the analytics
-    screen still renders when migration 002 hasn't been applied."""
+    screen still renders when migration 002 hasn't been applied.
+
+    `company_id` (multi-tenant PR 1): when non-None, the query filters by
+    it. `None` = no scope (platform admin / tests).
+    """
     try:
-        rows = (
-            supabase.table("interview_integrity_events")
-            .select("event_type")
-            .execute()
-            .data
-            or []
-        )
+        q = supabase.table("interview_integrity_events").select("event_type")
+        if company_id is not None:
+            q = q.eq("company_id", company_id)
+        rows = q.execute().data or []
     except Exception:
         return {"items": [], "total": 0}
 

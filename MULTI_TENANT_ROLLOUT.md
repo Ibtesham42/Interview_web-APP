@@ -232,6 +232,9 @@ backend imports + tests pass unchanged.
 
 ### PR 1 — Backend tenant scoping (admin + recruiter endpoints)
 
+**Status:** Shipped 2026-05-27 (commit on `main`). Backend pytest 177/177
+(160 prior + 17 new cross-tenant isolation cases).
+
 **Scope:**
 - Extend `get_current_user` to attach `company_id` from the
   authenticated profile.

@@ -193,19 +193,31 @@ def _layer_aware_map(supabase, interview_ids: List[str]) -> Dict[str, bool]:
     return is_layer_aware
 
 
-def rank_candidates(supabase, recruiter_id: str, filters: RankFilters) -> Dict[str, Any]:
+def rank_candidates(
+    supabase,
+    recruiter_id: str,
+    filters: RankFilters,
+    company_id: Optional[str] = None,
+) -> Dict[str, Any]:
     """Return the paginated, filtered Candidate list for the recruiter UI.
 
     `recruiter_id` is the caller's `auth.users.id` — used to fetch
     THIS Recruiter's `recruiter_decisions` row for each Candidate (so the
     decision / bookmarked / notes columns reflect the caller's view per
     grill B1).
+
+    `company_id` is the caller's tenant scope (multi-tenant PR 1). When
+    non-None, the candidate query filters by it, hiding rows from other
+    tenants. `None` means "no scope" — used by platform admins (grill C3)
+    and by tests that don't care about tenancy.
     """
     filters = filters.normalise()
 
     cand_query = supabase.table("candidates").select(
         "id,name,email,field_specialization,created_at,user_id"
     )
+    if company_id is not None:
+        cand_query = cand_query.eq("company_id", company_id)
     cand_query = _apply_candidate_filters(cand_query, filters)
     candidates = cand_query.execute().data or []
 
@@ -354,7 +366,11 @@ def rank_candidates(supabase, recruiter_id: str, filters: RankFilters) -> Dict[s
 
 
 def get_candidate_detail(
-    supabase, candidate_id: str, viewer_id: str, viewer_role: str
+    supabase,
+    candidate_id: str,
+    viewer_id: str,
+    viewer_role: str,
+    company_id: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Per-Candidate detail view for the Recruiter dashboard.
 
@@ -363,22 +379,28 @@ def get_candidate_detail(
     attribution), the viewer's own Notes, and — only for Admins per B1 —
     every Recruiter's Notes (`all_notes`).
 
-    Returns None if the candidate does not exist so the router can map to a
-    clean 404 without leaking existence.
+    Returns None if the candidate does not exist OR (after multi-tenant PR
+    1) does not belong to the caller's tenant — both are mapped to a clean
+    404 by the router without leaking existence across tenant boundaries.
 
     The list endpoint shows one row per Candidate; here we surface the
     underlying data without re-deriving the displayed score. Recruiters
     open the detail page to *judge*, not to filter — so the rows below are
     intentionally rich rather than denormalised summaries.
+
+    `company_id` is the caller's tenant scope. When non-None, the candidate
+    lookup also filters by `company_id` — a cross-tenant id falls through
+    to `None` (404) without the caller learning whether the id exists
+    elsewhere. `None` means "no scope" — used by platform admins and tests.
     """
-    cand_rows = (
+    cand_query = (
         supabase.table("candidates")
         .select("id,name,email,field_specialization,created_at,resume_text")
         .eq("id", candidate_id)
-        .execute()
-        .data
-        or []
     )
+    if company_id is not None:
+        cand_query = cand_query.eq("company_id", company_id)
+    cand_rows = cand_query.execute().data or []
     if not cand_rows:
         return None
     candidate = cand_rows[0]
@@ -517,6 +539,35 @@ def candidate_exists(supabase, candidate_id: str) -> bool:
     return bool(rows)
 
 
+def candidate_tenant(
+    supabase, candidate_id: str, scope: Optional[str] = None
+) -> tuple[bool, Optional[str]]:
+    """Tenant-aware candidate lookup for write endpoints.
+
+    Returns `(exists, candidate_company_id)`:
+    - `(False, None)` — candidate missing OR (if `scope` is set) belongs
+      to a different tenant. Both map to 404 at the router without
+      leaking cross-tenant existence.
+    - `(True, X)` — candidate exists; X is its own `company_id` (used to
+      stamp new workflow rows). X can be `None` for a B2C candidate
+      visible to a platform admin (`scope=None`).
+
+    `scope=None` means "no tenant filter" — used by platform admins and
+    by tests that don't care about tenancy.
+    """
+    q = (
+        supabase.table("candidates")
+        .select("id,company_id")
+        .eq("id", candidate_id)
+    )
+    if scope is not None:
+        q = q.eq("company_id", scope)
+    rows = q.execute().data or []
+    if not rows:
+        return False, None
+    return True, rows[0].get("company_id")
+
+
 def upsert_recruiter_decision(
     supabase,
     candidate_id: str,
@@ -525,6 +576,7 @@ def upsert_recruiter_decision(
     decision: Optional[str] = None,
     bookmarked: Optional[bool] = None,
     notes: Optional[str] = None,
+    company_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Partial-update the (candidate_id, recruiter_id) workflow row.
 
@@ -589,6 +641,11 @@ def upsert_recruiter_decision(
         "bookmarked": bool(bookmarked) if bookmarked is not None else False,
         "notes": notes if notes is not None else "",
     }
+    # Stamp tenant on insert when the router provided it (multi-tenant PR
+    # 1). Existing test callers pass None and the column stays NULL — fine
+    # for stub-supabase tests that ignore tenancy.
+    if company_id is not None:
+        insert_payload["company_id"] = company_id
     if decision in TERMINAL_DECISIONS:
         insert_payload["decided_at"] = now_iso
 

@@ -16,7 +16,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.auth import _fetch_role, get_current_recruiter
+from app.auth import get_current_recruiter
 from app.models.schemas import (
     HiringFunnelResponse,
     IntegrityVolumeResponse,
@@ -30,7 +30,7 @@ from app.models.schemas import (
 )
 from app.services.recruiter import (
     RankFilters,
-    candidate_exists,
+    candidate_tenant,
     get_candidate_detail,
     rank_candidates,
     upsert_recruiter_decision,
@@ -43,6 +43,20 @@ from app.services.recruiter_analytics import (
 from app.supabase_client import get_supabase
 
 router = APIRouter()
+
+
+def _tenant_scope(ctx):
+    """Translate a TenantContext into the `company_id` filter to apply.
+
+    Returns `None` for platform admins (grill C3 — they see across all
+    tenants) and the caller's `company_id` otherwise. Centralised here so
+    every endpoint reads the same translation; if PR 3 introduces a new
+    role that should bypass tenant scoping, this is the single line to
+    update.
+    """
+    if ctx.is_platform_admin:
+        return None
+    return ctx.company_id
 
 
 @router.get("/candidates", response_model=RecruiterCandidateListResponse)
@@ -87,7 +101,12 @@ async def list_candidates(
             page=page,
             page_size=page_size,
         )
-        return rank_candidates(get_supabase(), user.id, filters)
+        return rank_candidates(
+            get_supabase(),
+            user.id,
+            filters,
+            company_id=_tenant_scope(user),
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -102,20 +121,33 @@ async def get_candidate(candidate_id: UUID, user=Depends(get_current_recruiter))
     with author attribution. Both see every Recruiter's Decision row
     (accountability is preserved by attribution, not by hiding rows)."""
     supabase = get_supabase()
-    # Role is read once here rather than threaded through
-    # get_current_recruiter, so the existing endpoints don't change shape.
-    role = _fetch_role(user.id) or "user"
-    detail = get_candidate_detail(supabase, str(candidate_id), user.id, role)
+    detail = get_candidate_detail(
+        supabase,
+        str(candidate_id),
+        user.id,
+        user.role,
+        company_id=_tenant_scope(user),
+    )
     if detail is None:
         raise HTTPException(status_code=404, detail="Candidate not found")
     return detail
 
 
-def _ensure_candidate(supabase, candidate_id: UUID) -> None:
-    """Surface 404 for stale candidate ids before the upsert hits a FK
-    violation. Keeps the API error contract clean (404 vs 500)."""
-    if not candidate_exists(supabase, str(candidate_id)):
+def _resolve_candidate_tenant(supabase, candidate_id: UUID, ctx) -> Optional[str]:
+    """Verify the candidate exists AND (if caller is tenant-scoped) belongs
+    to the caller's tenant. Returns the candidate's own `company_id` to
+    stamp the new workflow row with — `None` for B2C candidates seen by a
+    platform admin.
+
+    Raises 404 on both 'missing' and 'cross-tenant' so the API never leaks
+    whether the candidate exists in another tenant.
+    """
+    exists, cand_company_id = candidate_tenant(
+        supabase, str(candidate_id), scope=_tenant_scope(ctx)
+    )
+    if not exists:
         raise HTTPException(status_code=404, detail="Candidate not found")
+    return cand_company_id
 
 
 def _to_row(row: dict, candidate_id: UUID) -> RecruiterDecisionRow:
@@ -139,10 +171,14 @@ async def set_decision(
     user=Depends(get_current_recruiter),
 ):
     supabase = get_supabase()
-    _ensure_candidate(supabase, candidate_id)
+    cand_company = _resolve_candidate_tenant(supabase, candidate_id, user)
     try:
         row = upsert_recruiter_decision(
-            supabase, str(candidate_id), user.id, decision=body.decision
+            supabase,
+            str(candidate_id),
+            user.id,
+            decision=body.decision,
+            company_id=cand_company,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -159,9 +195,13 @@ async def set_bookmark(
     user=Depends(get_current_recruiter),
 ):
     supabase = get_supabase()
-    _ensure_candidate(supabase, candidate_id)
+    cand_company = _resolve_candidate_tenant(supabase, candidate_id, user)
     row = upsert_recruiter_decision(
-        supabase, str(candidate_id), user.id, bookmarked=body.bookmarked
+        supabase,
+        str(candidate_id),
+        user.id,
+        bookmarked=body.bookmarked,
+        company_id=cand_company,
     )
     return _to_row(row, candidate_id)
 
@@ -176,9 +216,13 @@ async def set_notes(
     user=Depends(get_current_recruiter),
 ):
     supabase = get_supabase()
-    _ensure_candidate(supabase, candidate_id)
+    cand_company = _resolve_candidate_tenant(supabase, candidate_id, user)
     row = upsert_recruiter_decision(
-        supabase, str(candidate_id), user.id, notes=body.notes
+        supabase,
+        str(candidate_id),
+        user.id,
+        notes=body.notes,
+        company_id=cand_company,
     )
     return _to_row(row, candidate_id)
 
@@ -190,14 +234,14 @@ async def set_notes(
 
 @router.get("/analytics/funnel", response_model=HiringFunnelResponse)
 async def analytics_funnel(user=Depends(get_current_recruiter)):
-    return hiring_funnel(get_supabase())
+    return hiring_funnel(get_supabase(), company_id=_tenant_scope(user))
 
 
 @router.get("/analytics/scores", response_model=ScoresByFieldResponse)
 async def analytics_scores(user=Depends(get_current_recruiter)):
-    return scores_by_field(get_supabase())
+    return scores_by_field(get_supabase(), company_id=_tenant_scope(user))
 
 
 @router.get("/analytics/integrity", response_model=IntegrityVolumeResponse)
 async def analytics_integrity(user=Depends(get_current_recruiter)):
-    return integrity_event_volume(get_supabase())
+    return integrity_event_volume(get_supabase(), company_id=_tenant_scope(user))

@@ -23,6 +23,107 @@
 
 ---
 
+## 27/05/2026 — Multi-tenant rollout · PR 1 (backend tenant scoping for admin + recruiter)
+Type: Feature
+
+PR 1 of the multi-tenant rollout. Backend now enforces tenant isolation
+on every admin + recruiter read path, plus the recruiter write path
+(decision / bookmark / notes). Platform admins (`role='admin'`,
+`is_platform_admin = True`) bypass the filter — see grill C3.
+
+What landed:
+
+`backend/app/auth.py`:
+- New `TenantContext` dataclass: `(user_id, role, company_id)` +
+  `id` property (backward-compat for handlers that read `user.id`) +
+  `is_platform_admin` property (`role == 'admin'`).
+- New `_fetch_profile(user_id)` reads `role + company_id` in one query.
+  `_fetch_role` kept as a thin wrapper for callers that don't need
+  tenant info (`routers/reports.py` ownership gate).
+- New `get_tenant_context` dependency.
+- `get_current_admin` + `get_current_recruiter` now return
+  `TenantContext`. Their gate semantics are unchanged.
+
+`backend/app/services/recruiter.py`:
+- `rank_candidates`, `get_candidate_detail`, `upsert_recruiter_decision`
+  gain `company_id: Optional[str] = None` kwarg. When non-None,
+  candidate / interview / decision / integrity queries filter by it
+  (one extra `.eq("company_id", X)` per existing query, no new
+  round-trips).
+- `candidate_exists` replaced by `candidate_tenant(supabase, id, scope)`
+  → `(exists: bool, candidate_company_id: Optional[str])`. The two-tuple
+  return distinguishes "missing" (False, None) from "B2C candidate
+  with NULL company_id seen by platform admin" (True, None). Cross-
+  tenant ids map to (False, None) so the router never leaks
+  cross-tenant existence.
+
+`backend/app/services/recruiter_analytics.py`:
+- All three aggregations (`hiring_funnel`, `scores_by_field`,
+  `integrity_event_volume`) gain `company_id` kwarg with the same
+  semantics.
+
+`backend/app/routers/admin.py`:
+- `_tenant_scope(ctx)` helper centralises the "None for platform admin,
+  else `ctx.company_id`" translation.
+- Both endpoints (`/admin/overview`, `/admin/users/{user_id}`) thread
+  the tenant filter through their profile / interview / candidate
+  queries when the caller is not a platform admin. Today's behaviour
+  is unchanged because only platform admins pass the `get_current_admin`
+  gate; the conditional is preparation for PR 3 when `company_admin`
+  will widen the gate.
+
+`backend/app/routers/recruiter.py`:
+- Same `_tenant_scope(ctx)` helper.
+- List + detail + analytics endpoints pass `company_id=_tenant_scope(user)`
+  through to the service.
+- Three write endpoints (decision / bookmark / notes) now go through
+  `_resolve_candidate_tenant(supabase, candidate_id, ctx)` which
+  verifies the candidate exists AND (if caller is scoped) belongs to
+  the caller's tenant. Returns the candidate's own `company_id` so
+  the new `recruiter_decisions` row gets stamped with it. Cross-tenant
+  candidate ids return 404, indistinguishable from 'missing'.
+
+`backend/tests/test_tenant_scoping.py` (new, 17 cases):
+- Tenant-aware fake supabase chain that honours `.eq(col, val)` — the
+  existing fakes treat it as a no-op (that's correct for unit-testing
+  SQL composition; not enough to verify tenant isolation).
+- Cross-tenant isolation cases for `rank_candidates`,
+  `get_candidate_detail`, `candidate_tenant`, `hiring_funnel`,
+  `scores_by_field`, `integrity_event_volume`. Each function gets a
+  "scoped sees only own" + "unscoped sees both" pair.
+
+Verification:
+- `python -c "from app.main import app"` — imports cleanly.
+- `python -m pytest -q` — 177/177 passing (160 prior + 17 new).
+- Existing test_recruiter_service / test_recruiter_detail /
+  test_recruiter_analytics call sites unchanged — the new `company_id`
+  kwarg is optional (default None = no filter, matches their stubs).
+
+Affected files:
+- `backend/app/auth.py`
+- `backend/app/routers/admin.py`
+- `backend/app/routers/recruiter.py`
+- `backend/app/services/recruiter.py`
+- `backend/app/services/recruiter_analytics.py`
+- `backend/tests/test_tenant_scoping.py` (new)
+- `MULTI_TENANT_ROLLOUT.md` — PR 1 status
+
+Architectural impact: tenant isolation is now enforced at the backend
+layer for admin + recruiter surfaces. The `score_interviews_bulk` pinned
+canonical is **untouched** — it still takes a list of interview IDs and
+trusts the caller to scope. The caller is now responsible for passing
+only tenant-scoped IDs, which all five tenant-aware aggregations do.
+RLS posture on domain tables is unchanged in this PR (still ownership-
+scoped); tenant-aware RLS lands later as defense-in-depth.
+Future considerations:
+- Next session: PR 2 — extend tenant scoping to `routers/dashboard.py`,
+  `routers/interviews.py`, `routers/reports.py`. Plus the WebSocket
+  handler verifies the candidate's `company_id` matches the caller's
+  on connect.
+- The `_tenant_scope(ctx)` helper is duplicated between `admin.py` and
+  `recruiter.py`. If a third router needs it (PR 2 likely will), pull
+  it into `app/auth.py` alongside `TenantContext`.
+
 ## 27/05/2026 — Multi-tenant rollout · PR 0 (migration 004) + ADR 0005
 Type: Feature
 

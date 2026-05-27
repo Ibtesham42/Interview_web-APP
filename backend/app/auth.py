@@ -4,10 +4,50 @@ The backend uses the Supabase service-role key for database access, so it must
 explicitly identify the caller. The frontend sends the user's Supabase access
 token as a Bearer token; `get_current_user` validates it against Supabase Auth
 and returns the authenticated user.
+
+For tenant-scoped handlers (admin / recruiter / company-scoped routes), use
+`get_tenant_context` — it bundles the caller's role + company_id alongside
+their user id so handlers can apply `company_id` filters without re-fetching
+the profile per request. The role gates (`get_current_admin`,
+`get_current_recruiter`) are thin wrappers over the same context, so handlers
+that need both gate and scope use one dependency.
 """
+from dataclasses import dataclass
+from typing import Optional
+
 from fastapi import Depends, Header, HTTPException, status
 
 from app.supabase_client import get_supabase
+
+
+@dataclass
+class TenantContext:
+    """Caller identity + tenant scope.
+
+    Returned by `get_tenant_context` and (transitively) by
+    `get_current_admin` / `get_current_recruiter`. Handlers that previously
+    wrote `user.id` continue to work via the `id` property — the context
+    behaves like a user object for that one attribute and adds tenant
+    metadata on top.
+    """
+    user_id: str
+    role: str
+    company_id: Optional[str]
+
+    @property
+    def id(self) -> str:
+        """Backward-compat: handlers that read `ctx.id` get the user id."""
+        return self.user_id
+
+    @property
+    def is_platform_admin(self) -> bool:
+        """`role='admin'` is the platform-wide super-admin per grill C3.
+
+        Platform admins have `company_id IS NULL` and bypass tenant filters
+        in every handler. Company-scoped roles (`recruiter` today,
+        `company_admin` after PR 3) get scoping applied.
+        """
+        return self.role == "admin"
 
 
 def get_current_user(authorization: str = Header(None)):
@@ -46,55 +86,84 @@ def get_current_user(authorization: str = Header(None)):
     return user
 
 
-def _fetch_role(user_id: str) -> str | None:
-    """Read the role for a given user from the `profiles` table.
+def _fetch_profile(user_id: str) -> Optional[dict]:
+    """Read role + company_id for a given user from the `profiles` table.
 
-    Returns None if the profile row is missing or the lookup fails — callers
-    decide how to map that to an HTTP response.
+    One Supabase round-trip; returns None if the profile row is missing or
+    the lookup fails — callers decide how to map that to an HTTP response.
+    Replaces the older `_fetch_role` (kept inline below for the auth gates
+    that still only need the role, e.g. the report-endpoint precursor PR).
     """
     supabase = get_supabase()
     try:
-        result = supabase.table("profiles").select("role").eq("id", user_id).execute()
+        result = (
+            supabase.table("profiles")
+            .select("role,company_id")
+            .eq("id", user_id)
+            .execute()
+        )
     except Exception:
         return None
-    return result.data[0].get("role") if result.data else None
+    return result.data[0] if result.data else None
 
 
-def get_current_admin(user=Depends(get_current_user)):
-    """FastAPI dependency: require an authenticated user with the 'admin' role.
+def _fetch_role(user_id: str) -> Optional[str]:
+    """Read just the role for a given user. Kept for callers that don't need
+    the full tenant context (e.g. `routers/reports.py` ownership-or-role
+    gate). Calls `_fetch_profile` underneath so there's still one query."""
+    profile = _fetch_profile(user_id)
+    return profile.get("role") if profile else None
 
-    Raises 403 for non-admin users. The role lives on the `profiles` table.
+
+def get_tenant_context(user=Depends(get_current_user)) -> TenantContext:
+    """FastAPI dependency: resolve the caller's role + tenant scope.
+
+    Used by handlers that filter results by `company_id`. Pairs naturally
+    with the role gates (`get_current_admin`, `get_current_recruiter`) which
+    return the same `TenantContext` shape — a handler that needs both gate
+    and scope picks the gate dependency and reads `ctx.company_id` from the
+    same object.
     """
-    role = _fetch_role(user.id)
-    if role is None:
+    profile = _fetch_profile(user.id)
+    if profile is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Could not verify account role",
+            detail="Could not verify account profile",
         )
-    if role != "admin":
+    return TenantContext(
+        user_id=user.id,
+        role=profile.get("role") or "user",
+        company_id=profile.get("company_id"),
+    )
+
+
+def get_current_admin(ctx: TenantContext = Depends(get_tenant_context)) -> TenantContext:
+    """FastAPI dependency: require an authenticated platform admin.
+
+    Today only `role='admin'` (platform-wide super-admin per grill C3) passes
+    this gate. When PR 3 introduces `company_admin`, this gate widens to
+    include them and the underlying handlers' `company_id` filters (added
+    here in PR 1) transparently take effect.
+    """
+    if ctx.role != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",
         )
-    return user
+    return ctx
 
 
-def get_current_recruiter(user=Depends(get_current_user)):
-    """FastAPI dependency: require an authenticated user with the 'recruiter'
-    or 'admin' role.
+def get_current_recruiter(ctx: TenantContext = Depends(get_tenant_context)) -> TenantContext:
+    """FastAPI dependency: require an authenticated recruiter or admin.
 
     Per the B1 access matrix (RECRUITER_ROLLOUT.md), Admins inherit Recruiter
-    capabilities additively — both roles pass this gate.
+    capabilities additively — both roles pass this gate. After multi-tenant
+    PR 1, recruiters are tenant-scoped (their `company_id` filter applies);
+    admins remain platform-wide.
     """
-    role = _fetch_role(user.id)
-    if role is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Could not verify account role",
-        )
-    if role not in ("recruiter", "admin"):
+    if ctx.role not in ("recruiter", "admin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Recruiter access required",
         )
-    return user
+    return ctx
