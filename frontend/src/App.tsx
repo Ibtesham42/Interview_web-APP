@@ -165,10 +165,15 @@ function App() {
           {/* Reports — viewable by candidates (own) and admins (oversight) */}
           <Route path="/report/:interviewId" element={protectedShell(<Report />)} />
 
-          {/* Self-serve company signup — multi-tenant PR 3. Open to any
-              authenticated 'user' (B2C). The backend rejects callers
-              who are already in a tenant or already an admin. */}
-          <Route path="/companies/signup" element={protectedShell(<CompanySignup />, 'user')} />
+          {/* Self-serve company signup — multi-tenant PR 3. Open to
+              ANY authenticated user — the component itself renders a
+              friendly "you're signed in as X, only standard users can
+              create a company" message for non-'user' roles, and the
+              backend rejects callers who are already in a tenant or
+              already an admin. Keeping the route open means the
+              discoverability link on /signup + /login doesn't bounce
+              logged-in non-user accounts away. */}
+          <Route path="/companies/signup" element={protectedShell(<CompanySignup />)} />
 
           {/* Admin (platform + company-admin per multi-tenant PR 3) */}
           <Route path="/admin" element={protectedShell(<AdminDashboard />, ['admin', 'company_admin'])} />
