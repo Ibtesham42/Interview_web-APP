@@ -42,6 +42,31 @@ export interface ClaimCompanyResponse {
   reason?: string;
 }
 
+// Recruiter email composer (PR 7 — multi-tenant rollout)
+export interface EmailDraft {
+  to: string;
+  subject: string;
+  body: string;
+}
+
+export interface EmailOutboxRow {
+  id: string;
+  to_email: string;
+  subject: string;
+  body: string;
+  // 'sent' = Resend accepted; 'failed' = Resend rejected OR service is
+  // disabled (no RESEND_API_KEY). error_message carries the reason.
+  status: 'sent' | 'failed';
+  resend_message_id?: string | null;
+  error_message?: string | null;
+  sent_at: string;
+  sender_id?: string | null;
+}
+
+export interface EmailListResponse {
+  items: EmailOutboxRow[];
+}
+
 export interface Candidate {
   id: string;
   user_id?: string;

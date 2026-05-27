@@ -23,6 +23,140 @@
 
 ---
 
+## 27/05/2026 — Multi-tenant rollout · PR 7 (email composer + endpoints) — ROLLOUT COMPLETE
+Type: Feature
+
+PR 7 — the final piece of the multi-tenant rollout. The human-in-the-
+loop email outreach the user originally asked for is now functional
+end-to-end. All 8 PRs (0-7) shipped today.
+
+What landed:
+
+Backend (`backend/app/routers/recruiter.py`):
+- `GET /api/recruiter/candidates/{id}/email/draft` — returns the
+  template-rendered `{to, subject, body}` draft. Today only the
+  shortlist template is wired; a `?template=` query param is the
+  natural seam for adding more.
+- `POST /api/recruiter/candidates/{id}/email/send` — accepts
+  `{to, subject, body}` from the (possibly recruiter-edited)
+  composer. Calls `services.email.send`, returns the outbox row.
+  Resend failure does NOT raise — the row is returned with
+  `status='failed'` so the audit trail is always present and the UI
+  can surface the reason.
+- `GET /api/recruiter/candidates/{id}/emails` — lists prior outbox
+  rows for the candidate. Used by the "Emails sent" panel.
+- All three endpoints tenant-scoped via a shared
+  `_load_candidate_for_email` helper. A recruiter of tenant A asking
+  about a candidate of B gets 404, indistinguishable from "candidate
+  does not exist".
+- `email_send` rejects with 400 if a platform admin tries to send to
+  a B2C candidate (NULL `company_id`) — a tenant-less audit row is
+  meaningless.
+
+Backend (`backend/app/models/schemas.py`):
+- `EmailDraftResponse`, `EmailSendRequest`, `EmailOutboxRow`,
+  `EmailListResponse` Pydantic models.
+
+Frontend:
+- `EmailComposerModal.tsx` — opens with the template-rendered draft;
+  recruiter edits `to` / subject / body; `Send email` POSTs to the
+  endpoint. ESC + click-backdrop dismiss. `status='failed'` keeps
+  the modal open and shows the reason; success closes and refreshes
+  the prior-messages list. Per grill E3, drafts are client-side
+  only — closing discards edits.
+- `RecruiterCandidateDetail.tsx`:
+  - New "✉ Send email" button in the header actions, alongside
+    Shortlist / Reject / Bookmark. Decoupled from workflow state —
+    recruiter can email a candidate without changing decision.
+  - New "Emails sent" panel between "Interview history" and
+    "Decisions". Loads via `recruiterApi.emailList` on mount; the
+    composer's `onSent` prepends optimistically + re-fetches.
+- `frontend/src/types/index.ts` — `EmailDraft`, `EmailOutboxRow`,
+  `EmailListResponse`.
+- `frontend/src/services/api.ts` — `recruiterApi.emailDraft / .emailSend
+  / .emailList`.
+- `frontend/src/index.css` — composer modal styles (`.email-composer-*`)
+  + previous-messages list styles (`.email-list`, `.email-row*`,
+  `.email-status-chip` with green/rose variants).
+
+Tests (+7 cases in `backend/tests/test_email_endpoints.py`):
+- Draft endpoint: returns rendered template with candidate first
+  name + company name; cross-tenant 404.
+- Send endpoint: successful send returns `status='sent'` row;
+  failed send (Resend rejected) returns `status='failed'` row
+  WITHOUT raising; cross-tenant 404.
+- List endpoint: returns prior rows; cross-tenant 404.
+
+Verification:
+- Backend: imports clean, 222/222 pytest pass.
+- Frontend: `npx tsc --noEmit` clean.
+
+Affected files:
+- `backend/app/models/schemas.py`
+- `backend/app/routers/recruiter.py`
+- `backend/tests/test_email_endpoints.py` (new)
+- `frontend/src/components/recruiter/EmailComposerModal.tsx` (new)
+- `frontend/src/components/recruiter/RecruiterCandidateDetail.tsx`
+- `frontend/src/index.css`
+- `frontend/src/services/api.ts`
+- `frontend/src/types/index.ts`
+- `CHANGE.md`, `MULTI_TENANT_ROLLOUT.md`
+
+End-to-end flow now functional:
+1. A user signs up at `/signup` then creates a company at
+   `/companies/signup` (PR 3) — becomes `company_admin`.
+2. Goes to `/admin/settings` (PR 5) — copies the
+   `{origin}/apply/{slug}` URL.
+3. Shares the URL with candidates.
+4. A candidate visits `/apply/acme` (PR 4) — signs up — stamped
+   with `company_id` via `claim-company`.
+5. Candidate appears in the company's `/recruiter` list (PR 1).
+6. Recruiter opens the candidate detail page, clicks `Send email`
+   (PR 7) — composer modal opens with the shortlist template
+   pre-filled — edits subject/body — clicks Send.
+7. Resend delivers the email (or records a `status='failed'` row
+   visible in the "Emails sent" panel).
+8. All cross-tenant access is rejected at every layer (PRs 1, 2, 7).
+
+Architectural impact: the rollout adds one new role
+(`company_admin`), one new table (`companies`), one new audit table
+(`email_outbox`), one new service (`services/email.py`), one new
+public route (`/api/apply/{slug}`), and one new tenant-claim flow
+(`/api/auth/claim-company`). Tenant isolation is enforced at the
+backend filter layer (primary) + RLS (defense-in-depth). Pinned
+scoring helpers (`score_interviews_bulk`, `compute_phase_scores`,
+`compute_final_score`) — untouched throughout. Realtime / voice
+pipeline — untouched throughout. Recruiter rollout (which shipped
+2026-05-26) — additively narrowed to tenant scope, no breakage.
+
+Migrations to run in Supabase SQL editor (in order, if you haven't
+already):
+- 004_multi_tenant_companies.sql — companies table + tenant columns.
+- 005_company_admin_role.sql      — widen role CHECK.
+- 006_email_outbox.sql            — outbound email audit log.
+
+Optional env vars for production email:
+- `RESEND_API_KEY` — set to a real key to enable delivery. Empty
+  puts the service in disabled mode (outbox rows still written,
+  marked `status='failed'`).
+- `RESEND_FROM_EMAIL` — defaults to `onboarding@resend.dev`
+  (Resend's sandbox sender). For production, use a verified sender
+  on a domain you've configured at resend.com.
+
+Future considerations:
+- Email rate limiting per Company (a malicious or buggy recruiter
+  could blast Resend's quota). Not in MVP scope; surface metric in
+  Settings.
+- Per-Company email templates + a template editor (deferred per
+  grill E2). `default_shortlist_template` is the seam.
+- Bounce / delivery webhook handling. Resend can POST events back —
+  wire to the outbox row's `status` (e.g. `'delivered'`, `'bounced'`).
+- The /apply/{slug} public route should grow rate limiting and
+  optional reCAPTCHA before heavy real-world use (grill A2 note).
+- `/admin/settings` is the natural home for "send a test email"
+  (verifies RESEND_API_KEY + RESEND_FROM_EMAIL) — small, useful add
+  for any operator changing Resend config.
+
 ## 27/05/2026 — Multi-tenant rollout · PR 6 (email service + outbox migration)
 Type: Feature
 

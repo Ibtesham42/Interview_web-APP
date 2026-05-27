@@ -578,6 +578,150 @@ a:hover { color: var(--primary); }
   font-size: 0.8125rem;
 }
 
+/* ========================================
+   EMAIL COMPOSER MODAL + PRIOR-MESSAGES LIST
+   Multi-tenant PR 7
+   ======================================== */
+
+/* Modal backdrop covers the page with a darkened wash. Click here to
+   dismiss; child stops propagation so a click inside the dialog body
+   doesn't close it. */
+.email-composer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: var(--space-md);
+}
+
+.email-composer-modal {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  width: 100%;
+  max-width: 640px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.email-composer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-md) var(--space-lg);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.email-composer-head h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.email-composer-body {
+  padding: var(--space-lg);
+  overflow-y: auto;
+  flex: 1 1 auto;
+}
+
+.email-composer-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2xl) var(--space-lg);
+  gap: var(--space-md);
+  color: var(--text-secondary);
+}
+
+.email-composer-textarea {
+  width: 100%;
+  font-family: var(--font-sans);
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  resize: vertical;
+  min-height: 12rem;
+}
+
+.email-composer-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-lg);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-primary);
+}
+
+/* Previous-messages panel on the candidate detail page. */
+.email-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.email-row {
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+}
+
+.email-row-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-xs);
+}
+
+.email-row-subject {
+  font-weight: 500;
+  color: var(--text-primary);
+  font-size: 0.9375rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.email-row-meta {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
+
+.email-row-error {
+  margin-top: var(--space-xs);
+  font-size: 0.75rem;
+  color: var(--accent-rose);
+  line-height: 1.4;
+}
+
+.email-status-chip {
+  display: inline-block;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 3px 9px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.email-status-sent {
+  background: rgba(5, 150, 105, 0.15);
+  color: var(--accent-green);
+}
+
+.email-status-failed {
+  background: rgba(220, 38, 38, 0.15);
+  color: var(--accent-rose);
+}
+
 /* Select dropdown - CRITICAL for text visibility */
 select.form-input {
   cursor: pointer;

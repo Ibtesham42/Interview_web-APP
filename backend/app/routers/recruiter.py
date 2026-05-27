@@ -18,6 +18,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth import get_current_recruiter, tenant_scope
 from app.models.schemas import (
+    EmailDraftResponse,
+    EmailListResponse,
+    EmailOutboxRow,
+    EmailSendRequest,
     HiringFunnelResponse,
     IntegrityVolumeResponse,
     RecruiterBookmarkUpdate,
@@ -28,6 +32,8 @@ from app.models.schemas import (
     RecruiterNotesUpdate,
     ScoresByFieldResponse,
 )
+from app.services import email as email_svc
+from app.services.email_templates import default_shortlist_template
 from app.services.recruiter import (
     RankFilters,
     candidate_tenant,
@@ -231,3 +237,180 @@ async def analytics_scores(user=Depends(get_current_recruiter)):
 @router.get("/analytics/integrity", response_model=IntegrityVolumeResponse)
 async def analytics_integrity(user=Depends(get_current_recruiter)):
     return integrity_event_volume(get_supabase(), company_id=tenant_scope(user))
+
+
+# ---------------------------------------------------------------------------
+# Email composer (PR 7) — draft / send / list for the recruiter Shortlist
+# outreach flow. The actual send + outbox writes live in services/email.py;
+# this router is the auth + tenant gate + template lookup.
+# ---------------------------------------------------------------------------
+
+def _load_candidate_for_email(
+    supabase, candidate_id: UUID, ctx
+) -> dict:
+    """Tenant-scoped candidate fetch for the email endpoints.
+
+    Returns the candidate row (with email, name, company_id). Raises
+    HTTPException(404) on missing or cross-tenant — same shape as
+    `_resolve_candidate_tenant` but returns the FULL row so the
+    composer can populate `to` and pass company_id into the template
+    renderer. Centralised here so the three email endpoints share one
+    auth/lookup path.
+    """
+    tenant = tenant_scope(ctx)
+    q = (
+        supabase.table("candidates")
+        .select("id,name,email,company_id")
+        .eq("id", str(candidate_id))
+    )
+    if tenant is not None:
+        q = q.eq("company_id", tenant)
+    rows = q.execute().data or []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    return rows[0]
+
+
+def _load_company_for_template(supabase, company_id) -> dict:
+    """Look up the Company row for template substitution.
+
+    Returns `{name: str}` shape — the templates only consume the name.
+    Falls back to a generic dict if the company_id is somehow missing
+    (B2C candidate viewed by platform admin); the template's own
+    fallback handles the empty name gracefully.
+    """
+    if company_id is None:
+        return {"name": ""}
+    rows = (
+        supabase.table("companies")
+        .select("id,name")
+        .eq("id", company_id)
+        .execute()
+        .data
+        or []
+    )
+    return rows[0] if rows else {"name": ""}
+
+
+@router.get(
+    "/candidates/{candidate_id}/email/draft",
+    response_model=EmailDraftResponse,
+)
+async def email_draft(
+    candidate_id: UUID,
+    user=Depends(get_current_recruiter),
+):
+    """Return a template-rendered draft for the composer.
+
+    Today only the shortlist template is wired up (the default for the
+    "Send email" button). A future query param could pick a different
+    template (`?template=rejection` etc.) — out of scope until the
+    composer UI grows a template picker.
+    """
+    supabase = get_supabase()
+    candidate = _load_candidate_for_email(supabase, candidate_id, user)
+    company = _load_company_for_template(supabase, candidate.get("company_id"))
+
+    rendered = default_shortlist_template(candidate, company)
+    return EmailDraftResponse(
+        to=candidate.get("email") or "",
+        subject=rendered["subject"],
+        body=rendered["body"],
+    )
+
+
+def _outbox_to_row(raw: dict) -> EmailOutboxRow:
+    """Project an outbox dict into the schema-compatible response.
+
+    Used by both the POST /send and GET /emails endpoints. Centralised
+    so the column → field mapping lives in one place — schema changes
+    on `email_outbox` only need updates here, not in two endpoints."""
+    return EmailOutboxRow(
+        id=raw["id"],
+        to_email=raw["to_email"],
+        subject=raw["subject"],
+        body=raw["body"],
+        status=raw["status"],
+        resend_message_id=raw.get("resend_message_id"),
+        error_message=raw.get("error_message"),
+        sent_at=raw["sent_at"],
+        sender_id=raw.get("sender_id"),
+    )
+
+
+@router.post(
+    "/candidates/{candidate_id}/email/send",
+    response_model=EmailOutboxRow,
+)
+async def email_send(
+    candidate_id: UUID,
+    body: EmailSendRequest,
+    user=Depends(get_current_recruiter),
+):
+    """Send the (possibly recruiter-edited) email and record the
+    outbox row.
+
+    Failure semantics from `services/email.py::send`:
+    - Resend failure → outbox row with `status='failed'`, returned to
+      the caller. UI surfaces the failure but the row exists so the
+      audit trail is intact (grill E4).
+    - Disabled mode (no API key) → same shape, `error_message`
+      indicates configuration is missing.
+    - Persistence failure → 500 (EmailServiceError surfaced as a
+      generic HTTPException).
+    """
+    supabase = get_supabase()
+    candidate = _load_candidate_for_email(supabase, candidate_id, user)
+    cand_company = candidate.get("company_id")
+
+    # If the caller is tenant-scoped, the candidate MUST belong to a
+    # tenant (tenant_scope check above already enforced this). For
+    # platform admins viewing a B2C candidate (company_id NULL), refuse
+    # to send — there's no tenant to stamp on the outbox row, and a
+    # tenant-less audit row is meaningless.
+    if cand_company is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot send email to a candidate with no company affiliation",
+        )
+
+    try:
+        row = await email_svc.send(
+            supabase,
+            company_id=cand_company,
+            candidate_id=str(candidate_id),
+            sender_id=user.id,
+            to=body.to.strip(),
+            subject=body.subject.strip(),
+            body=body.body,
+        )
+    except email_svc.EmailServiceError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    return _outbox_to_row(row)
+
+
+@router.get(
+    "/candidates/{candidate_id}/emails",
+    response_model=EmailListResponse,
+)
+async def email_list(
+    candidate_id: UUID,
+    user=Depends(get_current_recruiter),
+):
+    """List prior outbox rows for the candidate, newest first.
+
+    Tenant-scoped via the candidate lookup — a recruiter of A cannot
+    list emails sent to a candidate of B (the candidate fetch 404s
+    first). Inside the tenant, every recruiter sees every email
+    (accountability through `sender_id`, not through hiding rows —
+    matches the B1 access matrix for `recruiter_decisions`).
+    """
+    supabase = get_supabase()
+    _load_candidate_for_email(supabase, candidate_id, user)
+    rows = email_svc.list_for_candidate(
+        supabase,
+        str(candidate_id),
+        company_id=tenant_scope(user),
+    )
+    return EmailListResponse(items=[_outbox_to_row(r) for r in rows])

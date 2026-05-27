@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { recruiterApi } from '../../services/api';
 import { Button } from '../Button';
+import { EmailComposerModal } from './EmailComposerModal';
 import type {
+  EmailOutboxRow,
   RecruiterCandidateDetail as DetailData,
   RecruiterDecision,
 } from '../../types';
@@ -47,6 +49,11 @@ export function RecruiterCandidateDetail() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [pendingShortlist, setPendingShortlist] = useState(false);
 
+  // Composer modal + previous-emails panel (multi-tenant PR 7).
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [emails, setEmails] = useState<EmailOutboxRow[]>([]);
+  const [emailsLoading, setEmailsLoading] = useState(false);
+
   const load = useCallback(() => {
     if (!candidateId) return;
     setLoading(true);
@@ -67,6 +74,26 @@ export function RecruiterCandidateDetail() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Load the prior-emails panel alongside the candidate detail. Same
+  // tenant scope as the rest of the detail page (backend enforces).
+  const loadEmails = useCallback(() => {
+    if (!candidateId) return;
+    setEmailsLoading(true);
+    recruiterApi
+      .emailList(candidateId)
+      .then((res) => setEmails(res.items))
+      .catch(() => {
+        // Email list is supplemental — don't blow up the whole detail
+        // page if it fails. The composer still works.
+        setEmails([]);
+      })
+      .finally(() => setEmailsLoading(false));
+  }, [candidateId]);
+
+  useEffect(() => {
+    loadEmails();
+  }, [loadEmails]);
 
   if (loading) {
     return (
@@ -185,6 +212,13 @@ export function RecruiterCandidateDetail() {
           >
             {myDecision === 'rejected' ? '✗ Rejected' : 'Reject'}
           </Button>
+          <Button
+            variant="secondary"
+            onClick={() => setComposerOpen(true)}
+            title="Compose an email to this candidate"
+          >
+            ✉ Send email
+          </Button>
           <button
             type="button"
             className={`icon-btn${iAmBookmarked ? ' active' : ''}`}
@@ -197,6 +231,21 @@ export function RecruiterCandidateDetail() {
           </button>
         </div>
       </div>
+
+      {composerOpen && (
+        <EmailComposerModal
+          candidateId={candidateId}
+          candidateName={candidate.name}
+          onSent={(row) => {
+            // Optimistically prepend the new row so the recruiter sees
+            // their send in the panel immediately. A subsequent fetch
+            // overwrites with the server's canonical list.
+            setEmails((prior) => [row, ...prior]);
+            loadEmails();
+          }}
+          onClose={() => setComposerOpen(false)}
+        />
+      )}
 
       {actionError && (
         <div className="recruiter-action-error" role="alert">
@@ -270,6 +319,42 @@ export function RecruiterCandidateDetail() {
                 </div>
               );
             })}
+          </div>
+        )}
+      </div>
+
+      <div className="panel">
+        <div className="panel-head">
+          <h3>Emails sent ({emails.length})</h3>
+        </div>
+        {emailsLoading ? (
+          <p className="report-empty">Loading messages…</p>
+        ) : emails.length === 0 ? (
+          <p className="report-empty">
+            No emails sent yet. Click <strong>Send email</strong> above to write
+            the first one.
+          </p>
+        ) : (
+          <div className="email-list">
+            {emails.map((em) => (
+              <div key={em.id} className="email-row">
+                <div className="email-row-head">
+                  <span className="email-row-subject">{em.subject}</span>
+                  <span
+                    className={`email-status-chip email-status-${em.status}`}
+                    title={em.error_message || ''}
+                  >
+                    {em.status === 'sent' ? 'Sent' : 'Failed'}
+                  </span>
+                </div>
+                <div className="email-row-meta">
+                  to {em.to_email} · {formatDate(em.sent_at)}
+                </div>
+                {em.status === 'failed' && em.error_message && (
+                  <div className="email-row-error">{em.error_message}</div>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </div>

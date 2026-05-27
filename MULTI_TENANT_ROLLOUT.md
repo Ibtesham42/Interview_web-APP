@@ -326,6 +326,11 @@ the Supabase SQL editor before PR 7's composer UI is wired up.
 
 ### PR 7 — Email endpoints + composer UI
 
+**Status:** Shipped 2026-05-27 (commit on `main`). 222/222 pytest pass
+(215 prior + 7 new); frontend tsc green. **Rollout complete** — the
+human-in-the-loop email outreach the user originally asked for is now
+functional end-to-end.
+
 **Scope:** backend + frontend.
 - Backend `GET /api/recruiter/candidates/{id}/email/draft` — returns
   the template-rendered draft for the shortlist action.

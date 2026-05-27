@@ -334,3 +334,46 @@ class ClaimCompanyRequest(BaseModel):
     already belongs to a different tenant — never silently overwrites.
     """
     slug: str = Field(..., min_length=3, max_length=40, pattern=r"^[a-z][a-z0-9-]*$")
+
+
+# ---------------------------------------------------------------------------
+# Recruiter email composer (PR 7 — Shortlist + Email outreach)
+# ---------------------------------------------------------------------------
+
+class EmailDraftResponse(BaseModel):
+    """GET /api/recruiter/candidates/{id}/email/draft — returns the
+    template-rendered draft for the composer modal. `to` may be empty
+    when the candidate has no email on file (resume parser couldn't
+    isolate one); the composer makes it editable."""
+    to: str
+    subject: str
+    body: str
+
+
+class EmailSendRequest(BaseModel):
+    """POST body. The recruiter has edited the draft (or accepted it
+    as-is); these are the values to actually send. `to` is a
+    user-editable field — server validates non-empty + minimal shape."""
+    to: str = Field(..., min_length=3, max_length=320)
+    subject: str = Field(..., min_length=1, max_length=200)
+    body: str = Field(..., min_length=1, max_length=20_000)
+
+
+class EmailOutboxRow(BaseModel):
+    """Single audit-log row. Returned by POST /send and listed by
+    GET /emails. Body is included so the recruiter detail page can
+    preview prior sends without a second fetch (grill E4 — full body
+    persisted)."""
+    id: UUID
+    to_email: str
+    subject: str
+    body: str
+    status: str
+    resend_message_id: Optional[str] = None
+    error_message: Optional[str] = None
+    sent_at: datetime
+    sender_id: Optional[UUID] = None
+
+
+class EmailListResponse(BaseModel):
+    items: List[EmailOutboxRow]

@@ -3,6 +3,9 @@ import type {
   Candidate,
   ClaimCompanyResponse,
   Company,
+  EmailDraft,
+  EmailListResponse,
+  EmailOutboxRow,
   Interview,
   InterviewReport,
   Evaluation,
@@ -197,6 +200,19 @@ export const recruiterApi = {
   scores: () => fetchJson<ScoresByFieldResponse>('/recruiter/analytics/scores'),
   integrity: () =>
     fetchJson<IntegrityVolumeResponse>('/recruiter/analytics/integrity'),
+
+  // Email composer (PR 7) — draft + send + list. The composer opens
+  // a draft, the recruiter optionally edits, then sends. The list is
+  // shown as a "previous messages" panel on the candidate detail page.
+  emailDraft: (candidateId: string) =>
+    fetchJson<EmailDraft>(`/recruiter/candidates/${candidateId}/email/draft`),
+  emailSend: (candidateId: string, payload: EmailDraft) =>
+    fetchJson<EmailOutboxRow>(
+      `/recruiter/candidates/${candidateId}/email/send`,
+      { method: 'POST', body: JSON.stringify(payload) },
+    ),
+  emailList: (candidateId: string) =>
+    fetchJson<EmailListResponse>(`/recruiter/candidates/${candidateId}/emails`),
 };
 
 // Companies API — multi-tenant rollout PRs 3 + 5.
