@@ -308,6 +308,10 @@ migrations 004/005.
 
 ### PR 6 — Email service module + outbox migration
 
+**Status:** Shipped 2026-05-27 (commit on `main`). 215/215 pytest pass
+(207 prior + 8 new). Migration 006 ships in this PR; user runs it in
+the Supabase SQL editor before PR 7's composer UI is wired up.
+
 **Scope:** backend only.
 - Migration 005: `email_outbox` table (id, company_id, candidate_id,
   to_email, subject, body, sender_id, sent_at, resend_message_id,

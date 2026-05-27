@@ -30,8 +30,20 @@ class Settings(BaseSettings):
     use_piper_tts: bool = False  # Set to True to use Piper
     piper_voice_path: str = ""   # Path to .onnx voice file
 
+    # Resend — outbound email (multi-tenant PR 6). Sandbox-friendly
+    # defaults so the email feature works end-to-end without DNS work
+    # (grill E1). To send from a real domain, set RESEND_FROM_EMAIL to
+    # a verified sender on a domain you've configured in Resend.
+    #
+    # Empty RESEND_API_KEY puts the service in "configured-but-disabled"
+    # mode: send() raises a clear EmailDisabled error instead of hitting
+    # the network. Useful for local dev and CI where no key is present.
+    resend_api_key: str = ""
+    resend_from_email: str = "onboarding@resend.dev"
+
     @field_validator(
         "groq_api_key", "openai_api_key", "supabase_url", "supabase_key",
+        "resend_api_key", "resend_from_email",
         mode="before",
     )
     @classmethod

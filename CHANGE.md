@@ -23,6 +23,112 @@
 
 ---
 
+## 27/05/2026 — Multi-tenant rollout · PR 6 (email service + outbox migration)
+Type: Feature
+
+PR 6 of the multi-tenant rollout. Backend-only PR setting up the
+rails for PR 7's recruiter Shortlist + Email composer. No new
+endpoints; the service is wired in PR 7. Migration 006 ships here.
+
+What landed:
+
+`backend/app/migrations/006_email_outbox.sql`:
+- New table `email_outbox` — one row per outbound email. Columns:
+  `id, company_id, candidate_id, sender_id, to_email, subject, body,
+  status (sent | failed), resend_message_id, error_message, sent_at`.
+- Grill E4 resolution: **full body stored** for audit
+  reproducibility. PII duplication is accepted in exchange for
+  audit-from-DB-alone (no Resend API dependency to reproduce a sent
+  email).
+- FKs: `company_id` cascade-deletes with the company;
+  `candidate_id` and `sender_id` SET NULL on delete (preserves the
+  audit trail when a candidate or user is later removed).
+- Indexes: per-candidate (recruiter detail "previous messages"),
+  per-company (tenant audit), per-sender (accountability).
+- RLS enabled, no client policies — service-role writes only.
+  Tenant scope is enforced at the backend by the `tenant_scope`
+  helper (consistent with `recruiter_decisions` and
+  `interview_integrity_events`).
+
+`backend/app/config.py` + `backend/.env.example`:
+- New settings `resend_api_key` (default empty) and
+  `resend_from_email` (default `onboarding@resend.dev` — Resend's
+  sandbox sender, works without DNS setup per grill E1).
+- Empty `resend_api_key` puts the service in **disabled mode** —
+  `send()` writes a `status='failed'` outbox row with a clear
+  "email not configured" error instead of raising or silently
+  dropping mail. This keeps CI + local dev fully functional without
+  a real key; the recruiter UI surfaces the failure to the operator.
+
+`backend/app/services/email_templates.py` (new):
+- `default_shortlist_template(candidate, company)` →
+  `{subject, body}`. Plain text only (grill E2 — no HTML editor in
+  the composer). First-name greeting with a "Hi there," fallback
+  when the resume parser left `candidate.name` empty.
+- `default_rejection_template(candidate, company)` — bonus template
+  available in the composer; not auto-attached to the Reject button
+  (Reject is a workflow state, not a notification trigger).
+
+`backend/app/services/email.py` (new):
+- `async send(supabase, *, company_id, candidate_id, sender_id, to,
+  subject, body)` → outbox row dict. Always writes an outbox row,
+  sent or failed. The only failure mode that raises is the row
+  insert itself (`EmailServiceError`) — the audit-log invariant is
+  more important than transport reliability.
+- Resend HTTP call via `httpx` (already pinned — no new dep). Sync
+  call wrapped in `asyncio.to_thread` so the single-worker event
+  loop is never blocked, same pattern as the Groq wrapper from the
+  earlier scaling-safety PR.
+- `list_for_candidate(supabase, candidate_id, *, company_id=None)`
+  for PR 7's "previous messages" panel. Tenant filter when
+  `company_id` non-None, mirrors the rest of the recruiter service
+  signatures.
+
+Tests (+8 cases, all in `backend/tests/test_email.py`):
+- Templates: shortlist uses first name + company name; missing name
+  falls back to "Hi there,"; missing company name falls back to
+  "our team"; single-word names stay intact.
+- Send: success path writes `status='sent'` + `resend_message_id`;
+  Resend exception writes `status='failed'` + `error_message`
+  WITHOUT raising; disabled-mode (empty API key) writes
+  `status='failed'` without ever calling the network (verified by
+  monkeypatching the inner HTTP call to a sentinel that raises if
+  invoked).
+
+Verification:
+- Backend imports clean. 215/215 pytest pass (207 prior + 8 new).
+- Migration 006 not yet executed against Supabase — manual SQL editor
+  step, same posture as previous migrations.
+
+Affected files:
+- `backend/.env.example`
+- `backend/app/config.py`
+- `backend/app/migrations/006_email_outbox.sql` (new)
+- `backend/app/services/email.py` (new)
+- `backend/app/services/email_templates.py` (new)
+- `backend/tests/test_email.py` (new)
+- `CHANGE.md`, `MULTI_TENANT_ROLLOUT.md`
+
+Architectural impact: outbound email is now a first-class service
+with a tenant-scoped audit log. No new dependencies (Resend via
+httpx, not the official SDK). Pinned scoring helpers + realtime +
+existing migrations untouched.
+
+Future considerations:
+- Next session: PR 7 — composer UI + endpoints that wire `send()`
+  into the recruiter Shortlist flow. Endpoints to add: GET
+  `/api/recruiter/candidates/{id}/email/draft`, POST
+  `/api/recruiter/candidates/{id}/email/send`, GET
+  `/api/recruiter/candidates/{id}/emails`.
+- The official `resend` SDK was deliberately not adopted — Resend's
+  surface is one POST endpoint, and httpx is already pinned. If
+  Resend adds features we want (scheduled sends, batching) the SDK
+  becomes attractive; for transactional sends, httpx is simpler.
+- Per-company templates + server-side drafts are both deferred
+  (grill E2 + E3 resolutions). The `default_*_template` functions
+  are the seam where a future "load this company's saved template"
+  branch would live.
+
 ## 27/05/2026 — Multi-tenant rollout · PR 5 (company-admin settings + tenant banner)
 Type: Feature
 
