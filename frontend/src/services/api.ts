@@ -220,7 +220,16 @@ export const recruiterApi = {
 //   getMine  - GET /api/companies/mine (read caller's tenant, PR 5).
 // Settings PATCH + invite-member endpoints are deferred follow-ups.
 export const companiesApi = {
-  create: (data: { name: string; slug: string }) =>
+  // Phone + address optional; email required at the schema level (a
+  // regex catches the obvious malformed cases server-side too). The
+  // SPA passes raw user input; the backend trims + validates.
+  create: (data: {
+    name: string;
+    slug: string;
+    email: string;
+    phone?: string;
+    address?: string;
+  }) =>
     fetchJson<CompanySignupResponse>('/companies/', {
       method: 'POST',
       body: JSON.stringify(data),

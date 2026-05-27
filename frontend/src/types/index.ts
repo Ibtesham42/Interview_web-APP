@@ -21,6 +21,11 @@ export interface Company {
   id: string;
   slug: string;
   name: string;
+  // Contact fields from migration 007. email is always present
+  // (DB-side NOT NULL with default ''); phone + address are optional.
+  email: string;
+  phone?: string | null;
+  address?: string | null;
   created_at: string;
 }
 
@@ -34,6 +39,12 @@ export interface ApplyLanding {
   company_name: string;
   slug: string;
   signup_open: boolean;
+  // Optional contact info — set when the company's admin provided
+  // them at signup (PR 8). Empty string / null when not set; the
+  // apply page only renders what's populated.
+  company_email?: string;
+  company_phone?: string | null;
+  company_address?: string | null;
 }
 
 export interface ClaimCompanyResponse {

@@ -35,11 +35,22 @@ export function CompanySignup() {
 
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const slugError = useMemo(() => slugProblem(slug), [slug]);
-  const canSubmit = !submitting && name.trim().length >= 2 && slug.length >= 3 && !slugError;
+  // Cheap email shape check — same shape regex the backend uses. Server is
+  // still authoritative; this just avoids submitting an obviously-bad value.
+  const emailLooksValid = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
+  const canSubmit =
+    !submitting &&
+    name.trim().length >= 2 &&
+    slug.length >= 3 &&
+    !slugError &&
+    emailLooksValid;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,7 +63,15 @@ export function CompanySignup() {
 
     setSubmitting(true);
     try {
-      await companiesApi.create({ name: name.trim(), slug: slug.trim() });
+      await companiesApi.create({
+        name: name.trim(),
+        slug: slug.trim(),
+        email: email.trim(),
+        // Send phone/address only when provided — keeps the API payload
+        // clean and the backend collapse-to-null logic stays simple.
+        phone: phone.trim() || undefined,
+        address: address.trim() || undefined,
+      });
       // Server flipped our role to company_admin + stamped company_id.
       // Refresh local profile so the SPA's role-aware routing picks up
       // the new state on the next render.
@@ -134,6 +153,53 @@ export function CompanySignup() {
               {slug && slugError && (
                 <p className="form-error">{slugError}</p>
               )}
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="company-email">Contact email</label>
+              <input
+                id="company-email"
+                type="email"
+                className="form-input"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="hr@acme.com"
+                maxLength={200}
+                required
+              />
+              <p className="form-hint">
+                Surfaced on your apply page so candidates can reach you with
+                questions.
+              </p>
+              {email && !emailLooksValid && (
+                <p className="form-error">That doesn't look like a valid email address.</p>
+              )}
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="company-phone">Phone <span className="form-optional">(optional)</span></label>
+              <input
+                id="company-phone"
+                type="tel"
+                className="form-input"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="+1 555 0100"
+                maxLength={40}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="company-address">Address <span className="form-optional">(optional)</span></label>
+              <textarea
+                id="company-address"
+                className="form-input"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="Street, City, Country"
+                maxLength={400}
+                rows={2}
+              />
             </div>
 
             {error && <div className="error-message">{error}</div>}

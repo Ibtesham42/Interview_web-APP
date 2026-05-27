@@ -23,6 +23,100 @@
 
 ---
 
+## 27/05/2026 — Company contact fields (migration 007) — post-rollout follow-up
+Type: Feature
+
+User-requested extension of the multi-tenant rollout: companies now
+capture **contact email (required), phone, address** at signup.
+Surfaced on `/admin/settings` for admins and on the public
+`/apply/{slug}` landing for candidates.
+
+This is a small additive PR after the 8-PR rollout — not a numbered
+PR, just an enhancement.
+
+What landed:
+
+Backend:
+- `migrations/007_company_contact_fields.sql` — adds `email NOT NULL
+  DEFAULT ''`, `phone TEXT`, `address TEXT` to `companies`. Idempotent.
+  Backfills the seed Default row with a clearly-non-real placeholder
+  (`default@invalid.example`) so a Recruiter inspecting it knows it's
+  a system row.
+- `models/schemas.py`: `CompanyCreate.email` required (Pydantic regex
+  catches malformed addresses), `phone`/`address` optional with
+  reasonable max lengths. `CompanyResponse` and `ApplyLandingResponse`
+  expose them.
+- `routers/companies.py`: insert path stamps the three fields; empty
+  strings on optional fields collapse to NULL so consumers can use
+  truthy checks. `get_my_company` selects + returns the new columns.
+- `routers/apply.py`: `_lookup_company_by_slug` selects the new
+  columns. Public landing payload includes them (careers-page-style
+  info — appropriate for a public URL).
+
+Frontend:
+- `types/index.ts`: `Company` + `ApplyLanding` widened with
+  `email/phone/address` (and `company_*` variants on the landing).
+- `services/api.ts`: `companiesApi.create` signature now requires
+  `email` + optional `phone`/`address`.
+- `CompanySignup.tsx`: three new form fields. Email is required with
+  a regex-shaped validator that mirrors the backend; phone + address
+  are optional with `<span class="form-optional">` hint. The submit
+  button stays disabled until email passes the shape check.
+- `Settings.tsx`: company-meta card now lists email/phone/address
+  (phone + address rendered conditionally — a company that left them
+  blank gets a clean card).
+- `Apply.tsx`: new "Questions? Contact {company}" panel below the
+  Apply button — shows email (as a mailto link), phone, and address
+  only when set. The panel is omitted entirely when none of the
+  three are present, so a freshly created company without contact
+  info doesn't surface an empty card.
+- `index.css`: minimal styles for `.form-optional`,
+  `.apply-contact*`.
+
+Tests (+2 cases in `test_companies.py`):
+- Happy path now also asserts the contact fields land + round-trip.
+- New: optional phone/address collapse to None when omitted.
+- New: invalid email is rejected at the Pydantic layer.
+- All existing CompanyCreate fixtures updated to supply `email`.
+
+Verification:
+- Backend: `python -c "from app.main import app"` clean.
+- Backend: 224/224 pytest pass (222 prior + 2 new).
+- Frontend: `npx tsc --noEmit` clean.
+- Migration 007 not yet executed against Supabase — manual SQL editor
+  step, same posture as previous migrations.
+
+Affected files:
+- `backend/app/migrations/007_company_contact_fields.sql` (new)
+- `backend/app/models/schemas.py`
+- `backend/app/routers/apply.py`
+- `backend/app/routers/companies.py`
+- `backend/tests/test_companies.py`
+- `frontend/src/components/apply/Apply.tsx`
+- `frontend/src/components/companies/CompanySignup.tsx`
+- `frontend/src/components/companies/Settings.tsx`
+- `frontend/src/index.css`
+- `frontend/src/services/api.ts`
+- `frontend/src/types/index.ts`
+- `CHANGE.md`
+
+Architectural impact: company-level contact info now travels with
+every Company through the schema, signup API, and the public apply
+landing. Email is the only required field — phone/address remain
+optional so a fast self-serve signup doesn't bog down on details a
+new tenant might add later. Pinned scoring helpers + realtime /
+voice pipeline / email outbox / tenant-scoping invariants —
+untouched.
+
+Future considerations:
+- Settings page currently shows the fields but offers no edit. A
+  follow-up `PATCH /api/companies/mine` + Settings form would let
+  admins update contact info without re-signing-up.
+- Phone format is free-form. If we ever need to dial / SMS, switch
+  to E.164 validation (libphonenumber).
+- A logo/branding field would be the natural next add — surfaced on
+  the apply landing alongside the contact info.
+
 ## 27/05/2026 — Multi-tenant rollout · PR 7 (email composer + endpoints) — ROLLOUT COMPLETE
 Type: Feature
 

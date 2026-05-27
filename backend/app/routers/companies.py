@@ -62,7 +62,7 @@ async def get_my_company(user=Depends(get_current_user)):
 
     company_rows = (
         supabase.table("companies")
-        .select("id,slug,name,created_at")
+        .select("id,slug,name,email,phone,address,created_at")
         .eq("id", company_id)
         .execute()
         .data
@@ -79,6 +79,9 @@ async def get_my_company(user=Depends(get_current_user)):
         id=row["id"],
         slug=row["slug"],
         name=row["name"],
+        email=row.get("email", ""),
+        phone=row.get("phone"),
+        address=row.get("address"),
         created_at=row["created_at"],
     )
 
@@ -184,6 +187,9 @@ async def create_company(body: CompanyCreate, ctx=Depends(get_tenant_context)):
         .insert({
             "slug": slug,
             "name": name,
+            "email": body.email.strip(),
+            "phone": (body.phone or "").strip() or None,
+            "address": (body.address or "").strip() or None,
             "created_by": ctx.id,
         })
         .execute()
@@ -224,6 +230,9 @@ async def create_company(body: CompanyCreate, ctx=Depends(get_tenant_context)):
             id=company_row["id"],
             slug=company_row["slug"],
             name=company_row["name"],
+            email=company_row.get("email", ""),
+            phone=company_row.get("phone"),
+            address=company_row.get("address"),
             created_at=company_row["created_at"],
         ),
         profile=profile_payload,

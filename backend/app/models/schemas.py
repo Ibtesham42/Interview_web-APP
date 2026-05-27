@@ -284,15 +284,26 @@ class CompanyCreate(BaseModel):
     """POST /api/companies/ body. Slug regex enforces the URL shape used
     by /apply/{slug} (PR 4): lowercase letters + digits + hyphens, 3–40
     chars, must start with a letter. Server-side checks layer on top:
-    uniqueness (DB) and a reserved-name blocklist."""
+    uniqueness (DB) and a reserved-name blocklist.
+
+    Contact fields (migration 007): email is required; phone + address
+    are optional. Email is validated as a deliverable address shape;
+    phone is a free-form string (international formats vary too widely
+    to lock down at this layer)."""
     name: str = Field(..., min_length=2, max_length=80)
     slug: str = Field(..., min_length=3, max_length=40, pattern=r"^[a-z][a-z0-9-]*$")
+    email: str = Field(..., min_length=5, max_length=200, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    phone: Optional[str] = Field(None, max_length=40)
+    address: Optional[str] = Field(None, max_length=400)
 
 
 class CompanyResponse(BaseModel):
     id: UUID
     slug: str
     name: str
+    email: str = ""
+    phone: Optional[str] = None
+    address: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -317,11 +328,20 @@ class ApplyLandingResponse(BaseModel):
     `signup_open` is a forward-looking flag for when companies can close
     their application window. For PR 4 it's always True; a future
     settings endpoint can toggle it without breaking the response
-    shape."""
+    shape.
+
+    Contact fields (PR 8) are surfaced publicly because they're the
+    company's careers-page-equivalent contact info — the kind of thing
+    that lives on the "About / Contact us" of any normal company page.
+    Phone + address are optional; the frontend renders only what's
+    set."""
     company_id: UUID
     company_name: str
     slug: str
     signup_open: bool = True
+    company_email: str = ""
+    company_phone: Optional[str] = None
+    company_address: Optional[str] = None
 
 
 class ClaimCompanyRequest(BaseModel):

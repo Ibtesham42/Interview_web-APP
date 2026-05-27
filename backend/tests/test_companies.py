@@ -146,14 +146,20 @@ class TestCreateCompanyHappyPath:
         supabase = _supabase(profiles=[{"id": "u-1", "role": "user", "company_id": None}])
         monkeypatch.setattr("app.routers.companies.get_supabase", lambda: supabase)
 
-        body = CompanyCreate(name="Acme", slug="acme")
+        body = CompanyCreate(
+            name="Acme", slug="acme", email="hr@acme.com",
+            phone="+1 555 0100", address="123 Main St",
+        )
         result = _run(create_company(body, ctx=_ctx_user()))
 
-        # Company inserted
+        # Company inserted with all fields
         companies = supabase._store["companies"]
         assert len(companies) == 1
         assert companies[0]["slug"] == "acme"
         assert companies[0]["name"] == "Acme"
+        assert companies[0]["email"] == "hr@acme.com"
+        assert companies[0]["phone"] == "+1 555 0100"
+        assert companies[0]["address"] == "123 Main St"
         assert companies[0]["created_by"] == "u-1"
 
         # Profile flipped
@@ -161,10 +167,32 @@ class TestCreateCompanyHappyPath:
         assert profile["role"] == "company_admin"
         assert profile["company_id"] == companies[0]["id"]
 
-        # Response shape
+        # Response shape (PR 8 — contact fields surface back to the SPA)
         assert result.company.slug == "acme"
         assert result.company.name == "Acme"
+        assert result.company.email == "hr@acme.com"
+        assert result.company.phone == "+1 555 0100"
         assert result.profile["role"] == "company_admin"
+
+    def test_optional_phone_address_omitted(self, monkeypatch):
+        """Phone + address are optional. Empty strings should be stored
+        as NULL so consumers can use `if company.phone` safely."""
+        supabase = _supabase(profiles=[{"id": "u-1", "role": "user", "company_id": None}])
+        monkeypatch.setattr("app.routers.companies.get_supabase", lambda: supabase)
+
+        body = CompanyCreate(name="Acme", slug="acme", email="hr@acme.com")
+        result = _run(create_company(body, ctx=_ctx_user()))
+
+        assert result.company.email == "hr@acme.com"
+        assert result.company.phone is None
+        assert result.company.address is None
+
+    def test_invalid_email_rejected(self):
+        """Pydantic regex catches obviously-malformed emails before the
+        endpoint runs. Plain string with no '@' fails."""
+        import pytest as _pt
+        with _pt.raises(Exception):  # ValidationError; broad to avoid pydantic-version churn
+            CompanyCreate(name="Acme", slug="acme", email="not-an-email")
 
 
 # ---------------------------------------------------------------------------
@@ -176,7 +204,7 @@ class TestSlugValidation:
         supabase = _supabase(profiles=[{"id": "u-1", "role": "user", "company_id": None}])
         monkeypatch.setattr("app.routers.companies.get_supabase", lambda: supabase)
 
-        body = CompanyCreate(name="Acme", slug="default")
+        body = CompanyCreate(name="Acme", slug="default", email="hr@acme.com")
         with pytest.raises(HTTPException) as exc:
             _run(create_company(body, ctx=_ctx_user()))
         assert exc.value.status_code == 400
@@ -190,7 +218,7 @@ class TestSlugValidation:
         )
         monkeypatch.setattr("app.routers.companies.get_supabase", lambda: supabase)
 
-        body = CompanyCreate(name="Acme Two", slug="acme")
+        body = CompanyCreate(name="Acme Two", slug="acme", email="hr@acme.com")
         with pytest.raises(HTTPException) as exc:
             _run(create_company(body, ctx=_ctx_user()))
         assert exc.value.status_code == 400
@@ -210,7 +238,7 @@ class TestPreconditions:
                             lambda: self._supabase_with_profile())
         ctx = TenantContext(user_id="u-1", role="admin", company_id=None)
         with pytest.raises(HTTPException) as exc:
-            _run(create_company(CompanyCreate(name="Acme", slug="acme"), ctx=ctx))
+            _run(create_company(CompanyCreate(name="Acme", slug="acme", email="hr@acme.com"), ctx=ctx))
         assert exc.value.status_code == 403
 
     def test_already_company_admin_rejected_403(self, monkeypatch):
@@ -218,7 +246,7 @@ class TestPreconditions:
                             lambda: self._supabase_with_profile())
         ctx = TenantContext(user_id="u-1", role="company_admin", company_id="c-other")
         with pytest.raises(HTTPException) as exc:
-            _run(create_company(CompanyCreate(name="Acme", slug="acme"), ctx=ctx))
+            _run(create_company(CompanyCreate(name="Acme", slug="acme", email="hr@acme.com"), ctx=ctx))
         assert exc.value.status_code == 403
 
     def test_already_recruiter_rejected_403(self, monkeypatch):
@@ -228,7 +256,7 @@ class TestPreconditions:
                             lambda: self._supabase_with_profile())
         ctx = TenantContext(user_id="u-1", role="recruiter", company_id="c-other")
         with pytest.raises(HTTPException) as exc:
-            _run(create_company(CompanyCreate(name="Acme", slug="acme"), ctx=ctx))
+            _run(create_company(CompanyCreate(name="Acme", slug="acme", email="hr@acme.com"), ctx=ctx))
         assert exc.value.status_code == 403
 
     def test_user_already_in_a_tenant_rejected_403(self, monkeypatch):
@@ -238,7 +266,7 @@ class TestPreconditions:
                             lambda: self._supabase_with_profile())
         ctx = TenantContext(user_id="u-1", role="user", company_id="c-existing")
         with pytest.raises(HTTPException) as exc:
-            _run(create_company(CompanyCreate(name="Acme", slug="acme"), ctx=ctx))
+            _run(create_company(CompanyCreate(name="Acme", slug="acme", email="hr@acme.com"), ctx=ctx))
         assert exc.value.status_code == 403
 
 

@@ -182,6 +182,33 @@ export function Apply() {
         >
           Apply now
         </button>
+
+        {/* Company contact info (PR 8) — only rendered when set, so a
+            company that left these blank at signup gets a clean card. */}
+        {(landing.company_email || landing.company_phone || landing.company_address) && (
+          <div className="apply-contact">
+            <h4 className="apply-contact-title">Questions? Contact {landing.company_name}</h4>
+            {landing.company_email && (
+              <p className="apply-contact-line">
+                <span className="apply-contact-label">Email</span>
+                <a href={`mailto:${landing.company_email}`}>{landing.company_email}</a>
+              </p>
+            )}
+            {landing.company_phone && (
+              <p className="apply-contact-line">
+                <span className="apply-contact-label">Phone</span>
+                <span>{landing.company_phone}</span>
+              </p>
+            )}
+            {landing.company_address && (
+              <p className="apply-contact-line">
+                <span className="apply-contact-label">Address</span>
+                <span>{landing.company_address}</span>
+              </p>
+            )}
+          </div>
+        )}
+
         <p className="auth-switch" style={{ marginTop: 'var(--space-md)' }}>
           Already have an account? <Link to={`/login?company=${encodeURIComponent(slug)}`}>Sign in</Link>
         </p>

@@ -35,10 +35,15 @@ def _lookup_company_by_slug(supabase, slug: str):
     is case-sensitive (Postgres default text); the slug regex enforced
     on creation guarantees lowercase, so this normalisation is
     defense-in-depth against a future ALTER that loosens the regex.
+
+    Contact columns (email/phone/address — PR 8) are selected so the
+    public apply landing can surface them. They're optional in
+    response rendering — a missing column on a pre-PR-8 row degrades
+    to empty strings.
     """
     rows = (
         supabase.table("companies")
-        .select("id,slug,name")
+        .select("id,slug,name,email,phone,address")
         .eq("slug", slug.strip().lower())
         .execute()
         .data
@@ -71,6 +76,9 @@ async def apply_landing(slug: str):
         company_name=company["name"],
         slug=company["slug"],
         signup_open=True,
+        company_email=company.get("email") or "",
+        company_phone=company.get("phone"),
+        company_address=company.get("address"),
     )
 
 

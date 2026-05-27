@@ -722,6 +722,58 @@ a:hover { color: var(--primary); }
   color: var(--accent-rose);
 }
 
+/* ========================================
+   COMPANY CONTACT (PR 8)
+   - "(optional)" hint next to form labels.
+   - Contact panel on the public apply page.
+   ======================================== */
+
+.form-optional {
+  font-weight: 400;
+  color: var(--text-tertiary);
+  font-size: 0.8125rem;
+}
+
+.apply-contact {
+  margin-top: var(--space-lg);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--border-subtle);
+  text-align: left;
+}
+
+.apply-contact-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 var(--space-sm) 0;
+}
+
+.apply-contact-line {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: var(--space-sm);
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin: 0 0 var(--space-xs) 0;
+  line-height: 1.5;
+}
+
+.apply-contact-label {
+  color: var(--text-tertiary);
+  font-size: 0.8125rem;
+}
+
+.apply-contact-line a {
+  color: var(--primary-light);
+  text-decoration: none;
+}
+
+.apply-contact-line a:hover {
+  text-decoration: underline;
+}
+
 /* Select dropdown - CRITICAL for text visibility */
 select.form-input {
   cursor: pointer;

@@ -123,6 +123,22 @@ export function Settings() {
               <dd><code>{company.slug}</code></dd>
             </div>
             <div>
+              <dt>Contact email</dt>
+              <dd>{company.email || <span className="cell-sub">—</span>}</dd>
+            </div>
+            {company.phone && (
+              <div>
+                <dt>Phone</dt>
+                <dd>{company.phone}</dd>
+              </div>
+            )}
+            {company.address && (
+              <div>
+                <dt>Address</dt>
+                <dd>{company.address}</dd>
+              </div>
+            )}
+            <div>
               <dt>Created</dt>
               <dd>{new Date(company.created_at).toLocaleDateString()}</dd>
             </div>
