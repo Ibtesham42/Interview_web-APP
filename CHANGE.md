@@ -23,6 +23,159 @@
 
 ---
 
+## 27/05/2026 — Multi-tenant rollout · PR 3 (self-serve company signup) + migration 005
+Type: Feature
+
+PR 3 of the multi-tenant rollout. First PR where the conditional
+tenant filters added in PR 1 / PR 2 start actually taking effect for
+non-platform-admin callers — `company_admin` is now a real role.
+
+DEVIATION from the original C2 sub-resolution:
+- The original plan said PR 1 would migrate `'recruiter'` rows to
+  `'company_recruiter'` and PR 2 would drop `'recruiter'` from the
+  CHECK. On reflection while authoring PR 1, that rename was deferred
+  as a pragmatic call: the role string `'recruiter'` is semantically
+  identical to `'company_recruiter'` post-rollout — both are tenant-
+  scoped via the `company_id` filter shipped in PR 1/PR 2. Migrating
+  values adds risk without changing behaviour. Documented in
+  `migrations/005_company_admin_role.sql` and here. If a future PR
+  wants to introduce `'company_recruiter'` as a distinct role string
+  (e.g. to differentiate from a legacy global recruiter that never
+  gets cleaned up), that's an additive CHECK widening.
+
+What landed:
+
+`backend/app/migrations/005_company_admin_role.sql`:
+- Widens `profiles.role` CHECK to admit `'company_admin'`. Existing
+  `user/admin/recruiter` rows unaffected. Idempotent.
+
+`backend/app/auth.py`:
+- `get_current_admin` now admits **both** `'admin'` (platform admin)
+  and `'company_admin'` (tenant admin per grill C2). The conditional
+  filters in `routers/admin.py` transparently scope correctly:
+  `is_platform_admin` is True only for `role='admin'`.
+- `get_current_recruiter` now admits `'recruiter'`, `'admin'`, and
+  `'company_admin'` — per the grill C2 resolution that company_admin
+  "does everything a recruiter does."
+
+`backend/app/routers/companies.py` (new):
+- `POST /api/companies/` — body `{name, slug}`. Creates a Company row
+  + flips the caller's profile to `role='company_admin'` +
+  `company_id=<new>`. Server-side guards: caller must be `role='user'`
+  AND `company_id IS NULL`. Slug validation: regex (lowercase letters
+  + digits + hyphens, must start with a letter), reserved-name
+  blocklist (`default`, `admin`, `apply`, `api`, etc.), uniqueness
+  check. Returns `CompanySignupResponse` with the new Company + the
+  updated profile so the SPA can refresh role without a second
+  round-trip.
+- Atomicity caveat documented inline: Supabase service-role can't
+  span two writes in one transaction; best-effort cleanup of the
+  orphan Company row on profile-update failure. Real Postgres
+  function (SECURITY DEFINER) deferred until orphan rate is non-zero.
+
+`backend/app/models/schemas.py`:
+- New `CompanyCreate`, `CompanyResponse`, `CompanySignupResponse`
+  Pydantic models. Slug regex enforced on the model.
+
+`backend/app/main.py`:
+- Mount `companies_router` at `/api/companies`.
+
+`backend/tests/test_companies.py` (new, 7 cases):
+- Happy path (company inserted, profile flipped, response shape).
+- Slug validation (reserved → 400, taken → 400).
+- Precondition gates: caller already admin / company_admin / recruiter
+  → 403; caller already has a `company_id` → 403.
+- Stub-supabase honours `eq` / `insert` / `update` / `delete` so the
+  cross-action effects are real, not mocked.
+
+Frontend:
+
+`frontend/src/types/index.ts`:
+- `UserRole` widened to include `'company_admin'`. Comment block
+  documents the four post-rollout roles.
+- `Profile.company_id` (nullable) added. `Company` +
+  `CompanySignupResponse` types added.
+
+`frontend/src/services/api.ts`:
+- `companiesApi.create()` POSTs to `/api/companies/`.
+
+`frontend/src/contexts/AuthContext.tsx`:
+- `isAdmin` widened to `role === 'admin' || role === 'company_admin'`
+  — both see admin pages.
+- New `isPlatformAdmin` for the rare cases where the distinction
+  matters.
+- `isRecruiter` widened to include `'company_admin'`.
+- New `refreshProfile()` re-fetches `/api/auth/me` so the SPA picks
+  up the role flip after `POST /api/companies/`.
+
+`frontend/src/App.tsx`:
+- Header nav: `company_admin` sees the admin + candidates + analytics
+  links (same as platform admin).
+- New "Company admin" role badge (uses the same indigo style as the
+  admin badge).
+- `RoleHome` routes `company_admin` to `/admin`.
+- New route `/companies/signup` (gated to `'user'` — backend re-checks).
+- Admin + recruiter route `restrictTo` widened to include
+  `'company_admin'`.
+
+`frontend/src/components/companies/CompanySignup.tsx` (new):
+- Form: company name + slug + live URL preview (`/apply/{slug}`).
+- Slug client-side validation (regex + reserved list — mirrors the
+  backend so the user gets immediate feedback). Server is still
+  authoritative.
+- On submit: `companiesApi.create(...)` → `refreshProfile()` →
+  navigate to `/admin`.
+- Defensive: if the role gate is somehow bypassed and a non-`user`
+  lands here, surfaces a friendly message instead of letting them
+  hit the server-side 403.
+
+`frontend/src/index.css`:
+- New `.form-hint` (small helper text under a form-input — used for
+  the slug URL preview) and `.form-error` (inline validation message,
+  narrower scope than the page-level `.error-message`).
+
+Verification:
+- Backend: `python -c "from app.main import app"` clean; 195/195
+  pytest pass (188 prior + 7 new).
+- Frontend: `npx tsc --noEmit` clean.
+- Migration 005 not yet executed against Supabase — manual SQL editor
+  step, same posture as previous migrations.
+
+Affected files:
+- `backend/app/auth.py`
+- `backend/app/main.py`
+- `backend/app/migrations/005_company_admin_role.sql` (new)
+- `backend/app/models/schemas.py`
+- `backend/app/routers/companies.py` (new)
+- `backend/tests/test_companies.py` (new)
+- `frontend/src/App.tsx`
+- `frontend/src/components/companies/CompanySignup.tsx` (new)
+- `frontend/src/contexts/AuthContext.tsx`
+- `frontend/src/index.css`
+- `frontend/src/services/api.ts`
+- `frontend/src/types/index.ts`
+- `CHANGE.md`, `MULTI_TENANT_ROLLOUT.md`
+
+Architectural impact: `company_admin` is now a real role. The
+conditional filters added in PRs 1+2 now actually filter for
+company_admin callers — they see their tenant's admin overview,
+candidates, analytics; cross-tenant data is invisible. Pinned scoring
+helpers untouched. WS handler tenant gate from PR 2 covers
+company_admins too (it reads `company_id` directly from the profile).
+
+Future considerations:
+- Next session: PR 4 — public apply route. `/apply/{slug}` no-auth
+  landing page; candidate signup auto-stamps `company_id` when the
+  signup URL carries the slug.
+- Tenant offboarding (delete a company) isn't a self-serve action
+  yet — `ON DELETE SET NULL` on the FKs means deletion would orphan
+  candidates / interviews back to NULL company_id (looking like B2C
+  to the queries). When a real offboarding need appears, ship a
+  proper cascade + audit-log flow.
+- The atomicity caveat in `routers/companies.py` (two-write race
+  window) is a real but small risk. Replace with a Postgres function
+  if the orphan rate exceeds zero in observability.
+
 ## 27/05/2026 — Multi-tenant rollout · PR 2 (dashboard + interviews + reports + WS) + auth-gap fixes
 Type: Feature
 

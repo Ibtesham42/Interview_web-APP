@@ -260,6 +260,11 @@ verifies the candidate's `company_id` matches the caller's on connect.
 
 ### PR 3 — Self-serve company signup
 
+**Status:** Shipped 2026-05-27 (commit on `main`). 195/195 pytest pass
+(188 prior + 7 new); frontend tsc green. Migration 005 ships in the
+same PR; user runs it in the Supabase SQL editor before the endpoint
+is functional.
+
 **Scope:** backend + frontend.
 - Backend `POST /api/companies` — creates a company + flips the
   caller's role to `company_admin`, stamps their `company_id`. One

@@ -274,3 +274,34 @@ class FinalReportResponse(BaseModel):
     # Phase B integrity events. Optional so historical reports (generated
     # before this field existed) still validate cleanly.
     integrity_events: Optional[Dict[str, Any]] = None
+
+
+# ---------------------------------------------------------------------------
+# Multi-tenant (PR 3 — companies / self-serve company signup)
+# ---------------------------------------------------------------------------
+
+class CompanyCreate(BaseModel):
+    """POST /api/companies/ body. Slug regex enforces the URL shape used
+    by /apply/{slug} (PR 4): lowercase letters + digits + hyphens, 3–40
+    chars, must start with a letter. Server-side checks layer on top:
+    uniqueness (DB) and a reserved-name blocklist."""
+    name: str = Field(..., min_length=2, max_length=80)
+    slug: str = Field(..., min_length=3, max_length=40, pattern=r"^[a-z][a-z0-9-]*$")
+
+
+class CompanyResponse(BaseModel):
+    id: UUID
+    slug: str
+    name: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CompanySignupResponse(BaseModel):
+    """The POST response — returns the new Company plus the caller's
+    updated profile so the frontend can refresh role + company_id
+    without a separate /api/auth/me round-trip."""
+    company: CompanyResponse
+    profile: Dict[str, Any]

@@ -14,6 +14,7 @@ import { AdminUserDetail } from './components/admin/AdminUserDetail';
 import { RecruiterDashboard } from './components/recruiter/RecruiterDashboard';
 import { RecruiterCandidateDetail } from './components/recruiter/RecruiterCandidateDetail';
 import { RecruiterAnalytics } from './components/recruiter/RecruiterAnalytics';
+import { CompanySignup } from './components/companies/CompanySignup';
 import type { UserRole } from './types';
 
 function Header() {
@@ -43,7 +44,7 @@ function Header() {
           <h1 className="header-title">Interview Platform</h1>
         </div>
         <nav className="header-nav">
-          {role === 'admin' && (
+          {(role === 'admin' || role === 'company_admin') && (
             <>
               <NavLink to="/admin" className={navClass}>Admin</NavLink>
               <NavLink to="/recruiter" className={navClass} end>Candidates</NavLink>
@@ -66,6 +67,7 @@ function Header() {
       </div>
       <div className="header-user">
         {role === 'admin' && <span className="role-badge role-admin">Admin</span>}
+        {role === 'company_admin' && <span className="role-badge role-admin">Company admin</span>}
         {role === 'recruiter' && <span className="role-badge role-recruiter">Recruiter</span>}
         <span className="header-user-name">{displayName}</span>
         <button className="btn btn-secondary" onClick={handleSignOut}>Sign out</button>
@@ -111,7 +113,7 @@ function RoleHome() {
     );
   }
   const role = profile?.role ?? 'user';
-  if (role === 'admin') return <Navigate to="/admin" replace />;
+  if (role === 'admin' || role === 'company_admin') return <Navigate to="/admin" replace />;
   if (role === 'recruiter') return <Navigate to="/recruiter" replace />;
   return <Navigate to="/dashboard" replace />;
 }
@@ -143,14 +145,19 @@ function App() {
           {/* Reports — viewable by candidates (own) and admins (oversight) */}
           <Route path="/report/:interviewId" element={protectedShell(<Report />)} />
 
-          {/* Admin-only */}
-          <Route path="/admin" element={protectedShell(<AdminDashboard />, 'admin')} />
-          <Route path="/admin/users/:userId" element={protectedShell(<AdminUserDetail />, 'admin')} />
+          {/* Self-serve company signup — multi-tenant PR 3. Open to any
+              authenticated 'user' (B2C). The backend rejects callers
+              who are already in a tenant or already an admin. */}
+          <Route path="/companies/signup" element={protectedShell(<CompanySignup />, 'user')} />
 
-          {/* Recruiter (Admins inherit per the B1 access matrix) */}
-          <Route path="/recruiter" element={protectedShell(<RecruiterDashboard />, ['recruiter', 'admin'])} />
-          <Route path="/recruiter/analytics" element={protectedShell(<RecruiterAnalytics />, ['recruiter', 'admin'])} />
-          <Route path="/recruiter/candidates/:candidateId" element={protectedShell(<RecruiterCandidateDetail />, ['recruiter', 'admin'])} />
+          {/* Admin (platform + company-admin per multi-tenant PR 3) */}
+          <Route path="/admin" element={protectedShell(<AdminDashboard />, ['admin', 'company_admin'])} />
+          <Route path="/admin/users/:userId" element={protectedShell(<AdminUserDetail />, ['admin', 'company_admin'])} />
+
+          {/* Recruiter (Admins + company-admins inherit per B1 + grill C2) */}
+          <Route path="/recruiter" element={protectedShell(<RecruiterDashboard />, ['recruiter', 'admin', 'company_admin'])} />
+          <Route path="/recruiter/analytics" element={protectedShell(<RecruiterAnalytics />, ['recruiter', 'admin', 'company_admin'])} />
+          <Route path="/recruiter/candidates/:candidateId" element={protectedShell(<RecruiterCandidateDetail />, ['recruiter', 'admin', 'company_admin'])} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

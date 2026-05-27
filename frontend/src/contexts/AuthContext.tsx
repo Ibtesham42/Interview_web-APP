@@ -16,12 +16,21 @@ interface AuthContextValue {
   profile: Profile | null;
   loading: boolean;
   profileLoading: boolean;
+  // Both platform admins (role='admin') and tenant-local admins
+  // (role='company_admin', PR 3+) see admin pages. Use isPlatformAdmin
+  // when the distinction matters (rare in the UI).
   isAdmin: boolean;
+  isPlatformAdmin: boolean;
   isRecruiter: boolean;
   signUp: (email: string, password: string, fullName: string) => Promise<SignUpResult>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signInWithGoogle: () => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
+  // Re-fetch the profile from /api/auth/me. Called after actions that
+  // mutate role/company_id server-side (currently: POST /api/companies/
+  // from PR 3) so the SPA's role-aware routing updates without a page
+  // refresh.
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -115,18 +124,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(null);
   };
 
+  const refreshProfile = async () => {
+    setProfileLoading(true);
+    try {
+      const p = await profileApi.me();
+      setProfile(p);
+    } catch {
+      // Same degrade-gracefully as the load effect — never let a transient
+      // backend error wipe the user's session.
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
+  const role = profile?.role;
   const value: AuthContextValue = {
     session,
     user: session?.user ?? null,
     profile,
     loading,
     profileLoading,
-    isAdmin: profile?.role === 'admin',
-    isRecruiter: profile?.role === 'recruiter' || profile?.role === 'admin',
+    isAdmin: role === 'admin' || role === 'company_admin',
+    isPlatformAdmin: role === 'admin',
+    isRecruiter: role === 'recruiter' || role === 'admin' || role === 'company_admin',
     signUp,
     signIn,
     signInWithGoogle,
     signOut,
+    refreshProfile,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

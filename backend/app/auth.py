@@ -138,14 +138,17 @@ def get_tenant_context(user=Depends(get_current_user)) -> TenantContext:
 
 
 def get_current_admin(ctx: TenantContext = Depends(get_tenant_context)) -> TenantContext:
-    """FastAPI dependency: require an authenticated platform admin.
+    """FastAPI dependency: require an admin (platform or company).
 
-    Today only `role='admin'` (platform-wide super-admin per grill C3) passes
-    this gate. When PR 3 introduces `company_admin`, this gate widens to
-    include them and the underlying handlers' `company_id` filters (added
-    here in PR 1) transparently take effect.
+    Post-PR-3, both `role='admin'` (platform-wide super-admin per grill
+    C3) and `role='company_admin'` (tenant-local admin per grill C2)
+    pass this gate. The conditional filters in the underlying handlers
+    (added in PR 1 and PR 2) transparently scope correctly:
+    `is_platform_admin` is True only for `role='admin'`, so a
+    `company_admin` always carries their `company_id` filter through
+    `tenant_scope`.
     """
-    if ctx.role != "admin":
+    if ctx.role not in ("admin", "company_admin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",
@@ -154,14 +157,16 @@ def get_current_admin(ctx: TenantContext = Depends(get_tenant_context)) -> Tenan
 
 
 def get_current_recruiter(ctx: TenantContext = Depends(get_tenant_context)) -> TenantContext:
-    """FastAPI dependency: require an authenticated recruiter or admin.
+    """FastAPI dependency: require recruiter, company_admin, or admin.
 
-    Per the B1 access matrix (RECRUITER_ROLLOUT.md), Admins inherit Recruiter
-    capabilities additively — both roles pass this gate. After multi-tenant
-    PR 1, recruiters are tenant-scoped (their `company_id` filter applies);
-    admins remain platform-wide.
+    Per the B1 access matrix (RECRUITER_ROLLOUT.md), Admins inherit
+    Recruiter capabilities additively. Post-PR-3, `company_admin` also
+    inherits Recruiter capabilities within their tenant (grill C2 —
+    `company_admin` does "everything a recruiter does"). Tenant scoping
+    is enforced by the handlers via `tenant_scope`; this gate only
+    decides role admission.
     """
-    if ctx.role not in ("recruiter", "admin"):
+    if ctx.role not in ("recruiter", "admin", "company_admin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Recruiter access required",

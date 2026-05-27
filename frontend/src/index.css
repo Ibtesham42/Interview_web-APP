@@ -473,6 +473,34 @@ a:hover { color: var(--primary); }
   color: var(--text-disabled);
 }
 
+/* Small helper text shown below a form-input — multi-tenant PR 3
+   introduced this for the slug field's live URL preview. */
+.form-hint {
+  margin-top: var(--space-xs);
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  line-height: 1.5;
+}
+
+.form-hint code {
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  padding: 1px 6px;
+  color: var(--text-secondary);
+  font-family: 'SF Mono', 'Cascadia Mono', Consolas, 'Liberation Mono', monospace;
+  font-size: 0.75rem;
+}
+
+/* Inline validation message under a single form-input. Distinct from
+   `.error-message` (the page-level banner) — narrower scope, tighter
+   spacing, no border. */
+.form-error {
+  margin-top: var(--space-xs);
+  font-size: 0.75rem;
+  color: var(--accent-rose);
+  line-height: 1.4;
+}
+
 /* Select dropdown - CRITICAL for text visibility */
 select.form-input {
   cursor: pointer;

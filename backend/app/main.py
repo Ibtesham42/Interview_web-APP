@@ -10,6 +10,7 @@ from app.routers.dashboard import router as dashboard_router
 from app.routers.admin import router as admin_router
 from app.routers.profile import router as profile_router
 from app.routers.recruiter import router as recruiter_router
+from app.routers.companies import router as companies_router
 from app.routers.interview_session import interview_websocket
 
 settings = get_settings()
@@ -44,6 +45,7 @@ app.include_router(dashboard_router, prefix="/api/dashboard", tags=["dashboard"]
 app.include_router(admin_router, prefix="/api/admin", tags=["admin"])
 app.include_router(profile_router, prefix="/api/auth", tags=["auth"])
 app.include_router(recruiter_router, prefix="/api/recruiter", tags=["recruiter"])
+app.include_router(companies_router, prefix="/api/companies", tags=["companies"])
 
 
 @app.exception_handler(APIError)

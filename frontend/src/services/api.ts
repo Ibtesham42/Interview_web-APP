@@ -6,6 +6,7 @@ import type {
   DashboardData,
   AdminOverview,
   AdminUserDetail,
+  CompanySignupResponse,
   Profile,
   HiringFunnelResponse,
   IntegrityVolumeResponse,
@@ -193,4 +194,15 @@ export const recruiterApi = {
   scores: () => fetchJson<ScoresByFieldResponse>('/recruiter/analytics/scores'),
   integrity: () =>
     fetchJson<IntegrityVolumeResponse>('/recruiter/analytics/integrity'),
+};
+
+// Companies API — multi-tenant rollout PR 3. Today exposes one endpoint
+// (POST /api/companies/ for self-serve company signup). Settings GET/PATCH
+// + invite-member endpoints are deferred follow-ups.
+export const companiesApi = {
+  create: (data: { name: string; slug: string }) =>
+    fetchJson<CompanySignupResponse>('/companies/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 };

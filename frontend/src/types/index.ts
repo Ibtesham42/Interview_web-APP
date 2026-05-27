@@ -1,11 +1,32 @@
-export type UserRole = 'user' | 'admin' | 'recruiter';
+// Roles after multi-tenant rollout PR 3:
+//   user           - candidate (B2C if company_id is null, B2B applicant otherwise)
+//   recruiter      - tenant-scoped recruiter (company_id always set post-rollout)
+//   company_admin  - tenant-local admin who self-signed-up via /companies/signup
+//   admin          - platform-wide super-admin (company_id always null)
+export type UserRole = 'user' | 'admin' | 'recruiter' | 'company_admin';
 
 export interface Profile {
   id: string;
   email: string | null;
   full_name: string | null;
   role: UserRole;
+  // Multi-tenant PR 3 - present on every B2B profile; null for platform
+  // admins and B2C users. Frontend uses it only for display (the backend
+  // is the authoritative tenant filter).
+  company_id?: string | null;
   created_at: string;
+}
+
+export interface Company {
+  id: string;
+  slug: string;
+  name: string;
+  created_at: string;
+}
+
+export interface CompanySignupResponse {
+  company: Company;
+  profile: Profile;
 }
 
 export interface Candidate {
