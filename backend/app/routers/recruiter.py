@@ -16,7 +16,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.auth import get_current_recruiter
+from app.auth import get_current_recruiter, tenant_scope
 from app.models.schemas import (
     HiringFunnelResponse,
     IntegrityVolumeResponse,
@@ -43,20 +43,6 @@ from app.services.recruiter_analytics import (
 from app.supabase_client import get_supabase
 
 router = APIRouter()
-
-
-def _tenant_scope(ctx):
-    """Translate a TenantContext into the `company_id` filter to apply.
-
-    Returns `None` for platform admins (grill C3 — they see across all
-    tenants) and the caller's `company_id` otherwise. Centralised here so
-    every endpoint reads the same translation; if PR 3 introduces a new
-    role that should bypass tenant scoping, this is the single line to
-    update.
-    """
-    if ctx.is_platform_admin:
-        return None
-    return ctx.company_id
 
 
 @router.get("/candidates", response_model=RecruiterCandidateListResponse)
@@ -105,7 +91,7 @@ async def list_candidates(
             get_supabase(),
             user.id,
             filters,
-            company_id=_tenant_scope(user),
+            company_id=tenant_scope(user),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -126,7 +112,7 @@ async def get_candidate(candidate_id: UUID, user=Depends(get_current_recruiter))
         str(candidate_id),
         user.id,
         user.role,
-        company_id=_tenant_scope(user),
+        company_id=tenant_scope(user),
     )
     if detail is None:
         raise HTTPException(status_code=404, detail="Candidate not found")
@@ -143,7 +129,7 @@ def _resolve_candidate_tenant(supabase, candidate_id: UUID, ctx) -> Optional[str
     whether the candidate exists in another tenant.
     """
     exists, cand_company_id = candidate_tenant(
-        supabase, str(candidate_id), scope=_tenant_scope(ctx)
+        supabase, str(candidate_id), scope=tenant_scope(ctx)
     )
     if not exists:
         raise HTTPException(status_code=404, detail="Candidate not found")
@@ -234,14 +220,14 @@ async def set_notes(
 
 @router.get("/analytics/funnel", response_model=HiringFunnelResponse)
 async def analytics_funnel(user=Depends(get_current_recruiter)):
-    return hiring_funnel(get_supabase(), company_id=_tenant_scope(user))
+    return hiring_funnel(get_supabase(), company_id=tenant_scope(user))
 
 
 @router.get("/analytics/scores", response_model=ScoresByFieldResponse)
 async def analytics_scores(user=Depends(get_current_recruiter)):
-    return scores_by_field(get_supabase(), company_id=_tenant_scope(user))
+    return scores_by_field(get_supabase(), company_id=tenant_scope(user))
 
 
 @router.get("/analytics/integrity", response_model=IntegrityVolumeResponse)
 async def analytics_integrity(user=Depends(get_current_recruiter)):
-    return integrity_event_volume(get_supabase(), company_id=_tenant_scope(user))
+    return integrity_event_volume(get_supabase(), company_id=tenant_scope(user))

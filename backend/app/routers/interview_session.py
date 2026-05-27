@@ -194,17 +194,30 @@ async def interview_websocket(websocket: WebSocket, interview_id: str):
     from app.supabase_client import get_supabase
     from app.services.interview_orchestrator import InterviewOrchestrator
     from app.services.integrity_monitor import IntegrityMonitor
+    from app.auth import _fetch_profile
 
     supabase = get_supabase()
 
     # --- Auth gate -------------------------------------------------------
-    # Validate the Supabase JWT and interview ownership BEFORE accepting the
-    # socket. This is a gate in front of the existing realtime flow, not a
-    # change to it; closing before accept() cleanly rejects the handshake.
+    # Validate the Supabase JWT and interview ownership + tenant BEFORE
+    # accepting the socket. This is a gate in front of the existing
+    # realtime flow, not a change to it; closing before accept() cleanly
+    # rejects the handshake.
     user = _authenticate_ws_token(supabase, websocket.query_params.get("token", ""))
     if user is None:
         await websocket.close(code=4401)  # unauthorized
         return
+
+    # Tenant context — fetched once before accept(). A missing profile is
+    # treated as unauthorized (the auto-create trigger from migration 001
+    # makes this rare; defensive close avoids a hang).
+    profile = _fetch_profile(user.id)
+    if profile is None:
+        await websocket.close(code=4401)
+        return
+    caller_role = profile.get("role") or "user"
+    caller_company_id = profile.get("company_id")
+    is_platform_admin = caller_role == "admin"
 
     try:
         interview_result = (
@@ -223,6 +236,15 @@ async def interview_websocket(websocket: WebSocket, interview_id: str):
     if owner_id is not None and owner_id != user.id:
         await websocket.close(code=4403)  # not the caller's interview
         return
+
+    # Tenant match — platform admins skip (grill C3). Both sides being
+    # NULL counts as a match (B2C caller + B2C candidate). Anything else
+    # is a cross-tenant attempt and is rejected with the same code as
+    # ownership mismatch — no existence leak across tenants.
+    if not is_platform_admin:
+        if interview.get("company_id") != caller_company_id:
+            await websocket.close(code=4403)
+            return
 
     # --- Accept and run the interview (existing flow below, unchanged) ---
     await manager.connect(interview_id, websocket)

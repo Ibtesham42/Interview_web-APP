@@ -9,30 +9,16 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.supabase_client import get_supabase
-from app.auth import get_current_admin
+from app.auth import get_current_admin, tenant_scope
 from app.services.interview_orchestrator import score_interviews_bulk
 
 router = APIRouter()
 
 
-def _tenant_scope(ctx):
-    """Translate a TenantContext into the `company_id` filter to apply.
-
-    Returns `None` for platform admins (grill C3) and the caller's
-    `company_id` otherwise. Today every caller of these endpoints is a
-    platform admin (the only role that passes `get_current_admin`), so the
-    return is always None. When PR 3 widens the admin gate to admit
-    `company_admin`, this transparently scopes the queries below.
-    """
-    if ctx.is_platform_admin:
-        return None
-    return ctx.company_id
-
-
 @router.get("/overview")
 async def admin_overview(admin=Depends(get_current_admin)):
     supabase = get_supabase()
-    tenant = _tenant_scope(admin)
+    tenant = tenant_scope(admin)
 
     profiles_q = supabase.table("profiles").select("*").order("created_at", desc=True)
     if tenant is not None:
@@ -129,7 +115,7 @@ async def admin_overview(admin=Depends(get_current_admin)):
 @router.get("/users/{user_id}")
 async def admin_user_detail(user_id: UUID, admin=Depends(get_current_admin)):
     supabase = get_supabase()
-    tenant = _tenant_scope(admin)
+    tenant = tenant_scope(admin)
 
     # If the caller is tenant-scoped (post-PR 3 company_admin), the target
     # user must belong to the same tenant — cross-tenant id falls through

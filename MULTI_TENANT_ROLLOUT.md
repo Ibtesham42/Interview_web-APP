@@ -247,7 +247,12 @@ backend imports + tests pass unchanged.
 **Verification:** Existing admin/recruiter tests still pass after the
 backfilled "Default" company is set as the test caller's tenant.
 
-### PR 2 — Backend tenant scoping (dashboard + interviews + reports)
+### PR 2 — Backend tenant scoping (dashboard + interviews + reports + WS)
+
+**Status:** Shipped 2026-05-27 (commit on `main`). 188/188 pytest pass
+(177 prior + 11 new). Also closed three pre-existing unauthenticated
+GET endpoints on `/api/interviews/{id}*` that the frontend uses; two
+PATCH endpoints flagged as TODO (unused dead code).
 
 Same shape as PR 1 but for `routers/dashboard.py`, `routers/interviews.py`,
 `routers/reports.py`. Plus the WS handler (`routers/interview_session.py`)

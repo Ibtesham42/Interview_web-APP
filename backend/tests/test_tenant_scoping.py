@@ -270,3 +270,147 @@ class TestIntegrityVolumeTenantScoping:
     def test_unscoped_view_counts_all(self):
         result = integrity_event_volume(_two_tenant_supabase(), company_id=None)
         assert result["total"] == 2
+
+
+# ---------------------------------------------------------------------------
+# PR 2 — interview ownership + tenant gate (routers/interviews.py)
+# ---------------------------------------------------------------------------
+
+import pytest
+from fastapi import HTTPException
+
+from app.auth import TenantContext
+from app.routers.interviews import _require_owned_interview
+from app.routers.reports import _authorize_report_access
+
+
+def _ctx(*, user_id="u", role="recruiter", company_id=None):
+    return TenantContext(user_id=user_id, role=role, company_id=company_id)
+
+
+def _interview_supabase(rows):
+    """Filter-aware fake with just the interviews table for these helper tests."""
+    supabase = MagicMock()
+    supabase.table.side_effect = lambda name: _FilterAwareChain(
+        rows if name == "interviews" else []
+    )
+    return supabase
+
+
+class TestRequireOwnedInterview:
+    """`_require_owned_interview` returns the row when (owner matches +
+    tenant matches) OR caller is a platform admin. Otherwise it raises
+    a 404 — never a 403 — so the API doesn't tell the caller whether the
+    interview exists elsewhere."""
+
+    def _row(self, **overrides):
+        base = {
+            "id": "iv-1", "user_id": "u-1", "company_id": A,
+            "status": "completed",
+        }
+        base.update(overrides)
+        return base
+
+    def test_owner_in_same_tenant_passes(self):
+        supabase = _interview_supabase([self._row()])
+        ctx = _ctx(user_id="u-1", company_id=A)
+        result = _require_owned_interview(supabase, "iv-1", ctx)
+        assert result["id"] == "iv-1"
+
+    def test_owner_in_different_tenant_rejected_as_404(self):
+        """Tenant takes precedence even when the owner matches — a user
+        whose company_id has been moved cannot read their own old
+        interviews from a prior tenant."""
+        supabase = _interview_supabase([self._row()])
+        ctx = _ctx(user_id="u-1", company_id=B)
+        with pytest.raises(HTTPException) as exc:
+            _require_owned_interview(supabase, "iv-1", ctx)
+        assert exc.value.status_code == 404
+
+    def test_non_owner_in_same_tenant_rejected_as_404(self):
+        """Recruiter of the same tenant can NOT read a candidate's
+        interview through this helper — that endpoint is for the
+        candidate's own session. Reports endpoint is the recruiter path."""
+        supabase = _interview_supabase([self._row()])
+        ctx = _ctx(user_id="recruiter-x", company_id=A)
+        with pytest.raises(HTTPException) as exc:
+            _require_owned_interview(supabase, "iv-1", ctx)
+        assert exc.value.status_code == 404
+
+    def test_platform_admin_reads_any_interview(self):
+        supabase = _interview_supabase([self._row()])
+        ctx = _ctx(user_id="admin", role="admin", company_id=None)
+        result = _require_owned_interview(supabase, "iv-1", ctx)
+        assert result["id"] == "iv-1"
+
+    def test_missing_interview_is_404(self):
+        supabase = _interview_supabase([])
+        ctx = _ctx(user_id="u-1", company_id=A)
+        with pytest.raises(HTTPException) as exc:
+            _require_owned_interview(supabase, "iv-ghost", ctx)
+        assert exc.value.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# PR 2 — report access gate (routers/reports.py)
+# ---------------------------------------------------------------------------
+
+
+class TestAuthorizeReportAccess:
+    """`_authorize_report_access` is the only auth/tenant gate for
+    `/api/reports/interview/{id}/report*`. Three paths must pass:
+    owner, platform admin, recruiter-in-same-tenant. Everyone else
+    gets a 404 (cross-tenant) or 403 (wrong role)."""
+
+    def _row(self, **overrides):
+        # The filter-aware fake honours `.eq("id", "iv-1")` so the row
+        # must carry the same id the caller passes in.
+        base = {"id": "iv-1", "user_id": "u-1", "company_id": A}
+        base.update(overrides)
+        return base
+
+    def _patch_supabase(self, monkeypatch, rows):
+        supabase = _interview_supabase(rows)
+        monkeypatch.setattr("app.routers.reports.get_supabase", lambda: supabase)
+
+    def test_owner_passes(self, monkeypatch):
+        self._patch_supabase(monkeypatch, [self._row()])
+        ctx = _ctx(user_id="u-1", role="user", company_id=A)
+        _authorize_report_access("iv-1", ctx)  # no raise
+
+    def test_platform_admin_passes_cross_tenant(self, monkeypatch):
+        self._patch_supabase(monkeypatch, [self._row()])
+        ctx = _ctx(user_id="admin", role="admin", company_id=None)
+        _authorize_report_access("iv-1", ctx)  # no raise
+
+    def test_recruiter_same_tenant_passes(self, monkeypatch):
+        self._patch_supabase(monkeypatch, [self._row()])
+        ctx = _ctx(user_id="rec", role="recruiter", company_id=A)
+        _authorize_report_access("iv-1", ctx)  # no raise
+
+    def test_recruiter_cross_tenant_is_404_not_403(self, monkeypatch):
+        """A recruiter of B asking for an interview from A gets 404, same
+        shape as 'this interview does not exist'. Never 403 — that would
+        confirm cross-tenant existence."""
+        self._patch_supabase(monkeypatch, [self._row()])
+        ctx = _ctx(user_id="rec", role="recruiter", company_id=B)
+        with pytest.raises(HTTPException) as exc:
+            _authorize_report_access("iv-1", ctx)
+        assert exc.value.status_code == 404
+
+    def test_non_owner_non_recruiter_is_403(self, monkeypatch):
+        """A B2C user trying to read someone else's report — wrong role,
+        not a tenant question. 403 is fine here since they can't observe
+        whether the interview exists in some other tenant."""
+        self._patch_supabase(monkeypatch, [self._row()])
+        ctx = _ctx(user_id="someone-else", role="user", company_id=A)
+        with pytest.raises(HTTPException) as exc:
+            _authorize_report_access("iv-1", ctx)
+        assert exc.value.status_code == 403
+
+    def test_missing_interview_is_404(self, monkeypatch):
+        self._patch_supabase(monkeypatch, [])
+        ctx = _ctx(user_id="u-1", role="user", company_id=A)
+        with pytest.raises(HTTPException) as exc:
+            _authorize_report_access("iv-ghost", ctx)
+        assert exc.value.status_code == 404

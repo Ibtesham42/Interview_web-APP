@@ -167,3 +167,19 @@ def get_current_recruiter(ctx: TenantContext = Depends(get_tenant_context)) -> T
             detail="Recruiter access required",
         )
     return ctx
+
+
+def tenant_scope(ctx: TenantContext) -> Optional[str]:
+    """Translate a TenantContext into the `company_id` filter to apply.
+
+    Returns `None` for platform admins (grill C3 — they see across all
+    tenants) and the caller's `company_id` otherwise. Centralised here so
+    every router reads the same translation; if a future role should
+    bypass tenant scoping, this is the single line to update.
+
+    Used by admin / recruiter / dashboard / interviews / reports / WS
+    handlers — anywhere a query needs to be tenant-filtered.
+    """
+    if ctx.is_platform_admin:
+        return None
+    return ctx.company_id

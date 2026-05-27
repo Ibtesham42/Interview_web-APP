@@ -23,6 +23,105 @@
 
 ---
 
+## 27/05/2026 — Multi-tenant rollout · PR 2 (dashboard + interviews + reports + WS) + auth-gap fixes
+Type: Feature
+
+PR 2 of the multi-tenant rollout. Extends tenant scoping to the candidate
++ report + realtime surface. Also closes pre-existing unauthenticated
+GET endpoints discovered during the audit of `routers/interviews.py`.
+
+What landed:
+
+`backend/app/auth.py`:
+- `tenant_scope(ctx)` helper lifted from `routers/admin.py` +
+  `routers/recruiter.py`. Single canonical translation (None for
+  platform admin, `ctx.company_id` otherwise). Used by 5 routers now.
+
+`backend/app/routers/admin.py` + `backend/app/routers/recruiter.py`:
+- Local `_tenant_scope` removed; both import from `app.auth`. Behaviour
+  unchanged.
+
+`backend/app/routers/dashboard.py`:
+- Dependency switched from `get_current_user` → `get_tenant_context`.
+- Interview list query adds `company_id` filter (defense-in-depth on
+  top of the existing `user_id` filter — if a profile's company_id
+  is manually changed, the dashboard refuses to show prior-tenant data).
+
+`backend/app/routers/interviews.py`:
+- New `_require_owned_interview(supabase, interview_id, ctx)` helper:
+  fetches the row, enforces ownership (caller is `user_id`) AND tenant
+  match (`company_id == ctx.company_id`), platform admin bypass. Cross
+  -tenant ids surface as 404 — no existence leak.
+- **Closed three pre-existing auth gaps:** `GET /{id}`, `GET /{id}/state`,
+  `GET /{id}/evaluations` were UNAUTHENTICATED. The frontend uses all
+  three with a Bearer token, so closing the gap is invisible to users
+  but removes a real data-exposure risk (any UUID guess returned a full
+  interview row + transcript + evaluations to an anonymous caller).
+  Now require `Depends(get_tenant_context)` + go through
+  `_require_owned_interview`.
+- Two PATCH endpoints (`/phase`, `/complete`) are still unauthenticated
+  AND unused by the frontend (verified via grep on `frontend/src`).
+  Flagged in module docstring + inline comment as TODO for a hardening
+  follow-up; not in PR 2 scope.
+
+`backend/app/routers/reports.py`:
+- `_authorize_report_access` rewritten to use `TenantContext`. Three
+  pass paths: (i) owner, (ii) platform admin (cross-tenant by design),
+  (iii) recruiter-or-company-admin **of the same tenant**. Cross-tenant
+  recruiter access is 404 (not 403) so the API never confirms
+  cross-tenant existence. Wrong-role non-owner is 403 (the role gap
+  doesn't leak any tenant info).
+
+`backend/app/routers/interview_session.py` (WebSocket):
+- Tenant check added between the existing ownership check and
+  `manager.connect(...)`. Caller's profile is fetched once before the
+  socket is accepted (via `_fetch_profile`). Cross-tenant socket
+  attempt closes with code 4403 — same as ownership mismatch, no
+  cross-tenant existence leak.
+
+`backend/tests/test_tenant_scoping.py`:
+- +11 new cases:
+  - `TestRequireOwnedInterview` (5 cases) — owner/same-tenant passes;
+    same-owner/wrong-tenant 404; same-tenant/non-owner 404; platform
+    admin reads any; missing 404.
+  - `TestAuthorizeReportAccess` (6 cases) — owner passes; platform
+    admin passes cross-tenant; recruiter-same-tenant passes;
+    recruiter-cross-tenant 404; wrong-role 403; missing 404.
+
+Verification:
+- `python -c "from app.main import app"` — imports cleanly.
+- `python -m pytest -q` — 188/188 passing (177 prior + 11 new).
+
+Affected files:
+- `backend/app/auth.py`
+- `backend/app/routers/admin.py` (cleanup only)
+- `backend/app/routers/recruiter.py` (cleanup only)
+- `backend/app/routers/dashboard.py`
+- `backend/app/routers/interviews.py` (auth fix + tenant scope)
+- `backend/app/routers/reports.py`
+- `backend/app/routers/interview_session.py` (WS tenant gate)
+- `backend/tests/test_tenant_scoping.py` (+11 cases)
+- `MULTI_TENANT_ROLLOUT.md` — PR 2 status
+
+Architectural impact: every read on the candidate/report/realtime
+surface now enforces tenant isolation in addition to ownership.
+Pinned scoring helpers untouched. RLS posture on domain tables still
+ownership-scoped only; tenant-aware RLS lands in a later PR as
+defense-in-depth.
+
+Future considerations:
+- Next session: PR 3 — self-serve company signup. New `/companies/signup`
+  page; `POST /api/companies` creates a company + flips the caller's
+  role to `company_admin`; `ProtectedRoute` learns the new role.
+- PR 3 will also widen `get_current_admin` to admit `company_admin` so
+  the conditional filters added in PR 1/PR 2 transparently take effect
+  for company admins.
+- The two PATCH endpoints in `routers/interviews.py` (`/phase`,
+  `/complete`) remain unauthenticated. They're unused by the frontend
+  — likely dead code from an earlier API shape. A hardening follow-up
+  should remove them (or auth-gate them) once we confirm no internal
+  callers either.
+
 ## 27/05/2026 — Multi-tenant rollout · PR 1 (backend tenant scoping for admin + recruiter)
 Type: Feature
 
