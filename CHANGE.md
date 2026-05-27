@@ -23,6 +23,129 @@
 
 ---
 
+## 27/05/2026 — Multi-tenant rollout · PR 4 (public apply route + tenant claim on signup)
+Type: Feature
+
+PR 4 of the multi-tenant rollout. The candidate-facing entry point —
+a `company_admin` can now share `/apply/{slug}` with candidates and
+those candidates auto-stamp `company_id` on first sign-in.
+
+What landed:
+
+`backend/app/routers/apply.py` (new):
+- `GET /api/apply/{slug}` — public, no auth. Returns `{company_id,
+  company_name, slug, signup_open}` or 404. The only public endpoint
+  that reads from a tenant-scoped table; response is intentionally
+  narrow (no counts, no analytics) so slug enumeration cannot mine
+  the platform for tenant size/status.
+- `POST /api/auth/claim-company` — authenticated. Body `{slug}`. Stamps
+  `company_id` on the caller's profile when current `company_id IS
+  NULL`. Idempotent on re-claim (same tenant → 200 with
+  `claimed: false`). Cross-tenant claim → 403, never silently
+  overwrites (a malicious B-link cannot steal a candidate from A).
+
+`backend/app/models/schemas.py`:
+- New `ApplyLandingResponse` and `ClaimCompanyRequest` Pydantic
+  models. Slug regex mirrors the one from PR 3.
+
+`backend/app/main.py`:
+- Mount `apply_router` at `/api`. Both `/api/apply/{slug}` and
+  `/api/auth/claim-company` come from the same router.
+
+`backend/tests/test_apply.py` (new, 8 cases):
+- Landing: known slug returns company info; unknown slug 404; slug
+  is lowercased defensively.
+- Claim: fresh claim stamps company; idempotent re-claim is no-op;
+  cross-tenant claim rejected 403 with company_id unchanged; unknown
+  slug 404; missing profile row treated as fresh claim.
+
+Frontend:
+
+`frontend/src/types/index.ts`:
+- `ApplyLanding` and `ClaimCompanyResponse` types.
+
+`frontend/src/services/api.ts`:
+- `applyApi.landing(slug)` (no-auth GET) and
+  `applyApi.claimCompany(slug)`.
+
+`frontend/src/components/apply/Apply.tsx` (new):
+- Public route `/apply/:slug`. Three rendered states: loading,
+  found (CTA → `/signup?company=slug`), not-found / error.
+- If the visitor is already signed in: one-click "Claim this invite"
+  button → `claim-company` → `refreshProfile` → `/dashboard`. Skips
+  the redundant signup loop for candidates with an existing account.
+- If they're signed in with a non-NULL `company_id` already, the CTA
+  is disabled and a clear "your account belongs to another company"
+  message is shown.
+
+`frontend/src/App.tsx`:
+- Public `/apply/:slug` route added.
+
+`frontend/src/contexts/AuthContext.tsx`:
+- `signUp` and `signInWithGoogle` widened to accept optional
+  `emailRedirectTo` / `redirectTo` so the apply flow can thread
+  `?company=slug` through Supabase's email-confirm or OAuth round
+  trip.
+
+`frontend/src/components/auth/Signup.tsx`:
+- Reads `?company=slug` from URL. Passes it through to
+  `emailRedirectTo` so AuthCallback receives it after email-confirm.
+- On immediate-session signup (email-confirm disabled), calls
+  `claim-company(slug)` then refreshes profile before navigating.
+- Google OAuth redirect URL also carries the slug.
+
+`frontend/src/components/auth/Login.tsx`:
+- Same `?company=slug` handling — a candidate with an existing
+  account who clicks "Sign in" from an apply landing gets stamped
+  with the company on successful sign-in.
+
+`frontend/src/components/auth/AuthCallback.tsx`:
+- Reads `?company=slug` from the URL (passed through by Supabase's
+  email-confirm or OAuth redirect). After session settles, calls
+  `claim-company(slug)` exactly once (ref guard against the
+  loading/session effect re-firing), then refreshes profile, then
+  navigates home.
+
+Verification:
+- Backend: imports clean, 203/203 pytest pass (195 prior + 8 new).
+- Frontend: `npx tsc --noEmit` clean.
+
+Affected files:
+- `backend/app/main.py`
+- `backend/app/models/schemas.py`
+- `backend/app/routers/apply.py` (new)
+- `backend/tests/test_apply.py` (new)
+- `frontend/src/App.tsx`
+- `frontend/src/components/apply/Apply.tsx` (new)
+- `frontend/src/components/auth/AuthCallback.tsx`
+- `frontend/src/components/auth/Login.tsx`
+- `frontend/src/components/auth/Signup.tsx`
+- `frontend/src/contexts/AuthContext.tsx`
+- `frontend/src/services/api.ts`
+- `frontend/src/types/index.ts`
+- `CHANGE.md`, `MULTI_TENANT_ROLLOUT.md`
+
+Architectural impact: the candidate flow is now end-to-end multi-
+tenant. A `company_admin` (PR 3) creates a Company; the apply link
+(PR 4) routes new candidates to that Company; the backend filters
+ensure that admin only sees their own candidates (PRs 1+2). All
+without touching the pinned scoring helpers or the realtime
+pipeline.
+
+Future considerations:
+- Next session: PR 5 — company-admin settings page that shows the
+  shareable apply link with a copy button. Today the company_admin
+  needs to construct the URL by hand (`/apply/{their-slug}`).
+- The claim flow is best-effort on the immediate-signup path: if
+  `claim-company` fails after the session lands, the candidate stays
+  B2C. Recoverable by re-visiting `/apply/{slug}`. A future
+  reliability pass could surface a banner on the dashboard ("you
+  signed up from an apply link but the company wasn't claimed —
+  retry?") if a soft signal indicates the case.
+- Slug enumeration is possible by design (the URLs are meant to be
+  shared). Rate-limiting + reCAPTCHA on `/api/apply/{slug}` is a
+  hardening follow-up, not a blocker for the rollout.
+
 ## 27/05/2026 — Multi-tenant rollout · PR 3 (self-serve company signup) + migration 005
 Type: Feature
 

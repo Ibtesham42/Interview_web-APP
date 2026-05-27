@@ -22,9 +22,17 @@ interface AuthContextValue {
   isAdmin: boolean;
   isPlatformAdmin: boolean;
   isRecruiter: boolean;
-  signUp: (email: string, password: string, fullName: string) => Promise<SignUpResult>;
+  signUp: (
+    email: string,
+    password: string,
+    fullName: string,
+    options?: { emailRedirectTo?: string },
+  ) => Promise<SignUpResult>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
-  signInWithGoogle: () => Promise<{ error: string | null }>;
+  // `redirectTo` overrides the default /auth/callback redirect — used by
+  // the apply flow (PR 4) to thread ?company=slug through the OAuth
+  // round-trip so AuthCallback can claim a tenant after sign-in.
+  signInWithGoogle: (redirectTo?: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   // Re-fetch the profile from /api/auth/me. Called after actions that
   // mutate role/company_id server-side (currently: POST /api/companies/
@@ -90,11 +98,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [session?.user?.id]);
 
-  const signUp = async (email: string, password: string, fullName: string): Promise<SignUpResult> => {
+  const signUp = async (
+    email: string,
+    password: string,
+    fullName: string,
+    options: { emailRedirectTo?: string } = {},
+  ): Promise<SignUpResult> => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { full_name: fullName } },
+      options: {
+        data: { full_name: fullName },
+        // emailRedirectTo carries query params (e.g. ?company=slug)
+        // through Supabase's email-confirm link so the AuthCallback
+        // can claim a tenant after the round-trip (multi-tenant PR 4).
+        emailRedirectTo: options.emailRedirectTo,
+      },
     });
     return {
       error: error?.message ?? null,
@@ -107,10 +126,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: error?.message ?? null };
   };
 
-  const signInWithGoogle = async () => {
+  const signInWithGoogle = async (redirectTo?: string) => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${window.location.origin}/auth/callback` },
+      options: { redirectTo: redirectTo ?? `${window.location.origin}/auth/callback` },
     });
     if (!error) return { error: null };
     const friendly = /provider is not enabled/i.test(error.message)

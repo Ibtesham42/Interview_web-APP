@@ -29,6 +29,19 @@ export interface CompanySignupResponse {
   profile: Profile;
 }
 
+export interface ApplyLanding {
+  company_id: string;
+  company_name: string;
+  slug: string;
+  signup_open: boolean;
+}
+
+export interface ClaimCompanyResponse {
+  claimed: boolean;
+  company_id: string;
+  reason?: string;
+}
+
 export interface Candidate {
   id: string;
   user_id?: string;

@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { applyApi } from '../../services/api';
 
 const GoogleIcon = () => (
   <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
@@ -12,8 +13,15 @@ const GoogleIcon = () => (
 );
 
 export function Signup() {
-  const { session, signUp, signInWithGoogle } = useAuth();
+  const { session, signUp, signInWithGoogle, refreshProfile } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  // Multi-tenant PR 4: when the signup URL carries ?company=slug
+  // (set by the /apply/{slug} landing page or by clicking "Apply
+  // now"), the slug is threaded through the auth flow so the new
+  // candidate is stamped with the company on first session.
+  const companySlug = searchParams.get('company');
 
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -23,6 +31,13 @@ export function Signup() {
   const [submitting, setSubmitting] = useState(false);
 
   if (session) return <Navigate to="/" replace />;
+
+  // Build the email-confirm redirect URL with the company slug embedded
+  // so it survives the round-trip. AuthCallback reads it and calls
+  // claim-company once the session lands.
+  const emailRedirectTo = companySlug
+    ? `${window.location.origin}/auth/callback?company=${encodeURIComponent(companySlug)}`
+    : `${window.location.origin}/auth/callback`;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,23 +54,43 @@ export function Signup() {
       email.trim(),
       password,
       fullName.trim(),
+      { emailRedirectTo },
     );
-    setSubmitting(false);
 
     if (signUpError) {
+      setSubmitting(false);
       setError(signUpError);
       return;
     }
     if (needsEmailConfirm) {
+      setSubmitting(false);
       setInfo('Account created. Check your email to confirm, then sign in.');
       return;
     }
+
+    // Immediate-session path (Supabase project with email-confirm
+    // disabled). Claim the company before navigating so the SPA's
+    // role-aware routing sees the stamp on first render.
+    if (companySlug) {
+      try {
+        await applyApi.claimCompany(companySlug);
+      } catch {
+        // Surface nothing — the user is signed up; staying B2C is
+        // recoverable by re-visiting /apply/{slug}.
+      }
+    }
+    await refreshProfile();
+    setSubmitting(false);
     navigate('/', { replace: true });
   };
 
   const handleGoogle = async () => {
     setError(null);
-    const { error: oauthError } = await signInWithGoogle();
+    // Google OAuth: pass the slug through the OAuth redirect URL so
+    // AuthCallback can claim after the redirect lands.
+    const { error: oauthError } = await signInWithGoogle(
+      companySlug ? `${window.location.origin}/auth/callback?company=${encodeURIComponent(companySlug)}` : undefined,
+    );
     if (oauthError) setError(oauthError);
   };
 

@@ -11,6 +11,7 @@ from app.routers.admin import router as admin_router
 from app.routers.profile import router as profile_router
 from app.routers.recruiter import router as recruiter_router
 from app.routers.companies import router as companies_router
+from app.routers.apply import router as apply_router
 from app.routers.interview_session import interview_websocket
 
 settings = get_settings()
@@ -46,6 +47,9 @@ app.include_router(admin_router, prefix="/api/admin", tags=["admin"])
 app.include_router(profile_router, prefix="/api/auth", tags=["auth"])
 app.include_router(recruiter_router, prefix="/api/recruiter", tags=["recruiter"])
 app.include_router(companies_router, prefix="/api/companies", tags=["companies"])
+# apply.py has two routes (apply/{slug} public + auth/claim-company authed)
+# under one router — mounted with the bare /api prefix.
+app.include_router(apply_router, prefix="/api", tags=["apply"])
 
 
 @app.exception_handler(APIError)

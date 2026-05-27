@@ -305,3 +305,32 @@ class CompanySignupResponse(BaseModel):
     without a separate /api/auth/me round-trip."""
     company: CompanyResponse
     profile: Dict[str, Any]
+
+
+# ---------------------------------------------------------------------------
+# Public apply route (PR 4 — /apply/{slug} landing page + claim)
+# ---------------------------------------------------------------------------
+
+class ApplyLandingResponse(BaseModel):
+    """GET /api/apply/{slug} — public, no auth.
+
+    `signup_open` is a forward-looking flag for when companies can close
+    their application window. For PR 4 it's always True; a future
+    settings endpoint can toggle it without breaking the response
+    shape."""
+    company_id: UUID
+    company_name: str
+    slug: str
+    signup_open: bool = True
+
+
+class ClaimCompanyRequest(BaseModel):
+    """POST /api/auth/claim-company body — slug to claim membership in.
+
+    The endpoint stamps `company_id` on the caller's profile only when
+    the caller currently has `company_id IS NULL` (i.e. they signed up
+    via /apply/{slug} and the profile-create trigger left company_id
+    unset). Idempotent on a no-op match; rejects with 403 if the caller
+    already belongs to a different tenant — never silently overwrites.
+    """
+    slug: str = Field(..., min_length=3, max_length=40, pattern=r"^[a-z][a-z0-9-]*$")

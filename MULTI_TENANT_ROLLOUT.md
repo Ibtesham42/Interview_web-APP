@@ -276,6 +276,11 @@ is functional.
 
 ### PR 4 — Public apply route (no-auth landing) + company-scoped signup
 
+**Status:** Shipped 2026-05-27 (commit on `main`). 203/203 pytest pass
+(195 prior + 8 new); frontend tsc green. No migration needed — uses
+existing `companies.slug` + `profiles.company_id` columns from
+migrations 004/005.
+
 **Scope:**
 - Backend `GET /api/apply/{slug}` — public, returns
   `{company_name, company_id, signup_open: bool}`. 404 on unknown

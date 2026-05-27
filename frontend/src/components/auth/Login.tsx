@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { applyApi } from '../../services/api';
 import { Button } from '../Button';
 
 const GoogleIcon = () => (
@@ -13,10 +14,16 @@ const GoogleIcon = () => (
 );
 
 export function Login() {
-  const { session, signIn, signInWithGoogle } = useAuth();
+  const { session, signIn, signInWithGoogle, refreshProfile } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const from = (location.state as { from?: string } | null)?.from ?? '/';
+
+  // Multi-tenant PR 4: if a candidate clicked "Sign in" from an apply
+  // landing page, the company slug is on the URL — claim it after the
+  // session lands so the existing account becomes a member of that tenant.
+  const companySlug = searchParams.get('company');
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -30,17 +37,28 @@ export function Login() {
     setError(null);
     setSubmitting(true);
     const { error: signInError } = await signIn(email.trim(), password);
-    setSubmitting(false);
     if (signInError) {
+      setSubmitting(false);
       setError(signInError);
       return;
     }
+    if (companySlug) {
+      try {
+        await applyApi.claimCompany(companySlug);
+      } catch {
+        // The user is signed in; staying B2C is recoverable.
+      }
+      await refreshProfile();
+    }
+    setSubmitting(false);
     navigate(from, { replace: true });
   };
 
   const handleGoogle = async () => {
     setError(null);
-    const { error: oauthError } = await signInWithGoogle();
+    const { error: oauthError } = await signInWithGoogle(
+      companySlug ? `${window.location.origin}/auth/callback?company=${encodeURIComponent(companySlug)}` : undefined,
+    );
     if (oauthError) setError(oauthError);
   };
 

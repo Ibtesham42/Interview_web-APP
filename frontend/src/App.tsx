@@ -15,6 +15,7 @@ import { RecruiterDashboard } from './components/recruiter/RecruiterDashboard';
 import { RecruiterCandidateDetail } from './components/recruiter/RecruiterCandidateDetail';
 import { RecruiterAnalytics } from './components/recruiter/RecruiterAnalytics';
 import { CompanySignup } from './components/companies/CompanySignup';
+import { Apply } from './components/apply/Apply';
 import type { UserRole } from './types';
 
 function Header() {
@@ -134,6 +135,12 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
+
+          {/* Public apply link — multi-tenant PR 4. No auth required;
+              loads the company info and routes to /signup?company=slug.
+              If a signed-in visitor lands here, they get a one-click
+              claim CTA instead. */}
+          <Route path="/apply/:slug" element={<Apply />} />
 
           <Route path="/" element={<ProtectedRoute><RoleHome /></ProtectedRoute>} />
 

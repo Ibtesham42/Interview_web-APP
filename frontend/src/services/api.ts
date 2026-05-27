@@ -1,5 +1,7 @@
 import type {
+  ApplyLanding,
   Candidate,
+  ClaimCompanyResponse,
   Interview,
   InterviewReport,
   Evaluation,
@@ -204,5 +206,19 @@ export const companiesApi = {
     fetchJson<CompanySignupResponse>('/companies/', {
       method: 'POST',
       body: JSON.stringify(data),
+    }),
+};
+
+// Apply API — multi-tenant rollout PR 4. Public landing route + post-signup
+// tenant claim. The landing GET is intentionally callable WITHOUT a session
+// (the candidate hasn't signed up yet); fetchJson degrades gracefully on the
+// missing Authorization header.
+export const applyApi = {
+  landing: (slug: string) =>
+    fetchJson<ApplyLanding>(`/apply/${encodeURIComponent(slug)}`),
+  claimCompany: (slug: string) =>
+    fetchJson<ClaimCompanyResponse>('/auth/claim-company', {
+      method: 'POST',
+      body: JSON.stringify({ slug }),
     }),
 };
