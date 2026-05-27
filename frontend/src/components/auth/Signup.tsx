@@ -175,6 +175,9 @@ export function Signup() {
         <p className="auth-switch">
           Already have an account? <Link to="/login">Sign in</Link>
         </p>
+        <p className="auth-switch auth-switch-secondary">
+          Setting up your company instead? <Link to="/companies/signup">Create one →</Link>
+        </p>
       </div>
     </div>
   );

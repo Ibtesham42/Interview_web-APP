@@ -2304,6 +2304,14 @@ select.form-input option {
   font-weight: 500;
 }
 
+/* Secondary auth-page link (e.g. "Setting up your company? Create one →"
+   on /signup + /login). Tighter top margin than `.auth-switch` so the
+   two lines read as a stacked pair, not separate sections. */
+.auth-switch-secondary {
+  margin-top: var(--space-xs);
+  font-size: 0.8125rem;
+}
+
 .auth-info {
   background: rgba(8, 145, 178, 0.1);
   border: 1px solid rgba(8, 145, 178, 0.2);

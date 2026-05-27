@@ -128,6 +128,9 @@ export function Login() {
         <p className="auth-switch">
           Don't have an account? <Link to="/signup">Create one</Link>
         </p>
+        <p className="auth-switch auth-switch-secondary">
+          Setting up your company? <Link to="/companies/signup">Create one →</Link>
+        </p>
       </div>
     </div>
   );
