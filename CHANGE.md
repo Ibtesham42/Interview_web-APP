@@ -23,6 +23,62 @@
 
 ---
 
+## 27/05/2026 — Logo + colorful accent palette across admin + user surfaces
+Type: Feature
+
+User-requested rebrand: replace the monochrome clock-mark logo and lift
+the dark UI off of "mostly black-and-white" by using the existing brand
+palette more visibly. No new color tokens added; no gradients/glows
+introduced (CLAUDE.md restraint principles preserved).
+
+Logo:
+- New 2-tone abstract geometric mark — two overlapping circles, indigo
+  (`#4f46e5`) on the left, cyan (`#0891b2` at 0.85 opacity) on the right.
+  Replaces the prior monochrome clock SVG (circle + clock-hands) in
+  `App.tsx` (header), `Login.tsx`, and `Signup.tsx`.
+- Logo container border switched from `--border-default` to
+  `--primary-subtle` so the mark sits in a faint indigo frame.
+- Wordmark text unchanged ("Interview Platform").
+
+Navigation:
+- `.header-link:hover` text now `--primary-light` (was `--text-primary`).
+- `.header-link.active` background now `--primary-subtle` + text
+  `--primary-light` (was neutral `--bg-active` + `--text-primary`).
+  Gives a clear colored "current page" signal across both admin and
+  user role-aware nav.
+
+Stat cards (Dashboard, AdminDashboard, AdminUserDetail,
+RecruiterCandidateDetail):
+- 3px left-accent bar added to `.stat-card`.
+- `.stat-grid > .stat-card:nth-child(4n+1..4n+4)` cycles the accent
+  through indigo → cyan → green → amber. Pure CSS — no per-card HTML
+  change at any of the four call sites.
+- `.stat-card:hover` border now `--primary` (was `--border-default`).
+
+CLAUDE.md:
+- "UI/UX Principles" rewritten from "Dark, understated, enterprise" to
+  "Dark, enterprise, colorful but restrained" so future agents stop
+  defaulting to monochrome. The no-gradients/no-glows/no-mesh/no-flashy
+  rules stay intact.
+
+Affected files:
+- `frontend/src/App.tsx`
+- `frontend/src/components/auth/Login.tsx`
+- `frontend/src/components/auth/Signup.tsx`
+- `frontend/src/index.css`
+- `CLAUDE.md`
+
+Architectural impact: Design-token usage broadened (more rules now
+reference `--primary-*` / `--accent*`). No new tokens introduced.
+Future considerations:
+- The cycling `nth-child` accent assumes the visual order matters less
+  than the colorful effect. If a stat card needs a deliberate colored
+  accent (e.g., "integrity warnings" always red), introduce a
+  `.stat-card.accent-rose` modifier and override the cycle at that site.
+- If/when a "distinct admin theme" lands (currently rejected — single
+  palette), the simplest path is a `data-role="admin"` attribute on
+  `<body>` plus scoped overrides.
+
 ## 27/05/2026 — Scaling-safety audit · `score_interviews_bulk` + all aggregation endpoints
 Type: Decision
 

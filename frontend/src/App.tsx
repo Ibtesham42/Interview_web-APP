@@ -35,9 +35,9 @@ function Header() {
       <div className="header-left">
         <div className="header-brand">
           <div className="header-logo">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10" />
-              <path d="M12 6v6l4 2" />
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <circle cx="9" cy="12" r="6" fill="#4f46e5" />
+              <circle cx="15" cy="12" r="6" fill="#0891b2" opacity="0.85" />
             </svg>
           </div>
           <h1 className="header-title">Interview Platform</h1>

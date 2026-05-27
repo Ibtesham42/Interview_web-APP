@@ -163,8 +163,11 @@ frontend/src/
 
 ## UI/UX Principles
 
-- Dark, understated, enterprise — **no gradients, glows, mesh, or flashy
-  animation**. Inspiration: Linear, Stripe, Notion.
+- Dark, enterprise, **colorful but restrained** — no gradients, glows,
+  mesh, or flashy animation, but the brand palette (indigo / cyan / green /
+  amber / rose) is used visibly across nav, stat cards, status badges,
+  and the logo mark. Inspiration: Linear, Stripe, Notion — colored
+  accents, not monochrome. Updated 2026-05-27 (commit on this branch).
 - Inter font; design tokens (color, space, radius, shadow) in `index.css`.
 - Subtle motion only (120–300ms, purposeful). Respect `prefers-reduced-motion`.
 - Polished empty / loading / error states everywhere.
