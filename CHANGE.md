@@ -23,6 +23,84 @@
 
 ---
 
+## 27/05/2026 — Multi-tenant rollout · PR 5 (company-admin settings + tenant banner)
+Type: Feature
+
+PR 5 of the multi-tenant rollout. Company admins can now find their
+shareable apply URL in the UI and the tenant they're acting on is
+visible at the top of every page.
+
+What landed:
+
+Backend:
+- `GET /api/companies/mine` — returns the caller's own company
+  `{id, slug, name, created_at}` or 404 for platform admins / B2C
+  users / orphaned profile rows. Auth is `get_current_user` (not
+  `get_tenant_context`) so the response always reflects the current
+  DB state, not a possibly-stale request-scoped tenant context.
+- 4 new pytest cases. 207/207 passing.
+
+Frontend:
+- `AuthContext` now loads + caches the caller's `Company` via
+  `companiesApi.getMine()`, fired in a separate effect after profile
+  lands and only when `profile.company_id` is non-null. Cleared on
+  sign-out.
+- Header: new `.tenant-chip` showing the company name for
+  `company_admin` and `recruiter` (both tenant-scoped roles).
+  Platform admins and B2C users see no chip (they have no tenant).
+- Header nav: `company_admin` now sees a "Settings" link alongside
+  Admin / Candidates / Analytics. Platform admins don't (their
+  super-admin role doesn't have per-tenant settings).
+- AdminDashboard's page-sub now says "Showing data for {company.name}.
+  Candidates outside your company are filtered out by the backend."
+  for company-admin callers. Platform admins keep the original
+  "Platform-wide" copy.
+- New `/admin/settings` page (`components/companies/Settings.tsx`):
+  - Two-card grid (responsive — stacks on narrow viewports).
+  - **Apply link card**: read-only input showing `{origin}/apply/{slug}`
+    + Copy button. Click-to-copy via `navigator.clipboard.writeText`;
+    falls back to user-select if the clipboard API is unavailable
+    (insecure origin / old browser).
+  - **Company meta card**: name, slug (in code style), created date.
+  - Defensive empty-state when no company is loaded (route gate is
+    `['admin', 'company_admin']` so platform admins can land here —
+    they see a "platform admins don't belong to a company" message).
+- New CSS: `.tenant-chip`, `.settings-grid`, `.settings-link-row`,
+  `.settings-meta` (in `index.css` under a new section).
+
+Verification:
+- Backend: 207/207 pytest pass.
+- Frontend: `npx tsc --noEmit` clean.
+
+Affected files:
+- `backend/app/routers/companies.py`
+- `backend/tests/test_companies.py` (+4 cases)
+- `frontend/src/App.tsx`
+- `frontend/src/components/admin/AdminDashboard.tsx`
+- `frontend/src/components/companies/Settings.tsx` (new)
+- `frontend/src/contexts/AuthContext.tsx`
+- `frontend/src/index.css`
+- `frontend/src/services/api.ts`
+- `CHANGE.md`, `MULTI_TENANT_ROLLOUT.md`
+
+Architectural impact: tenant context is now visible in the UI. The
+`Company` object joins `Profile` as a first-class auth-context
+citizen; one extra GET per session (`getMine`) when the caller has a
+company_id. Pinned scoring helpers / realtime / migrations untouched.
+
+Future considerations:
+- Next session: PR 6 — Resend email service module + `email_outbox`
+  migration. Backend-only PR; sets up the rails for PR 7's composer
+  UI.
+- Settings page is intentionally minimal for the rollout — name and
+  slug are immutable. A follow-up `PATCH /api/companies/mine` plus
+  rename-aware redirect handling on `/apply/{old-slug}` would let
+  admins re-brand without breaking outstanding apply links.
+- The tenant chip's `max-width: 200px` ellipsises long company
+  names. If a company is named something genuinely long, surface
+  the full name via the `title=` attribute (already present) or
+  truncate at the API boundary.
+
 ## 27/05/2026 — Multi-tenant rollout · PR 4 (public apply route + tenant claim on signup)
 Type: Feature
 

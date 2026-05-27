@@ -292,9 +292,12 @@ migrations 004/005.
   account creation, if the redirect URL carries the apply slug, stamp
   `company_id` on the new profile.
 
-### PR 5 — Company-admin dashboard view
+### PR 5 — Company-admin dashboard view + Settings
 
-**Scope:** frontend only, mostly.
+**Status:** Shipped 2026-05-27 (commit on `main`). 207/207 pytest pass
+(203 prior + 4 new); frontend tsc green. No migration needed.
+
+**Scope:** frontend mostly, plus one tiny backend endpoint.
 - Existing `AdminDashboard` already aggregates platform-wide. The
   backend filter from PR 1 already restricts the response by
   company_id. So this PR is mostly: route a `company_admin` to a

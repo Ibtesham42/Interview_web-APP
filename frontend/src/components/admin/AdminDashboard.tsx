@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
 import { adminApi } from '../../services/api';
 import type { AdminOverview } from '../../types';
 
@@ -21,6 +22,7 @@ function formatDate(d?: string | null): string {
 
 export function AdminDashboard() {
   const navigate = useNavigate();
+  const { company, isPlatformAdmin } = useAuth();
   const [data, setData] = useState<AdminOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -62,7 +64,13 @@ export function AdminDashboard() {
       <div className="page-head">
         <div>
           <h1>Admin overview</h1>
-          <p className="page-sub">Platform-wide users, interviews and performance analytics.</p>
+          <p className="page-sub">
+            {isPlatformAdmin
+              ? 'Platform-wide users, interviews and performance analytics.'
+              : company
+                ? <>Showing data for <strong>{company.name}</strong>. Candidates outside your company are filtered out by the backend.</>
+                : 'Users, interviews and performance analytics.'}
+          </p>
         </div>
       </div>
 

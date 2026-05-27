@@ -15,11 +15,12 @@ import { RecruiterDashboard } from './components/recruiter/RecruiterDashboard';
 import { RecruiterCandidateDetail } from './components/recruiter/RecruiterCandidateDetail';
 import { RecruiterAnalytics } from './components/recruiter/RecruiterAnalytics';
 import { CompanySignup } from './components/companies/CompanySignup';
+import { Settings } from './components/companies/Settings';
 import { Apply } from './components/apply/Apply';
 import type { UserRole } from './types';
 
 function Header() {
-  const { user, profile, signOut } = useAuth();
+  const { user, profile, company, signOut } = useAuth();
   const navigate = useNavigate();
 
   const handleSignOut = async () => {
@@ -50,6 +51,10 @@ function Header() {
               <NavLink to="/admin" className={navClass}>Admin</NavLink>
               <NavLink to="/recruiter" className={navClass} end>Candidates</NavLink>
               <NavLink to="/recruiter/analytics" className={navClass}>Analytics</NavLink>
+              {/* Settings only useful for tenant-scoped admins (PR 5). */}
+              {role === 'company_admin' && (
+                <NavLink to="/admin/settings" className={navClass}>Settings</NavLink>
+              )}
             </>
           )}
           {role === 'recruiter' && (
@@ -67,6 +72,14 @@ function Header() {
         </nav>
       </div>
       <div className="header-user">
+        {/* Tenant chip — surfaces which Company the caller is acting on
+            behalf of. Suppressed for platform admins (no tenant) and
+            for B2C users (no tenant). Multi-tenant PR 5. */}
+        {company && (role === 'company_admin' || role === 'recruiter') && (
+          <span className="tenant-chip" title={`Acting on behalf of ${company.name}`}>
+            {company.name}
+          </span>
+        )}
         {role === 'admin' && <span className="role-badge role-admin">Admin</span>}
         {role === 'company_admin' && <span className="role-badge role-admin">Company admin</span>}
         {role === 'recruiter' && <span className="role-badge role-recruiter">Recruiter</span>}
@@ -160,6 +173,9 @@ function App() {
           {/* Admin (platform + company-admin per multi-tenant PR 3) */}
           <Route path="/admin" element={protectedShell(<AdminDashboard />, ['admin', 'company_admin'])} />
           <Route path="/admin/users/:userId" element={protectedShell(<AdminUserDetail />, ['admin', 'company_admin'])} />
+          {/* Company settings — multi-tenant PR 5. company_admin only;
+              platform admins land on the empty-state message inside. */}
+          <Route path="/admin/settings" element={protectedShell(<Settings />, ['admin', 'company_admin'])} />
 
           {/* Recruiter (Admins + company-admins inherit per B1 + grill C2) */}
           <Route path="/recruiter" element={protectedShell(<RecruiterDashboard />, ['recruiter', 'admin', 'company_admin'])} />

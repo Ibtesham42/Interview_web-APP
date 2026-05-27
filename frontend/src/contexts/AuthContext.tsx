@@ -2,8 +2,8 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../utils/supabase/client';
-import { profileApi } from '../services/api';
-import type { Profile } from '../types';
+import { companiesApi, profileApi } from '../services/api';
+import type { Company, Profile } from '../types';
 
 interface SignUpResult {
   error: string | null;
@@ -14,6 +14,10 @@ interface AuthContextValue {
   session: Session | null;
   user: User | null;
   profile: Profile | null;
+  // The caller's own Company — populated by AuthContext after profile
+  // lands (only when profile.company_id is non-null). Used by the
+  // Header chip + the /admin/settings page (multi-tenant PR 5).
+  company: Company | null;
   loading: boolean;
   profileLoading: boolean;
   // Both platform admins (role='admin') and tenant-local admins
@@ -46,6 +50,7 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [company, setCompany] = useState<Company | null>(null);
   const [loading, setLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(true);
 
@@ -75,6 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const userId = session?.user?.id;
     if (!userId) {
       setProfile(null);
+      setCompany(null);
       setProfileLoading(false);
       return;
     }
@@ -97,6 +103,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cancelled = true;
     };
   }, [session?.user?.id]);
+
+  // Load the caller's Company info whenever their profile gains a
+  // company_id (multi-tenant PR 5). One extra request after profile
+  // lands; cached in context for the Header chip + Settings page so
+  // they never need to re-fetch. Skipped for platform admins and B2C
+  // users (NULL company_id) — they have no Company to show.
+  useEffect(() => {
+    if (!profile?.company_id) {
+      setCompany(null);
+      return;
+    }
+    let cancelled = false;
+    companiesApi
+      .getMine()
+      .then((c) => {
+        if (!cancelled) setCompany(c);
+      })
+      .catch(() => {
+        // Same graceful degrade as the profile load.
+        if (!cancelled) setCompany(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [profile?.company_id]);
 
   const signUp = async (
     email: string,
@@ -141,6 +172,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = async () => {
     await supabase.auth.signOut();
     setProfile(null);
+    setCompany(null);
   };
 
   const refreshProfile = async () => {
@@ -161,6 +193,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     session,
     user: session?.user ?? null,
     profile,
+    company,
     loading,
     profileLoading,
     isAdmin: role === 'admin' || role === 'company_admin',

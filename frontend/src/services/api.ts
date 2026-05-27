@@ -2,6 +2,7 @@ import type {
   ApplyLanding,
   Candidate,
   ClaimCompanyResponse,
+  Company,
   Interview,
   InterviewReport,
   Evaluation,
@@ -198,15 +199,17 @@ export const recruiterApi = {
     fetchJson<IntegrityVolumeResponse>('/recruiter/analytics/integrity'),
 };
 
-// Companies API — multi-tenant rollout PR 3. Today exposes one endpoint
-// (POST /api/companies/ for self-serve company signup). Settings GET/PATCH
-// + invite-member endpoints are deferred follow-ups.
+// Companies API — multi-tenant rollout PRs 3 + 5.
+//   create   - POST /api/companies/ (self-serve signup, PR 3).
+//   getMine  - GET /api/companies/mine (read caller's tenant, PR 5).
+// Settings PATCH + invite-member endpoints are deferred follow-ups.
 export const companiesApi = {
   create: (data: { name: string; slug: string }) =>
     fetchJson<CompanySignupResponse>('/companies/', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+  getMine: () => fetchJson<Company>('/companies/mine'),
 };
 
 // Apply API — multi-tenant rollout PR 4. Public landing route + post-signup

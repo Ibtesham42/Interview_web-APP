@@ -24,11 +24,63 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.auth import get_tenant_context
+from app.auth import get_current_user, get_tenant_context
 from app.models.schemas import CompanyCreate, CompanyResponse, CompanySignupResponse
 from app.supabase_client import get_supabase
 
 router = APIRouter()
+
+
+@router.get("/mine", response_model=CompanyResponse)
+async def get_my_company(user=Depends(get_current_user)):
+    """Return the caller's own company.
+
+    Multi-tenant PR 5 — used by the Settings page (shareable apply link)
+    and the Header chip ("you're in Acme"). The caller must have a
+    `company_id` set on their profile; platform admins (NULL company_id)
+    and B2C users hit 404 — same shape, no role-leak through the error.
+
+    Auth is `get_current_user` (not `get_tenant_context`) so the caller's
+    `company_id` is read fresh from the DB rather than cached from the
+    request-scoped context — a candidate who just completed
+    `/auth/claim-company` (PR 4) sees their tenant on the very next call
+    without depending on AuthContext refresh order.
+    """
+    supabase = get_supabase()
+
+    profile_rows = (
+        supabase.table("profiles")
+        .select("company_id")
+        .eq("id", user.id)
+        .execute()
+        .data
+        or []
+    )
+    company_id = profile_rows[0].get("company_id") if profile_rows else None
+    if company_id is None:
+        raise HTTPException(status_code=404, detail="Not a member of any company")
+
+    company_rows = (
+        supabase.table("companies")
+        .select("id,slug,name,created_at")
+        .eq("id", company_id)
+        .execute()
+        .data
+        or []
+    )
+    if not company_rows:
+        # Profile points at a company that no longer exists — surface
+        # the same 404 rather than a misleading 500. Cleanup path is
+        # ops-side (orphan rows from a manual delete).
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    row = company_rows[0]
+    return CompanyResponse(
+        id=row["id"],
+        slug=row["slug"],
+        name=row["name"],
+        created_at=row["created_at"],
+    )
 
 
 # Slugs reserved for either operational reasons (so /apply/admin doesn't

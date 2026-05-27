@@ -1,16 +1,14 @@
-"""Tests for the self-serve company signup endpoint (multi-tenant PR 3).
+"""Tests for the company endpoints (multi-tenant PRs 3 + 5).
 
 Covers:
-- Precondition gates: caller must be `role='user'` AND `company_id IS NULL`.
-- Slug validation (regex, reserved list, uniqueness).
-- Atomic-ish create: company row inserted; profile flipped to
-  company_admin + stamped with the new company_id.
-- Response shape (CompanySignupResponse).
+- `create_company` (PR 3): preconditions, slug validation, atomicity.
+- `get_my_company` (PR 5): caller's company; 404 for platform admins
+  (NULL company_id) and B2C users; 404 if profile points at a
+  non-existent company.
 
-The route handler is async, so each test uses `asyncio.run`. The stub
-supabase is a hand-rolled mock keyed by table name — `companies` returns
-the seeded uniqueness rows + accepts inserts; `profiles` accepts updates
-and returns the canonical updated row.
+The route handlers are async, so each test uses `asyncio.run`. The
+stub supabase is a hand-rolled mock keyed by table name; supports
+select.eq, insert, update, delete operations.
 """
 from __future__ import annotations
 
@@ -24,7 +22,7 @@ from fastapi import HTTPException
 
 from app.auth import TenantContext
 from app.models.schemas import CompanyCreate
-from app.routers.companies import create_company
+from app.routers.companies import create_company, get_my_company
 
 
 # ---------------------------------------------------------------------------
@@ -242,3 +240,67 @@ class TestPreconditions:
         with pytest.raises(HTTPException) as exc:
             _run(create_company(CompanyCreate(name="Acme", slug="acme"), ctx=ctx))
         assert exc.value.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# GET /api/companies/mine (PR 5)
+# ---------------------------------------------------------------------------
+
+COMPANY_ID = str(uuid.uuid4())
+
+
+def _user(user_id="u-1"):
+    user = MagicMock()
+    user.id = user_id
+    return user
+
+
+class TestGetMyCompany:
+    def test_returns_caller_company(self, monkeypatch):
+        supabase = _supabase(
+            companies=[{
+                "id": COMPANY_ID, "slug": "acme", "name": "Acme",
+                "created_at": "2026-05-27T00:00:00Z",
+            }],
+            profiles=[{"id": "u-1", "role": "company_admin", "company_id": COMPANY_ID}],
+        )
+        monkeypatch.setattr("app.routers.companies.get_supabase", lambda: supabase)
+
+        result = _run(get_my_company(user=_user()))
+        assert str(result.id) == COMPANY_ID
+        assert result.slug == "acme"
+        assert result.name == "Acme"
+
+    def test_caller_with_no_company_404(self, monkeypatch):
+        """B2C users and platform admins both have NULL company_id."""
+        supabase = _supabase(
+            companies=[],
+            profiles=[{"id": "u-1", "role": "user", "company_id": None}],
+        )
+        monkeypatch.setattr("app.routers.companies.get_supabase", lambda: supabase)
+
+        with pytest.raises(HTTPException) as exc:
+            _run(get_my_company(user=_user()))
+        assert exc.value.status_code == 404
+
+    def test_orphaned_company_id_404(self, monkeypatch):
+        """Profile points at a company_id that no longer exists (e.g. ops
+        manually deleted a Company row). Surface 404, not 500."""
+        supabase = _supabase(
+            companies=[],
+            profiles=[{"id": "u-1", "role": "company_admin", "company_id": COMPANY_ID}],
+        )
+        monkeypatch.setattr("app.routers.companies.get_supabase", lambda: supabase)
+
+        with pytest.raises(HTTPException) as exc:
+            _run(get_my_company(user=_user()))
+        assert exc.value.status_code == 404
+
+    def test_missing_profile_404(self, monkeypatch):
+        """Edge case: the auto-create trigger hasn't fired yet."""
+        supabase = _supabase(companies=[], profiles=[])
+        monkeypatch.setattr("app.routers.companies.get_supabase", lambda: supabase)
+
+        with pytest.raises(HTTPException) as exc:
+            _run(get_my_company(user=_user()))
+        assert exc.value.status_code == 404
