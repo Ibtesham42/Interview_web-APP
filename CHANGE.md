@@ -23,6 +23,69 @@
 
 ---
 
+## 27/05/2026 — Multi-tenant rollout · PR 0 (migration 004) + ADR 0005
+Type: Feature
+
+PR 0 of the multi-tenant rollout. **Data-layer only** — no backend or
+frontend code reads or writes `company_id` yet. Behaviour-preserving.
+
+What landed:
+
+- `docs/adr/0005-multi-tenant-companies.md` — three-section ADR
+  capturing the irreversible schema decisions A1 (Default-company
+  backfill), A2 (backend-primary isolation, RLS defense-in-depth),
+  A3 (`company_id` denormalised onto every domain table). Records
+  why denorm is safe (Candidate's Company never changes) and why
+  it's preferable (preserves the `score_interviews_bulk` bulk-query
+  invariant — no joins added to aggregations).
+- `backend/app/migrations/004_multi_tenant_companies.sql` — 6
+  numbered steps, idempotent, safe to re-run:
+  1. `companies` table (uuid pk, slug unique, name, created_by FK,
+     created_at) + slug index.
+  2. Default company seed — fixed sentinel UUID
+     `00000000-0000-0000-0000-000000000001` (UUID is part of the
+     schema contract; rename ok, UUID change not ok).
+  3. Nullable `company_id` columns on `profiles`, `candidates`,
+     `interviews`, `evaluations`, `recruiter_decisions`,
+     `interview_integrity_events`. `ON DELETE SET NULL` on the FK
+     so tenant deletion doesn't cascade.
+  4. One b-tree index per `company_id` column for tenant-filter
+     performance once PR 1 adds the filters.
+  5. Backfill — every existing row updated to Default's id, except
+     `role='admin'` profiles (which stay NULL per ADR 0005 / grill
+     C3). Re-run-safe via `where company_id is null`.
+  6. RLS on `companies` table only — `companies_select_own` policy
+     scopes reads to profiles whose `company_id` matches; no
+     client-side INSERT/UPDATE/DELETE (backend-only writes).
+
+Verification:
+- `python -c "from app.main import app"` — imports cleanly.
+- `python -m pytest -q` — 160/160 passing.
+- Migration not run against Supabase yet (SQL editor step the user
+  performs manually).
+
+Affected files:
+- `docs/adr/0005-multi-tenant-companies.md` (new)
+- `backend/app/migrations/004_multi_tenant_companies.sql` (new)
+
+Architectural impact: schema only. Tenant isolation is still defined
+but not yet enforced — that begins in PR 1 when backend handlers
+start filtering by `caller.company_id`. The pinned scoring helpers
+(`score_interviews_bulk`, `compute_phase_scores`, `compute_final_score`)
+are untouched and stay pinned.
+Future considerations:
+- Next session: PR 1 (backend tenant scoping for admin + recruiter
+  endpoints). `get_current_user` learns `company_id`; every list /
+  detail / aggregation query in `routers/admin.py` and
+  `services/recruiter*.py` gets `.eq("company_id", caller.company_id)`;
+  platform admins (NULL `company_id`) skip the filter.
+- `company_id` columns are nullable for now. Whether to enforce
+  `NOT NULL` is a follow-up after both signup flows ship (B2B apply
+  link in PR 4, B2C survives untouched per grill C1).
+- The Default Company UUID is referenced in the backfill and will
+  be referenced in PR 1 tests as the fixture tenant; do not change
+  it.
+
 ## 27/05/2026 — Multi-tenant rollout · 12 grills resolved
 Type: Decision
 

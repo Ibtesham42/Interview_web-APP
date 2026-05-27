@@ -211,7 +211,10 @@ are flagged.
 
 ### PR 0 — Migration 004: `companies` + tenant-id columns (data layer only)
 
-**Status:** Not started. Blocks every later PR.
+**Status:** Shipped 2026-05-27 (commit on `main`). ADR 0005 added.
+Backend imports + 160/160 pytest pass post-migration-file landing
+(no app code changed). Migration SQL not yet executed against
+Supabase — user runs it in the SQL editor manually.
 
 **Scope:** SQL only. No backend code change. No behavior change.
 - New table `companies` (`id uuid pk`, `slug text unique`, `name text`,
