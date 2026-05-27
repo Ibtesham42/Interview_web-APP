@@ -21,8 +21,8 @@ import pytest
 from fastapi import HTTPException
 
 from app.auth import TenantContext
-from app.models.schemas import CompanyCreate
-from app.routers.companies import create_company, get_my_company
+from app.models.schemas import CompanyCreate, InviteCandidateRequest
+from app.routers.companies import create_company, get_my_company, invite_candidate
 
 
 # ---------------------------------------------------------------------------
@@ -332,3 +332,150 @@ class TestGetMyCompany:
         with pytest.raises(HTTPException) as exc:
             _run(get_my_company(user=_user()))
         assert exc.value.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# POST /api/companies/invite — send apply-link invitation to a candidate
+# ---------------------------------------------------------------------------
+
+class TestInviteCandidate:
+    """Invite endpoint: writes an outbox row via services.email.send
+    (real send is stubbed). Apply URL is built from FRONTEND_BASE_URL +
+    /apply/{slug}. Caller must belong to a company."""
+
+    def _stub_email_send(self, monkeypatch, *, status="sent",
+                         resend_id="re_abc", error=None):
+        """Replace email_svc.send with a deterministic stub that
+        captures kwargs for assertions and returns a fully-formed
+        outbox row. Avoids hitting the real Resend HTTP."""
+        captured = {}
+
+        async def fake_send(supabase, **kwargs):
+            captured.update(kwargs)
+            return {
+                "id": str(uuid.uuid4()),
+                "to_email": kwargs["to"],
+                "subject": kwargs["subject"],
+                "body": kwargs["body"],
+                "status": status,
+                "resend_message_id": resend_id if status == "sent" else None,
+                "error_message": error,
+                "sent_at": "2026-05-27T00:00:00Z",
+                "sender_id": kwargs["sender_id"],
+                "company_id": kwargs["company_id"],
+                "candidate_id": kwargs["candidate_id"],
+            }
+
+        monkeypatch.setattr("app.routers.companies.email_svc.send", fake_send)
+        return captured
+
+    def _ctx_company_admin(self, company_id=COMPANY_ID):
+        return TenantContext(
+            user_id="u-1", role="company_admin", company_id=company_id,
+        )
+
+    def test_sends_invite_and_returns_outbox_row(self, monkeypatch):
+        supabase = _supabase(companies=[{
+            "id": COMPANY_ID, "slug": "acme", "name": "Acme",
+            "created_at": "2026-05-27T00:00:00Z",
+        }])
+        monkeypatch.setattr("app.routers.companies.get_supabase",
+                            lambda: supabase)
+        captured = self._stub_email_send(monkeypatch)
+
+        # Pin FRONTEND_BASE_URL to a known value via env + cache clear
+        # so the assertion against the constructed apply URL is stable.
+        from app.config import get_settings
+        get_settings.cache_clear()
+        monkeypatch.setenv("FRONTEND_BASE_URL", "https://app.example.com")
+
+        result = _run(invite_candidate(
+            InviteCandidateRequest(to_email="alice@x.com",
+                                   candidate_name="Alice Smith"),
+            ctx=self._ctx_company_admin(),
+        ))
+
+        assert result.status == "sent"
+        assert result.to_email == "alice@x.com"
+
+        # Body must contain the apply URL built from FRONTEND_BASE_URL
+        # + the company slug (NOT user-supplied — server constructs).
+        assert "https://app.example.com/apply/acme" in captured["body"]
+        # First-name greeting + company name surface in subject.
+        assert "Acme" in captured["subject"]
+        assert "Alice" in captured["body"]
+        # candidate_id is NULL — candidate hasn't signed up yet.
+        assert captured["candidate_id"] is None
+        get_settings.cache_clear()
+
+    def test_blank_name_falls_back_to_neutral_greeting(self, monkeypatch):
+        """An admin who only has an email types no name — body greets
+        'Hi there,'."""
+        supabase = _supabase(companies=[{
+            "id": COMPANY_ID, "slug": "acme", "name": "Acme",
+            "created_at": "2026-05-27T00:00:00Z",
+        }])
+        monkeypatch.setattr("app.routers.companies.get_supabase",
+                            lambda: supabase)
+        captured = self._stub_email_send(monkeypatch)
+
+        _run(invite_candidate(
+            InviteCandidateRequest(to_email="alice@x.com"),
+            ctx=self._ctx_company_admin(),
+        ))
+        assert "Hi there," in captured["body"]
+
+    def test_caller_with_no_company_400(self, monkeypatch):
+        """Platform admin / B2C user has no tenant — invite is
+        meaningless without one. 400, not 403, because the role gate
+        passed; the precondition that failed is the missing tenant."""
+        supabase = _supabase()
+        monkeypatch.setattr("app.routers.companies.get_supabase",
+                            lambda: supabase)
+        self._stub_email_send(monkeypatch)
+
+        ctx_no_company = TenantContext(
+            user_id="u-1", role="admin", company_id=None,
+        )
+        with pytest.raises(HTTPException) as exc:
+            _run(invite_candidate(
+                InviteCandidateRequest(to_email="alice@x.com"),
+                ctx=ctx_no_company,
+            ))
+        assert exc.value.status_code == 400
+
+    def test_orphaned_company_id_404(self, monkeypatch):
+        """Profile points at a Company that no longer exists. 404 the
+        invite rather than send out a half-built email."""
+        supabase = _supabase(companies=[])  # company_id won't resolve
+        monkeypatch.setattr("app.routers.companies.get_supabase",
+                            lambda: supabase)
+        self._stub_email_send(monkeypatch)
+
+        with pytest.raises(HTTPException) as exc:
+            _run(invite_candidate(
+                InviteCandidateRequest(to_email="alice@x.com"),
+                ctx=self._ctx_company_admin(),
+            ))
+        assert exc.value.status_code == 404
+
+    def test_failed_send_surfaces_in_response(self, monkeypatch):
+        """When Resend rejects the send, the outbox row is still
+        written (with status='failed') and returned to the caller —
+        critical invariant from PR 6, retained here."""
+        supabase = _supabase(companies=[{
+            "id": COMPANY_ID, "slug": "acme", "name": "Acme",
+            "created_at": "2026-05-27T00:00:00Z",
+        }])
+        monkeypatch.setattr("app.routers.companies.get_supabase",
+                            lambda: supabase)
+        self._stub_email_send(monkeypatch, status="failed", resend_id=None,
+                              error="connection refused")
+
+        result = _run(invite_candidate(
+            InviteCandidateRequest(to_email="alice@x.com",
+                                   candidate_name="Alice"),
+            ctx=self._ctx_company_admin(),
+        ))
+        assert result.status == "failed"
+        assert result.error_message == "connection refused"

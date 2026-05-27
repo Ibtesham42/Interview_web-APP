@@ -23,6 +23,88 @@
 
 ---
 
+## 27/05/2026 — Invite candidate by email (no migration) — post-rollout follow-up
+Type: Feature
+
+User asked "how do I invite a candidate as admin". Today's flow is
+shareable-link only (admin copies /apply/{slug} and shares via their
+own channels). This adds a per-candidate invite path:
+admin enters an email + optional name → platform sends a
+personalized invitation via Resend → outbox row written for audit.
+
+What landed:
+
+Backend:
+- New config `FRONTEND_BASE_URL` (default `http://localhost:3000`) +
+  `.env.example` documentation. Production MUST override to the real
+  frontend URL — the invite email body contains the apply link, and
+  localhost in a candidate's inbox is unclickable.
+- New `InviteCandidateRequest` + `InviteCandidateResponse` Pydantic
+  models (`backend/app/models/schemas.py`).
+- New `default_invite_template(company, candidate_name, apply_url)`
+  in `services/email_templates.py`. Plain text, first-name greeting
+  with `Hi there,` fallback when admin doesn't supply a name.
+- New `POST /api/companies/invite` endpoint
+  (`backend/app/routers/companies.py`):
+  - Gated by `get_tenant_context`; rejects callers without a
+    company_id (400 — platform admins / B2C users have no tenant).
+  - Server constructs the apply URL from `FRONTEND_BASE_URL + /apply/
+    {company.slug}` — never trusts a frontend-provided URL (would
+    enable phishing).
+  - Calls `services.email.send` with `candidate_id=None` (the
+    candidate hasn't signed up yet; outbox FK supports NULL).
+  - Returns the outbox row so the UI can render instant sent/failed
+    feedback.
+- 5 new pytest cases in `test_companies.py::TestInviteCandidate`:
+  successful send + URL construction; blank-name fallback;
+  caller without company → 400; orphaned company_id → 404; Resend
+  failure surfaces in response.
+
+Frontend:
+- `InviteCandidateResponse` type + `companiesApi.invite()` client.
+- New "Invite a candidate" card on `/admin/settings` between the
+  apply-link card and the company-meta card. Form: email
+  (required, regex-validated) + name (optional). Submit button stays
+  disabled until email is shape-valid. Success surfaces an
+  `.auth-info` banner with the sent-to address + clears the form;
+  failure surfaces an `.error-message` banner with the reason and
+  keeps the form populated for retry.
+
+Verification:
+- Backend: 229/229 pytest pass (224 prior + 5 new).
+- Frontend: `npx tsc --noEmit` clean.
+
+Affected files:
+- `backend/.env.example`
+- `backend/app/config.py`
+- `backend/app/models/schemas.py`
+- `backend/app/routers/companies.py`
+- `backend/app/services/email_templates.py`
+- `backend/tests/test_companies.py`
+- `frontend/src/components/companies/Settings.tsx`
+- `frontend/src/services/api.ts`
+- `frontend/src/types/index.ts`
+- `CHANGE.md`
+
+Architectural impact: invite is now a first-class action alongside
+the public link. No new tables; reuses the email_outbox audit log
+from PR 6. The send path goes through the same `services.email.send`
+so the disabled-mode + outbox-write invariants are inherited. No
+new migrations needed.
+
+Future considerations:
+- Bulk-invite (CSV / multi-line textarea) — natural follow-up.
+  Would add per-row progress + result aggregation but no new
+  endpoint shape (the existing one can be looped).
+- Resend tracking webhooks would let us update the outbox row's
+  status from `sent` → `delivered` / `bounced` / `opened` based on
+  Resend's events. Useful for an admin who wants to know whether
+  a candidate opened the invite.
+- The invite UI doesn't yet show *prior* invites. A "Previous
+  invites" panel on Settings (mirroring "Emails sent" on the
+  candidate detail page) would let admins see what's been sent
+  without diving into the outbox table directly.
+
 ## 27/05/2026 — Company contact fields (migration 007) — post-rollout follow-up
 Type: Feature
 

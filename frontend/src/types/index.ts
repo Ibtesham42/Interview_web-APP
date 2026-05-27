@@ -53,6 +53,18 @@ export interface ClaimCompanyResponse {
   reason?: string;
 }
 
+// POST /api/companies/invite — admin sends an apply-link invite to a
+// candidate who hasn't signed up yet. Outbox row returned so the UI
+// can show instant sent/failed feedback.
+export interface InviteCandidateResponse {
+  id: string;
+  to_email: string;
+  subject: string;
+  status: 'sent' | 'failed';
+  error_message?: string | null;
+  sent_at: string;
+}
+
 // Recruiter email composer (PR 7 — multi-tenant rollout)
 export interface EmailDraft {
   to: string;

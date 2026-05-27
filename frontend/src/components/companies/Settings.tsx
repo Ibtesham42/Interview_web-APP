@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { companiesApi } from '../../services/api';
 
 /**
  * Company settings — /admin/settings (multi-tenant PR 5).
@@ -25,6 +26,58 @@ import { useAuth } from '../../contexts/AuthContext';
 export function Settings() {
   const { company, profile } = useAuth();
   const [copied, setCopied] = useState(false);
+
+  // Invite-a-candidate card state. Email is required; name is the
+  // optional friendly name shown in the email greeting. After a
+  // successful send we surface a transient confirmation; failure keeps
+  // the form populated so the admin can retry without retyping.
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteName, setInviteName] = useState('');
+  const [inviteSending, setInviteSending] = useState(false);
+  const [inviteMessage, setInviteMessage] = useState<
+    { kind: 'success' | 'error'; text: string } | null
+  >(null);
+
+  const inviteEmailLooksValid = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(inviteEmail.trim());
+
+  const handleInvite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setInviteMessage(null);
+    if (!inviteEmailLooksValid) {
+      setInviteMessage({ kind: 'error', text: "That doesn't look like a valid email." });
+      return;
+    }
+    setInviteSending(true);
+    try {
+      const row = await companiesApi.invite({
+        to_email: inviteEmail.trim(),
+        candidate_name: inviteName.trim() || undefined,
+      });
+      if (row.status === 'failed') {
+        // Resend rejected the send (or service disabled). Surface the
+        // reason; keep the form populated so the admin can copy the
+        // address or try again.
+        setInviteMessage({
+          kind: 'error',
+          text: row.error_message || 'The invite could not be delivered.',
+        });
+      } else {
+        setInviteMessage({
+          kind: 'success',
+          text: `Invite sent to ${row.to_email}.`,
+        });
+        setInviteEmail('');
+        setInviteName('');
+      }
+    } catch (err) {
+      setInviteMessage({
+        kind: 'error',
+        text: err instanceof Error ? err.message : 'Failed to send invite',
+      });
+    } finally {
+      setInviteSending(false);
+    }
+  };
 
   // Platform admin (NULL company_id) and B2C users land here only if
   // the route gate is misconfigured; surface a friendly message
@@ -109,6 +162,68 @@ export function Settings() {
               {copied ? 'Copied' : 'Copy'}
             </button>
           </div>
+        </div>
+
+        <div className="card">
+          <h3>Invite a candidate</h3>
+          <p className="page-sub" style={{ marginTop: 'var(--space-xs)' }}>
+            We'll email them a personalized invite with your apply link.
+            Use this when you want to nudge a specific person instead of
+            sharing the public URL broadly.
+          </p>
+          <form onSubmit={handleInvite}>
+            <div className="form-group">
+              <label className="form-label" htmlFor="invite-email">Email</label>
+              <input
+                id="invite-email"
+                type="email"
+                className="form-input"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                placeholder="candidate@example.com"
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label" htmlFor="invite-name">
+                Name <span className="form-optional">(optional)</span>
+              </label>
+              <input
+                id="invite-name"
+                type="text"
+                className="form-input"
+                value={inviteName}
+                onChange={(e) => setInviteName(e.target.value)}
+                placeholder="Alice Smith"
+                maxLength={120}
+              />
+              <p className="form-hint">
+                Used in the email greeting. Blank is fine — we'll say "Hi
+                there,".
+              </p>
+            </div>
+
+            {inviteMessage && (
+              <div
+                className={
+                  inviteMessage.kind === 'success'
+                    ? 'auth-info'
+                    : 'error-message'
+                }
+                role={inviteMessage.kind === 'error' ? 'alert' : undefined}
+              >
+                {inviteMessage.text}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={inviteSending || !inviteEmailLooksValid}
+            >
+              {inviteSending ? 'Sending…' : 'Send invite'}
+            </button>
+          </form>
         </div>
 
         <div className="card">

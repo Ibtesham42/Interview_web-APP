@@ -6,6 +6,7 @@ import type {
   EmailDraft,
   EmailListResponse,
   EmailOutboxRow,
+  InviteCandidateResponse,
   Interview,
   InterviewReport,
   Evaluation,
@@ -235,6 +236,16 @@ export const companiesApi = {
       body: JSON.stringify(data),
     }),
   getMine: () => fetchJson<Company>('/companies/mine'),
+
+  // Send a pre-application invitation email to a candidate. Backend
+  // constructs the apply URL from FRONTEND_BASE_URL + the caller's
+  // company slug — frontend just supplies the recipient + optional
+  // name. Used by the "Invite a candidate" card on /admin/settings.
+  invite: (data: { to_email: string; candidate_name?: string }) =>
+    fetchJson<InviteCandidateResponse>('/companies/invite', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 };
 
 // Apply API — multi-tenant rollout PR 4. Public landing route + post-signup

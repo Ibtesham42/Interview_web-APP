@@ -41,9 +41,17 @@ class Settings(BaseSettings):
     resend_api_key: str = ""
     resend_from_email: str = "onboarding@resend.dev"
 
+    # The base URL of the deployed frontend. Used by the
+    # invite-candidate email (companies router) to build the
+    # /apply/{slug} link inside the body. Local dev defaults to
+    # http://localhost:3000 (the Vite port). Production must set this
+    # to the real frontend URL — otherwise invite emails will contain
+    # a localhost link the recipient can't open.
+    frontend_base_url: str = "http://localhost:3000"
+
     @field_validator(
         "groq_api_key", "openai_api_key", "supabase_url", "supabase_key",
-        "resend_api_key", "resend_from_email",
+        "resend_api_key", "resend_from_email", "frontend_base_url",
         mode="before",
     )
     @classmethod

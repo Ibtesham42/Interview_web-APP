@@ -25,7 +25,16 @@ from typing import Any, Dict
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.auth import get_current_user, get_tenant_context
-from app.models.schemas import CompanyCreate, CompanyResponse, CompanySignupResponse
+from app.config import get_settings
+from app.models.schemas import (
+    CompanyCreate,
+    CompanyResponse,
+    CompanySignupResponse,
+    InviteCandidateRequest,
+    InviteCandidateResponse,
+)
+from app.services import email as email_svc
+from app.services.email_templates import default_invite_template
 from app.supabase_client import get_supabase
 
 router = APIRouter()
@@ -236,4 +245,98 @@ async def create_company(body: CompanyCreate, ctx=Depends(get_tenant_context)):
             created_at=company_row["created_at"],
         ),
         profile=profile_payload,
+    )
+
+
+@router.post(
+    "/invite",
+    response_model=InviteCandidateResponse,
+)
+async def invite_candidate(
+    body: InviteCandidateRequest,
+    ctx=Depends(get_tenant_context),
+):
+    """Send an apply-link invitation email to a candidate.
+
+    The candidate hasn't signed up yet — `email_outbox.candidate_id`
+    is intentionally NULL on this row. The audit trail still works
+    (tenant + sender + recipient + body persisted), and a join from
+    `email_outbox` to `candidates` later can correlate by `to_email`
+    if needed.
+
+    Auth: caller must belong to a Company (`company_id IS NOT NULL`).
+    Platform admins and B2C users get 400 — they have no tenant whose
+    apply link could be sent. `get_current_admin` is intentionally
+    NOT used here so a regular `recruiter` (also tenant-scoped) can
+    invite too; matches the B1 access matrix where Recruiters do
+    "everything a hiring person does" within their tenant.
+
+    Failure semantics mirror `services/email.send`:
+    - Disabled mode (no RESEND_API_KEY) → outbox row written with
+      `status='failed'` and `error_message='Email service not
+      configured…'`. The UI surfaces the reason to the admin.
+    - Resend rejected → same shape; row recorded; caller informed.
+    - Insert into outbox itself failed → 500.
+    """
+    if not ctx.company_id:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Only company members can send invitations. "
+                "Create a company at /companies/signup first."
+            ),
+        )
+
+    supabase = get_supabase()
+
+    # Look up the company so the email body includes the company name
+    # + the right apply slug. This is one extra SELECT per invite; the
+    # caller's TenantContext gives us company_id but not the human
+    # name / slug.
+    company_rows = (
+        supabase.table("companies")
+        .select("id,slug,name")
+        .eq("id", ctx.company_id)
+        .execute()
+        .data
+        or []
+    )
+    if not company_rows:
+        # Orphaned profile pointing at a deleted Company — surface a
+        # clear 404 rather than a misleading 500 inside Resend.
+        raise HTTPException(status_code=404, detail="Company not found")
+    company = company_rows[0]
+
+    # The frontend's /apply page lives at this URL — see config.py.
+    # Production env MUST set FRONTEND_BASE_URL explicitly; the local
+    # dev default would send broken links to real candidates.
+    base = get_settings().frontend_base_url.rstrip("/")
+    apply_url = f"{base}/apply/{company['slug']}"
+
+    rendered = default_invite_template(
+        company=company,
+        candidate_name=(body.candidate_name or ""),
+        apply_url=apply_url,
+    )
+
+    try:
+        row = await email_svc.send(
+            supabase,
+            company_id=ctx.company_id,
+            candidate_id=None,  # candidate hasn't signed up yet
+            sender_id=ctx.id,
+            to=body.to_email.strip(),
+            subject=rendered["subject"],
+            body=rendered["body"],
+        )
+    except email_svc.EmailServiceError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    return InviteCandidateResponse(
+        id=row["id"],
+        to_email=row["to_email"],
+        subject=row["subject"],
+        status=row["status"],
+        error_message=row.get("error_message"),
+        sent_at=row["sent_at"],
     )

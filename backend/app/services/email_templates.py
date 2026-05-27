@@ -83,6 +83,42 @@ def default_shortlist_template(
     return {"subject": subject, "body": body}
 
 
+def default_invite_template(
+    company: Dict[str, Any],
+    candidate_name: str,
+    apply_url: str,
+) -> EmailTemplate:
+    """Subject + body for a pre-application invitation.
+
+    Sent by the company_admin from /admin/settings before the candidate
+    has signed up. The body contains the public `/apply/{slug}` URL
+    (constructed by the caller against `FRONTEND_BASE_URL`) so the
+    candidate clicks through to the standard signup flow.
+
+    `candidate_name` is whatever the admin typed in the invite form —
+    may be empty if they only had an email. The template falls back to
+    "Hi there," in that case, matching `default_shortlist_template`'s
+    convention.
+    """
+    name = (candidate_name or "").strip()
+    greeting_name = name.split()[0] if name else "there"
+    company_name = (company.get("name") or "our team").strip() or "our team"
+
+    subject = f"{company_name} invited you to interview"
+    body = (
+        f"Hi {greeting_name},\n\n"
+        f"{company_name} has invited you to complete a short AI-led "
+        f"interview as part of their hiring process.\n\n"
+        f"Get started here:\n"
+        f"{apply_url}\n\n"
+        f"The interview is voice-based and takes about 20–30 minutes. "
+        f"You can do it from any browser with a microphone.\n\n"
+        f"Best regards,\n"
+        f"The {company_name} team"
+    )
+    return {"subject": subject, "body": body}
+
+
 def default_rejection_template(
     candidate: Dict[str, Any],
     company: Dict[str, Any],

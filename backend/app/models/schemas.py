@@ -318,6 +318,28 @@ class CompanySignupResponse(BaseModel):
     profile: Dict[str, Any]
 
 
+class InviteCandidateRequest(BaseModel):
+    """POST /api/companies/invite body. The candidate hasn't signed up
+    yet, so we only know their email + the name the admin typed. Sent
+    by company_admin from /admin/settings; the platform emails the
+    candidate an apply-link invitation via Resend."""
+    to_email: str = Field(..., min_length=5, max_length=320,
+                          pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    candidate_name: Optional[str] = Field(None, max_length=120)
+
+
+class InviteCandidateResponse(BaseModel):
+    """Returns the outbox row for the invite so the SPA can show
+    instant feedback (sent / failed) without a follow-up query. Same
+    shape as `EmailOutboxRow` for parity."""
+    id: UUID
+    to_email: str
+    subject: str
+    status: str
+    error_message: Optional[str] = None
+    sent_at: datetime
+
+
 # ---------------------------------------------------------------------------
 # Public apply route (PR 4 — /apply/{slug} landing page + claim)
 # ---------------------------------------------------------------------------
