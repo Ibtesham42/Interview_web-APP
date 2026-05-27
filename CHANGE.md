@@ -23,6 +23,64 @@
 
 ---
 
+## 27/05/2026 — Multi-tenant companies + email outreach · planning (phase override)
+Type: Decision
+
+User explicitly overrode the "no large new feature branches" phase
+rule (set 2026-05-24) to start a multi-tenant + email-outreach
+rollout. Phase override is recorded as a phase exception in
+`CURRENT_TASKS.md`, mirroring how the recruiter rollout was handled.
+
+What's being added (across an 8-PR sequence):
+
+- `companies` table; every domain row (profile, candidate, interview,
+  evaluation, recruiter_decision, integrity_event) denormalises a
+  `company_id` for tenant-local filtering + RLS.
+- Self-serve company signup at `/companies/signup`; creator becomes
+  `company_admin`.
+- Public apply link per company (`/apply/{slug}`) — no-auth landing
+  page; candidate signup auto-stamps `company_id`.
+- Tenant-scoped admin dashboard — `company_admin` sees only their
+  own data. The existing global `admin` role is preserved as
+  `platform_admin` (super-admin / internal ops).
+- Shortlist-with-email flow: when admin shortlists, a composer modal
+  opens with a default template; admin edits subject + body; **Send**
+  dispatches via Resend; outbox row written for audit.
+
+What is NOT being added this rollout (deferred):
+- Per-company email templates (platform-wide default only).
+- Server-side draft autosave (pure client-side draft).
+- Job-specific apply links (one slug per company; jobs are a future
+  child table).
+- Anti-abuse on self-serve signup (email verify + rate limit deferred).
+
+No code shipped in this commit — only the plan + the phase-exception
+flag. 12 grill questions are open
+([`MULTI_TENANT_ROLLOUT.md`](MULTI_TENANT_ROLLOUT.md)) and must be
+resolved before PR 0 (migration 004) ships.
+
+Affected files:
+- `MULTI_TENANT_ROLLOUT.md` (new)
+- `CURRENT_TASKS.md` — added to "Phase exceptions in flight"
+
+Architectural impact: Will be substantial when shipped. The largest
+single change since project inception. Touches: schema (one new table
++ FK columns on 6 existing tables), RLS posture, every admin /
+recruiter / dashboard endpoint (tenant scoping), auth dependency
+(carries `company_id` into handlers), a new third-party integration
+(Resend), and a new public route class (`/apply/{slug}` with no
+auth).
+Future considerations:
+- The `recruiter` role created by the previous rollout is in question
+  (grill C2): either subsumed by `company_admin`, or kept as
+  `company_recruiter` (tenant-scoped). Default direction is the
+  latter — keeps the two-tier ATS shape that already shipped.
+- The existing B2C `user` role is in question (grill C1). Default
+  direction: keep it; B2C and B2B coexist.
+- RLS is currently mostly defense-in-depth (the backend uses the
+  service-role key which bypasses RLS). The rollout adds explicit
+  backend-side `company_id` filters as the primary enforcement.
+
 ## 27/05/2026 — Logo + colorful accent palette across admin + user surfaces
 Type: Feature
 

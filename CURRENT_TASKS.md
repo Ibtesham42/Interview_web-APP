@@ -21,6 +21,14 @@ deferred unless explicitly promoted out of the deferred section.
 
 ## Phase exceptions in flight
 
+- **Multi-tenant companies + email outreach** — planning landed
+  2026-05-27. User explicitly overrode the "no large new feature
+  branches" phase rule to start this work. 12 grill questions open
+  (A1–A3, C1–C3, L1–L2, E1–E4); no code shipped yet. Plan is an
+  8-PR sequence: migration → backend tenant scoping (×2) → company
+  self-serve signup → public apply link → company-admin view → email
+  service → composer UI. See [`MULTI_TENANT_ROLLOUT.md`](MULTI_TENANT_ROLLOUT.md)
+  for the full plan + grill list.
 - **Recruiter / admin candidate management** — code complete
   2026-05-26. All 7 PRs (0 through 6) shipped to `main`. ADR 0004
   added; CONTEXT.md extended with 10 new domain terms. Browser
