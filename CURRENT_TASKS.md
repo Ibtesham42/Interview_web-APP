@@ -37,9 +37,7 @@ _All items burned down this phase — see "Done" section below._
 
 ### Scaling safety
 
-| Item | Size | Notes |
-|---|---|---|
-| Audit `score_interviews_bulk` and admin aggregations for N+1 regressions | S | Invariant #5 ("aggregations are bulk queries") is load-bearing; a one-time read-through is cheap insurance. |
+_All items burned down this phase — see "Done" section below._
 
 ### Reliability
 
@@ -74,7 +72,7 @@ Three small, sequential PRs — not batched. Each gets its own
 |---|---|---|
 | C4 | Heading scale &amp; typography rhythm | **Shipped 2026-05-25** (ADR 0003) |
 | C5 | InterviewRoom inline-style purge | **Shipped 2026-05-26** (commit `7dc69cd`) |
-| C1 | Button primitive | **Code complete 2026-05-26** — pending browser verification + commit |
+| C1 | Button primitive | **Shipped 2026-05-26** (commit `d7757f6`) |
 
 ### C5 — InterviewRoom inline-style purge (next)
 
@@ -357,6 +355,14 @@ visual report back, or just work from this section.
 ## Done in this phase
 
 (Update as items land. Newest at the top.)
+
+- 2026-05-27 — Scaling-safety audit complete. Read-through of
+  `score_interviews_bulk` and every aggregation endpoint
+  (dashboard, admin overview/user-detail, recruiter list/detail,
+  three recruiter analytics) confirmed Invariant #5 still holds:
+  zero N+1 across all 8 entry points; per-request query counts are
+  bounded (3–6 SELECTs) independent of row count. No code change.
+  See `CHANGE.md` 2026-05-27 for the per-endpoint query budget.
 
 - 2026-05-26 — Shipped scaling-safety PR 7: wrap synchronous Groq
   client (`chat.completions.create` + `audio.transcriptions.create`)

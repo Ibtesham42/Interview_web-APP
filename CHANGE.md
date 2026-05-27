@@ -23,6 +23,64 @@
 
 ---
 
+## 27/05/2026 — Scaling-safety audit · `score_interviews_bulk` + all aggregation endpoints
+Type: Decision
+
+Closes the scaling-safety audit item from `CURRENT_TASKS.md`. Read-through
+of every aggregation surface in the backend to confirm Invariant #5 ("all
+aggregations are bulk queries, never N+1") still holds after the recruiter
+rollout shipped 7 PRs and added a brand-new analytics surface.
+
+What was audited (file → query count, regardless of N rows):
+
+- `services/interview_orchestrator.py::score_interviews_bulk` — **1**
+  `evaluations` SELECT via `in_(interview_id, ids)`, then in-Python
+  grouping. Pinned canonical.
+- `routers/dashboard.py::get_dashboard` — 1 interviews + 1 candidates
+  `in_()` + 1 `score_interviews_bulk` (= 1 evaluations). **3 queries
+  per request.**
+- `routers/admin.py::admin_overview` — 1 profiles + 1 interviews + 1
+  candidates `in_()` + 1 `score_interviews_bulk`. **4 queries.**
+- `routers/admin.py::admin_user_detail` — 1 profile + 1 interviews + 1
+  candidates `in_()` + 1 `score_interviews_bulk` + 1
+  `interview_integrity_events` `in_()`. **5 queries.**
+- `services/recruiter.py::rank_candidates` — 1 candidates + 1
+  interviews `in_()` + 1 `score_interviews_bulk` + 1 integrity events
+  `in_()` + 1 decisions `in_()` + 1 `_layer_aware_map`
+  (page-scoped evaluations `in_()`). **6 queries per page, independent
+  of candidate count.**
+- `services/recruiter.py::get_candidate_detail` — 1 candidate + 1
+  interviews + 1 `score_interviews_bulk` + 1 integrity events `in_()` +
+  1 decisions + 1 profiles `in_()`. **6 queries.**
+- `services/recruiter_analytics.py::hiring_funnel` — 1 candidates + 1
+  interviews + 1 decisions. **3 queries.**
+- `services/recruiter_analytics.py::scores_by_field` — 1 candidates +
+  1 interviews + 1 `score_interviews_bulk`. **3 queries.**
+- `services/recruiter_analytics.py::integrity_event_volume` — 1
+  events SELECT. **1 query.**
+
+Findings: zero N+1 regressions. Every Python loop over rows operates on
+already-fetched data; every cross-table lookup uses an `in_(ids)` batch
+plus a Python-side dict join. The invariant is fully intact across the
+post-recruiter-rollout surface.
+
+Affected files: none (read-only audit).
+Architectural impact: None. Documents that the bulk-query invariant
+holds; gives future agents a checklist of the 8 entry points to keep
+clean when extending aggregations.
+Future considerations:
+- The `rank_candidates` "fetch all candidates then sort in Python"
+  pattern remains the ~1000-candidate ceiling already flagged in
+  `RECRUITER_ROLLOUT.md`. Not an N+1 — a fetch-volume concern — and
+  out of scope for this audit. The follow-up trigger is materialising
+  `final_score` as a column with backfill.
+- pytest-level regression guards already exist for `score_interviews_bulk`
+  (`backend/tests/test_scoring.py`) and the recruiter aggregations
+  (`test_recruiter_service.py`, `test_recruiter_detail.py`). The
+  dashboard / admin / recruiter_analytics paths still rely on visual
+  audit. Adding a unit test that asserts call-count via a counting
+  `supabase` stub would harden the invariant if it ever drifts.
+
 ## 26/05/2026 — PR 7 · Wrap synchronous Groq client in a thread executor (scaling-safety)
 Type: Refactor
 
