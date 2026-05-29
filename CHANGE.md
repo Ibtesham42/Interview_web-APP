@@ -23,6 +23,84 @@
 
 ---
 
+## 29/05/2026 — Invite card on /recruiter + shared InviteCandidateForm (deepening B)
+Type: Feature
+
+Closes the user-reported "invite-candidate flow is missing from the
+recruiter experience." Before this PR, `recruiter` had
+`can('invite_candidate') === true` (capabilities.ts) but the only UI
+surface — `/admin/settings` — was route-gated to `['admin','company_admin']`
+in App.tsx. Direct three-layer disagreement that ADR 0006 closed at the
+component layer but D6 explicitly left open at the route layer.
+
+Produced by an `improve-codebase-architecture` + inline grilling pass on
+2026-05-29 (Candidate B from the architecture review). Candidate A
+(route-gate consults capabilities — the deeper fix that contradicts ADR
+0006 D6) is the planned follow-up.
+
+What landed:
+
+Frontend:
+- `frontend/src/components/companies/InviteCandidateForm.tsx` (new) —
+  extracted from `Settings.tsx`. Owns email + name state, shape
+  validation, submit handler, inline success/error banner. Optional
+  `onSent` prop; Settings doesn't pass one, the modal does. The
+  first real two-adapter component on the deepening track.
+- `frontend/src/components/recruiter/InviteCandidateModal.tsx` (new)
+  — modal wrapper mirroring `EmailComposerModal` (ESC + backdrop
+  dismiss, reuses `.email-composer-*` CSS). Body embeds the form;
+  stays open after send so the inline banner is the feedback (per
+  grill G5 — uniform behavior across both adapters).
+- `frontend/src/components/companies/Settings.tsx` — Invite card's
+  ~60-line form body replaced with `<InviteCandidateForm/>`.
+  Local state for `inviteEmail/inviteName/inviteSending/inviteMessage`
+  + `handleInvite` handler all removed. The capability gate stays.
+- `frontend/src/components/recruiter/RecruiterDashboard.tsx` —
+  `+ Invite candidate` button in the `.page-head` right slot,
+  capability-gated. `<InviteCandidateModal/>` mounted at the end of
+  the JSX, toggled by `inviteOpen` state.
+
+Docs:
+- `CONTEXT.md` — new "Invite" entry in the Multi-tenant section
+  beside Apply Link. First-class domain term (was implicit in Apply
+  Link's _Avoid_ line). Distinction by audience: Apply Link is
+  broadcast; Invite is targeted.
+
+Verification:
+- Frontend: `npx tsc --noEmit` clean; vitest 14/14 pass.
+- Backend: no changes; `POST /api/companies/invite` already covered
+  by 5 pytest cases in `TestInviteCandidate`. Existing 255/255 pass.
+- Manual browser walk: as company_admin of Default tenant, button
+  visible on /recruiter; modal opens with form; ESC + backdrop both
+  dismiss. Settings card also embeds the same form.
+
+Affected files:
+- `frontend/src/components/companies/InviteCandidateForm.tsx` (new)
+- `frontend/src/components/companies/Settings.tsx`
+- `frontend/src/components/recruiter/InviteCandidateModal.tsx` (new)
+- `frontend/src/components/recruiter/RecruiterDashboard.tsx`
+- `CONTEXT.md`
+- `CHANGE.md`
+
+Architectural impact: the invite UI is now a single form rendered at
+two seams. Adding a third adapter (e.g. an empty-state CTA on the
+recruiter dashboard when the candidate list is empty, or a bulk-invite
+panel) reuses the same form. The capability layer (ADR 0006) is the
+admission rule; the form is the work-shape. Route-level admission
+remains hand-rolled — Candidate A is the next planned deepening.
+
+Future considerations:
+- Candidate A (route-gate consults capabilities): would let recruiter
+  reach `/admin/settings` directly so the Settings card is also
+  recruiter-visible. Contradicts ADR 0006 D6 — needs an ADR amendment
+  first.
+- A "Previous invites" panel on the recruiter dashboard (or Settings)
+  would mirror the candidate-detail "Emails sent" panel. The modal's
+  unused `onSent` prop is the seam it would plug into.
+- The Settings card and the recruiter modal both render the same form
+  with the same vocabulary; if "Invite" later needs a richer composer
+  (subject/body override), the form file is the single edit site.
+
 ## 28/05/2026 — Capability module + CONTEXT.md/ADR 0006 (deepening)
 Type: Refactor
 

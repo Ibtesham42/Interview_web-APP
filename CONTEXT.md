@@ -156,9 +156,28 @@ name + contact info; clicking Apply routes to `/signup?company={slug}`,
 which stamps the new Candidate's profile with the Company's id on signup.
 The Slug is chosen at Company creation and is part of the schema contract
 — renaming a Slug breaks outstanding links.
-_Avoid_: Invite URL (Apply Link is shared broadly; the Invite is an email
-sent to a specific Candidate's address via `POST /api/companies/invite`),
-Application page, Job link (we don't model jobs yet).
+_Avoid_: Invite URL (Apply Link is shared broadly; the Invite is a
+per-Candidate email — see below), Application page, Job link (we don't
+model jobs yet).
+
+**Invite**:
+A per-Candidate email sent via `POST /api/companies/invite`, addressed
+to one specific email address and carrying the same Apply Link URL the
+public landing exposes. Distinct from the Apply Link by *audience*: the
+Apply Link is broadcast (a Recruiter posts it on LinkedIn, embeds it in
+a careers page), the Invite is targeted (a Recruiter says "I want this
+specific person to apply"). Both flows terminate at the same
+`/apply/{slug}` page; the Invite simply puts the URL in front of one
+named recipient. Audit-logged in `email_outbox` with
+`candidate_id IS NULL` (the recipient hasn't signed up yet); the
+candidate appears in the tenant's pool only once they complete signup
+through the link. Capability: `'invite_candidate'` (HIRING_ROLES with a
+tenant — see [[capability_module]] / ADR 0006).
+_Avoid_: Invitation (too generic — every email is an "invitation" of
+some sort), Invite URL (the URL belongs to the Apply Link; the Invite
+is the act of emailing it), Outreach (overloaded — the
+shortlist-email is also outreach but a different action against an
+existing Candidate).
 
 
 

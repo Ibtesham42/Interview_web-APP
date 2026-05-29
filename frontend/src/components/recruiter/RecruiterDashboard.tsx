@@ -1,7 +1,9 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { recruiterApi } from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../Button';
+import { InviteCandidateModal } from './InviteCandidateModal';
 import type {
   RecruiterCandidate,
   RecruiterDecision,
@@ -94,6 +96,13 @@ interface PendingShortlist {
 
 export function RecruiterDashboard() {
   const navigate = useNavigate();
+  const { can } = useAuth();
+
+  // Invite-candidate modal — opened from the `+ Invite candidate` button
+  // in the page header. Gated by `can('invite_candidate')` which requires
+  // a hiring role AND a tenant (ADR 0006). A recruiter with NULL
+  // company_id (legacy / orphaned profile) sees no button.
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -306,6 +315,13 @@ export function RecruiterDashboard() {
             Search, filter and shortlist candidates across the platform.
           </p>
         </div>
+        {/* Capability gate: HIRING_ROLES + tenant. A recruiter with no
+            company_id (legacy / orphaned) sees nothing here. */}
+        {can('invite_candidate') && (
+          <Button variant="primary" onClick={() => setInviteOpen(true)}>
+            + Invite candidate
+          </Button>
+        )}
       </div>
 
       <div className="recruiter-filter-bar">
@@ -647,6 +663,10 @@ export function RecruiterDashboard() {
             </div>
           </div>
         </div>
+      )}
+
+      {inviteOpen && (
+        <InviteCandidateModal onClose={() => setInviteOpen(false)} />
       )}
     </div>
   );
