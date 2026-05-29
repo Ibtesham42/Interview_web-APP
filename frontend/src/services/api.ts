@@ -3,6 +3,7 @@ import type {
   Candidate,
   ClaimCompanyResponse,
   Company,
+  CompanyOption,
   EmailDraft,
   EmailListResponse,
   EmailOutboxRow,
@@ -40,6 +41,31 @@ async function authHeaders(): Promise<Record<string, string>> {
 }
 
 /**
+ * sessionStorage key for the platform-admin "Act-as company" picker.
+ * Stored as JSON `{id, slug, name}` so the Header can render the chip
+ * without re-fetching. Per-tab by design (sessionStorage) — operator
+ * actions feel deliberate; a new tab starts unset.
+ *
+ * The id is sent on every request via `X-Acting-As-Company`; the backend
+ * IGNORES the header for non-admin callers (defense-in-depth — frontend
+ * trust is verified, not assumed).
+ */
+const ACTING_AS_STORAGE_KEY = 'actingAsCompany';
+
+/** Read the current act-as override id (if any). Surfaced as a function
+ * so consumers don't all have to JSON.parse inline. */
+export function getActingAsCompanyId(): string | null {
+  try {
+    const raw = sessionStorage.getItem(ACTING_AS_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { id?: string };
+    return parsed.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Extract a meaningful message from a failed response. Handles JSON error
  * bodies, plain-text 500s, and empty bodies — never produces "Unknown error".
  */
@@ -63,11 +89,16 @@ async function extractError(response: Response): Promise<string> {
 
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   const auth = await authHeaders();
+  const actingAsId = getActingAsCompanyId();
+  const actingAsHeader: Record<string, string> = actingAsId
+    ? { 'X-Acting-As-Company': actingAsId }
+    : {};
   const response = await fetch(`${API_BASE}${url}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
       ...auth,
+      ...actingAsHeader,
       ...(options?.headers as Record<string, string> | undefined),
     },
   });
@@ -236,6 +267,11 @@ export const companiesApi = {
       body: JSON.stringify(data),
     }),
   getMine: () => fetchJson<Company>('/companies/mine'),
+
+  // List every Company on the platform — platform-admin-only (the
+  // backend role-gates this). Powers the act-as picker in the SPA
+  // header (Candidate C, 2026-05-29).
+  listAll: () => fetchJson<CompanyOption[]>('/companies/all'),
 
   // Send a pre-application invitation email to a candidate. Backend
   // constructs the apply URL from FRONTEND_BASE_URL + the caller's

@@ -115,7 +115,10 @@ def _fetch_role(user_id: str) -> Optional[str]:
     return profile.get("role") if profile else None
 
 
-def get_tenant_context(user=Depends(get_current_user)) -> TenantContext:
+def get_tenant_context(
+    user=Depends(get_current_user),
+    x_acting_as_company: Optional[str] = Header(default=None, alias="X-Acting-As-Company"),
+) -> TenantContext:
     """FastAPI dependency: resolve the caller's role + tenant scope.
 
     Used by handlers that filter results by `company_id`. Pairs naturally
@@ -123,6 +126,23 @@ def get_tenant_context(user=Depends(get_current_user)) -> TenantContext:
     return the same `TenantContext` shape — a handler that needs both gate
     and scope picks the gate dependency and reads `ctx.company_id` from the
     same object.
+
+    Act-as override (ADR 0007 follow-up — Candidate C, 2026-05-29):
+    a platform admin (`role='admin'`) can send `X-Acting-As-Company:
+    <company_uuid>` to act as that tenant. The override mutates
+    `ctx.company_id` for the duration of the request, so capability
+    predicates (`invite_candidate`, `manage_company_settings`) and
+    `tenant_scope` see the acted-on tenant exactly as if the admin
+    were a member. The override is IGNORED for non-admin callers —
+    a regular recruiter or company_admin cannot impersonate another
+    tenant via this header (defense-in-depth — frontend doesn't send
+    it either, but trust is verified, not assumed). The header is
+    also ignored if it doesn't resolve to a real company id (404-
+    indistinguishable from no override).
+
+    Audit-trail note: the admin's `user_id` stays as the actor on
+    every write (e.g. `email_outbox.sender_id`); only `company_id`
+    changes. Accountability survives the impersonation.
     """
     profile = _fetch_profile(user.id)
     if profile is None:
@@ -130,10 +150,35 @@ def get_tenant_context(user=Depends(get_current_user)) -> TenantContext:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Could not verify account profile",
         )
+    role = profile.get("role") or "user"
+    company_id = profile.get("company_id")
+
+    # Act-as resolution — admin only.
+    if role == "admin" and x_acting_as_company:
+        target = x_acting_as_company.strip()
+        if target:
+            supabase = get_supabase()
+            try:
+                rows = (
+                    supabase.table("companies")
+                    .select("id")
+                    .eq("id", target)
+                    .execute()
+                    .data
+                    or []
+                )
+            except Exception:
+                rows = []
+            if rows:
+                company_id = rows[0]["id"]
+            # Silently ignore an unknown target — same posture as the
+            # apply-link 404. Admin sees "no effect" rather than a
+            # confusing 4xx mid-flow.
+
     return TenantContext(
         user_id=user.id,
-        role=profile.get("role") or "user",
-        company_id=profile.get("company_id"),
+        role=role,
+        company_id=company_id,
     )
 
 
@@ -188,14 +233,19 @@ def get_current_recruiter(ctx: TenantContext = Depends(get_tenant_context)) -> T
 def tenant_scope(ctx: TenantContext) -> Optional[str]:
     """Translate a TenantContext into the `company_id` filter to apply.
 
-    Returns `None` for platform admins (grill C3 — they see across all
-    tenants) and the caller's `company_id` otherwise. Centralised here so
-    every router reads the same translation; if a future role should
-    bypass tenant scoping, this is the single line to update.
+    Returns `None` for tenant-less platform admins (grill C3 — they see
+    across all tenants) and the caller's `company_id` otherwise.
+    Centralised here so every router reads the same translation.
 
-    Used by admin / recruiter / dashboard / interviews / reports / WS
-    handlers — anywhere a query needs to be tenant-filtered.
+    Act-as interaction (Candidate C, 2026-05-29): when a platform admin
+    sends `X-Acting-As-Company`, `get_tenant_context` mutates
+    `ctx.company_id` to the acted-on tenant. The admin is still
+    `is_platform_admin == True` (role unchanged), but their
+    `company_id` is now set — so this function returns the acted-on id,
+    scoping the admin's queries to that tenant. The cross-tenant
+    "see everything" view is preserved only when the admin has NO
+    `company_id` (no act-as in effect).
     """
-    if ctx.is_platform_admin:
+    if ctx.is_platform_admin and ctx.company_id is None:
         return None
     return ctx.company_id

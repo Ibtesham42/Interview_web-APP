@@ -5,7 +5,18 @@ import { supabase } from '../utils/supabase/client';
 import { companiesApi, profileApi } from '../services/api';
 import { can as capabilityCan } from '../services/capabilities';
 import type { CapabilityName } from '../services/capabilities';
-import type { Company, Profile } from '../types';
+import type { Company, CompanyOption, Profile } from '../types';
+
+const ACTING_AS_STORAGE_KEY = 'actingAsCompany';
+function readActingAs(): CompanyOption | null {
+  try {
+    const raw = sessionStorage.getItem(ACTING_AS_STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as CompanyOption;
+  } catch {
+    return null;
+  }
+}
 
 interface SignUpResult {
   error: string | null;
@@ -47,8 +58,17 @@ interface AuthContextValue {
   refreshProfile: () => Promise<void>;
   // Capability check — mirrors the backend `can(ctx, name)` (ADR 0006).
   // Returns false when profile is still loading so transient renders
-  // don't flash controls the user shouldn't see.
+  // don't flash controls the user shouldn't see. For platform admin
+  // with an `actingAs` override set, the predicate evaluates against
+  // the acted-on tenant's id — every tenant-requiring capability
+  // lights up automatically (Candidate C, 2026-05-29).
   can: (capability: CapabilityName) => boolean;
+  /** Platform-admin "act-as company" override (Candidate C). null
+   * when no override is active. sessionStorage-backed (per-tab). */
+  actingAs: CompanyOption | null;
+  /** Set or clear the act-as override. Persists to sessionStorage so
+   * a refresh keeps the selection. Pass null to clear. */
+  setActingAs: (target: CompanyOption | null) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -59,6 +79,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [company, setCompany] = useState<Company | null>(null);
   const [loading, setLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(true);
+  // Platform-admin act-as override (Candidate C). Read once on mount
+  // from sessionStorage so a page reload retains the chosen tenant.
+  const [actingAs, setActingAsState] = useState<CompanyOption | null>(() => readActingAs());
+
+  const setActingAs = (target: CompanyOption | null) => {
+    if (target) {
+      sessionStorage.setItem(ACTING_AS_STORAGE_KEY, JSON.stringify(target));
+    } else {
+      sessionStorage.removeItem(ACTING_AS_STORAGE_KEY);
+    }
+    setActingAsState(target);
+    // Eagerly mirror the picked tenant into `company` so the Header
+    // chip + Settings page light up without a network round-trip.
+    // (getMine() doesn't know about the act-as override — it reads
+    // from the admin's own profile.company_id, which is still NULL.)
+    if (target) {
+      setCompany({
+        id: target.id,
+        slug: target.slug,
+        name: target.name,
+        email: '',
+        phone: null,
+        address: null,
+        created_at: '',
+      });
+    } else if (profile?.role === 'admin') {
+      // Clearing the override for a platform admin returns them to
+      // tenantless. company_admin / recruiter would still have a real
+      // company_id from the profile fetch and don't go through this branch.
+      setCompany(null);
+    }
+  };
 
   // Establish the session once, then keep it in sync.
   useEffect(() => {
@@ -179,6 +231,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
     setProfile(null);
     setCompany(null);
+    // Drop any platform-admin act-as override; the signed-out state
+    // must not retain a tenant impersonation across sessions.
+    sessionStorage.removeItem(ACTING_AS_STORAGE_KEY);
+    setActingAsState(null);
   };
 
   const refreshProfile = async () => {
@@ -198,10 +254,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // `can` closes over the current profile. While profile is still
   // loading, every capability returns false — defensive against
   // transient renders flashing a button the user can't trigger.
+  //
+  // Act-as composition (Candidate C, 2026-05-29): for platform admin
+  // (role='admin') with an `actingAs` override set, the predicate
+  // sees the acted-on tenant id where company_id would normally sit.
+  // Every tenant-requiring capability (invite_candidate,
+  // manage_company_settings) lights up automatically without modifying
+  // the capability module itself — the seam is HERE, the rules are
+  // unchanged.
   const can = (capability: CapabilityName): boolean => {
     if (!profile) return false;
+    const effectiveCompanyId =
+      profile.role === 'admin' && actingAs
+        ? actingAs.id
+        : (profile.company_id ?? null);
     return capabilityCan(
-      { role: profile.role, company_id: profile.company_id ?? null },
+      { role: profile.role, company_id: effectiveCompanyId },
       capability,
     );
   };
@@ -221,6 +289,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signOut,
     refreshProfile,
     can,
+    actingAs,
+    setActingAs,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

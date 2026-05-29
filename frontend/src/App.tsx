@@ -17,6 +17,7 @@ import { RecruiterAnalytics } from './components/recruiter/RecruiterAnalytics';
 import { CompanySignup } from './components/companies/CompanySignup';
 import { Settings } from './components/companies/Settings';
 import { Apply } from './components/apply/Apply';
+import { ActingAsPicker } from './components/admin/ActingAsPicker';
 import type { CapabilityName } from './services/capabilities';
 import type { UserRole } from './types';
 
@@ -91,7 +92,14 @@ function Header() {
                 {company.name}
               </span>
             )}
-            {role === 'admin' && <span className="role-badge role-admin">Admin</span>}
+            {role === 'admin' && (
+              <>
+                <span className="role-badge role-admin">Admin</span>
+                {/* Act-as picker (Candidate C). Platform admin only —
+                    everyone else has exactly one tenant by design. */}
+                <ActingAsPicker />
+              </>
+            )}
             {role === 'company_admin' && <span className="role-badge role-admin">Company admin</span>}
             {role === 'recruiter' && <span className="role-badge role-recruiter">Recruiter</span>}
             <span className="header-user-name">{displayName}</span>

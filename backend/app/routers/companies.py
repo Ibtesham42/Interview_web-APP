@@ -40,6 +40,42 @@ from app.supabase_client import get_supabase
 router = APIRouter()
 
 
+@router.get("/all")
+async def list_all_companies(ctx=Depends(get_tenant_context)):
+    """List every Company on the platform.
+
+    Audience: platform admin (`role='admin'`) only. Powers the
+    "Act-as company" picker in the SPA header (Candidate C,
+    2026-05-29). A `company_admin` / `recruiter` doesn't need this —
+    they already have one tenant; cross-tenant browsing isn't part of
+    their role.
+
+    Returns a thin payload (id + slug + name) — no contact info, no
+    counts. Picker only needs the label and the id to send back as
+    `X-Acting-As-Company`.
+
+    The role check uses `ctx.role == 'admin'` rather than
+    `get_current_admin` because the latter admits `company_admin` too;
+    cross-tenant listing is platform-admin-only.
+    """
+    if ctx.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cross-tenant listing is platform-admin-only",
+        )
+
+    rows = (
+        get_supabase()
+        .table("companies")
+        .select("id,slug,name")
+        .order("name")
+        .execute()
+        .data
+        or []
+    )
+    return [{"id": r["id"], "slug": r["slug"], "name": r["name"]} for r in rows]
+
+
 @router.get("/mine", response_model=CompanyResponse)
 async def get_my_company(user=Depends(get_current_user)):
     """Return the caller's own company.

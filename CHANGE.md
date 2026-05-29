@@ -23,6 +23,136 @@
 
 ---
 
+## 29/05/2026 — Platform-admin "act-as company" picker (Candidate C)
+Type: Feature
+
+Closes the honest dead-end ADR 0006 D3 documented: the platform admin
+(`role='admin', company_id=NULL`) couldn't perform tenant-scoped
+actions like invite, settings, or any aggregated read scoped to one
+tenant. Today's workaround was a manual SQL promotion of the admin's
+profile to `company_admin` of a specific tenant — fragile and lossy.
+
+After this PR, a platform admin picks any Company from a header
+dropdown; the selection persists in sessionStorage and is sent on
+every API request as `X-Acting-As-Company`. The backend mutates
+`TenantContext.company_id` for the duration of the request, and the
+frontend `can()` composes the same override — so every tenant-
+requiring capability lights up automatically. The capability module
+itself is unchanged: the act-as plug-in happens at exactly two seams
+(`get_tenant_context` server-side; `AuthContext.can()` client-side).
+
+Produced via inline grilling pass on 2026-05-29 (Candidate C from
+the architecture review). G1–G6 resolved before any code landed.
+
+What landed:
+
+Backend (`backend/app/auth.py`):
+- `get_tenant_context` now reads `X-Acting-As-Company` as a FastAPI
+  header param. For `role='admin'` callers with a valid id, the
+  returned context carries the acted-on tenant's company_id. For
+  non-admin callers the header is silently ignored (defense-in-depth
+  — frontend doesn't send it for non-admin either, but trust is
+  verified, not assumed). Unknown company id → silently ignored.
+- `tenant_scope` updated: returns `None` only when admin has NO
+  company_id (true tenantless). When admin is acting-as, returns
+  the acted-on id so queries scope correctly.
+
+Backend (`backend/app/routers/companies.py`):
+- New `GET /api/companies/all` — platform-admin-only listing of every
+  Company on the platform. Thin payload (id + slug + name) — picker
+  only needs label + id. Role-gated via `ctx.role == 'admin'` inside
+  the handler; `company_admin` and `recruiter` get 403 (they have
+  exactly one tenant; cross-tenant browsing isn't their workflow).
+
+Backend tests (`backend/tests/test_act_as.py`, new, +13 cases):
+- Override semantics: admin with valid header → ctx mutated; admin
+  without header → tenantless; admin with unknown id → silently
+  ignored.
+- Defense-in-depth: company_admin / recruiter / user headers all
+  ignored.
+- `tenant_scope` interaction: admin acting-as scopes to target;
+  admin tenantless returns None; company_admin unchanged.
+- List-all endpoint: admin sees all; company_admin / recruiter /
+  user all 403; payload shape locked down.
+
+Frontend (`frontend/src/services/api.ts`):
+- New `getActingAsCompanyId()` helper reading the sessionStorage
+  key.
+- `fetchJson` includes `X-Acting-As-Company` on every request when
+  the override is set. Backend ignores it for non-admin callers
+  (so a future bug that sets it for a non-admin can't escalate
+  privileges).
+- `companiesApi.listAll()` calling the new admin-only endpoint.
+
+Frontend (`frontend/src/contexts/AuthContext.tsx`):
+- `actingAs: CompanyOption | null` state, sessionStorage-backed
+  (per-tab). `setActingAs(target)` persists + eagerly mirrors the
+  pick into `company` so the Header chip + Settings page light up
+  immediately without a network round-trip.
+- `can()` composes the override: for `role='admin'` with `actingAs`
+  set, the predicate sees the acted-on tenant id where company_id
+  would normally sit. Tenant-requiring capabilities admit.
+- `signOut()` clears the override — a signed-out state never
+  retains tenant impersonation.
+
+Frontend (`frontend/src/components/admin/ActingAsPicker.tsx`, new):
+- Native `<select>` styled as a chip, rendered in the Header
+  beside the Admin badge. Lists every Company; includes a "—
+  no tenant —" option that clears the override and returns the
+  admin to the cross-tenant default view. Persists across page
+  reloads via sessionStorage.
+
+Frontend (`frontend/src/App.tsx`, `frontend/src/index.css`):
+- Picker mounted in the Header only for `role='admin'`.
+- New `.acting-as-picker` / `.acting-as-label` / `.acting-as-select`
+  styles beside `.tenant-chip` and `.role-badge`.
+
+Verification:
+- Backend: imports clean; 273/273 pytest pass (260 prior + 13 new).
+- Frontend: `npx tsc --noEmit` clean; vitest 14/14 pass.
+- Manual browser walk pending: as platform admin, picker shows
+  every Company; selecting one surfaces the Invite button on
+  /recruiter and the Settings nav + Invite card on /admin/settings;
+  selecting "— no tenant —" returns the admin to the prior dead-end.
+
+Affected files:
+- `backend/app/auth.py`
+- `backend/app/routers/companies.py`
+- `backend/tests/test_act_as.py` (new)
+- `frontend/src/components/admin/ActingAsPicker.tsx` (new)
+- `frontend/src/contexts/AuthContext.tsx`
+- `frontend/src/services/api.ts`
+- `frontend/src/types/index.ts`
+- `frontend/src/App.tsx`
+- `frontend/src/index.css`
+- `CHANGE.md`
+
+Architectural impact: capability predicates remain pure functions of
+the (role, company_id) pair; the act-as feature is a contextual
+override that *composes* with them at the two boundaries where
+TenantContext is constructed (backend dep + frontend `can()`). ADR
+0006 D3 ("honest dead-end") is preserved — the capability predicate
+itself still says "company_id must not be null"; the override just
+fills in the null. The plug-in point ADR 0006 named for this feature
+turned out to be exactly the right shape.
+
+Audit log integrity: writes (email_outbox, recruiter_decisions, etc.)
+record `sender_id` / `actor_id` as the admin's user_id; only
+`company_id` reflects the acted-on tenant. Accountability survives
+the impersonation; no schema change needed — the existing fields
+encode the right thing.
+
+Future considerations:
+- Picker scope: today every platform admin can act as every Company.
+  When the platform grows multiple admins with different
+  responsibilities, a per-admin allow-list (or audit-trail of who
+  acted-as which tenant when) is the natural next addition.
+- Visible indicator inside tenant pages: when a platform admin is
+  acting-as a tenant, the Header chip shows the company name but the
+  individual pages (Dashboard, Recruiter, Settings) don't disambiguate
+  "you are acting-as." A subtle banner on those pages would prevent
+  the admin from confusing acted-on data with cross-tenant data.
+
 ## 29/05/2026 — Route gates consult capabilities + ADR 0007 (deepening A)
 Type: Refactor
 

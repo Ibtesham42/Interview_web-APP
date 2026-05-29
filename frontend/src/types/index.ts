@@ -17,6 +17,14 @@ export interface Profile {
   created_at: string;
 }
 
+/** Thin Company shape used by the platform-admin "act-as" picker.
+ * Mirrors `GET /api/companies/all` — id + slug + name only. */
+export interface CompanyOption {
+  id: string;
+  slug: string;
+  name: string;
+}
+
 export interface Company {
   id: string;
   slug: string;
