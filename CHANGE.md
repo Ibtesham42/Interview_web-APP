@@ -23,6 +23,97 @@
 
 ---
 
+## 29/05/2026 — Route gates consult capabilities + ADR 0007 (deepening A)
+Type: Refactor
+
+Closes the last shallow seam from the 2026-05-29 architecture review.
+Route admission now reads from the same `can(...)` predicate the
+component layer consults — the three-layer disagreement ADR 0006
+dissolved at the component layer is now also dissolved at the route
+layer.
+
+Concrete user-visible effect: a `recruiter` who navigates directly
+to `/admin/settings` now lands on the page and sees the Invite card
+(capability-gated inside the component) instead of being bounced to
+`/`. The recruiter-dashboard modal from Candidate B stays as the
+primary surface for their workflow; `/admin/settings` becomes a
+secondary path for recruiters who want the apply-link or meta cards
+that admins also see there.
+
+Produced via inline grilling pass on 2026-05-29 (Candidate A from
+the architecture review). G1–G3 resolved before any code landed.
+
+What landed:
+
+Docs:
+- `docs/adr/0007-route-gates-consult-capabilities.md` (new) —
+  amends ADR 0006 D6 specifically. D1–D5 stand unchanged. Records
+  decisions A1 (CapabilityName | CapabilityName[] with OR
+  semantics), A2 (restrictTo and requires coexist; routes pick),
+  A3 (scope of the D6 amendment), A4 (5-route mechanical
+  migration).
+
+Frontend (`frontend/src/components/auth/ProtectedRoute.tsx`):
+- New `requires?: CapabilityName | CapabilityName[]` prop alongside
+  the existing `restrictTo`. OR semantics on the array form. Uses
+  `useAuth().can()` — the same predicate the components consult.
+- Profile-loading guard moved up so both gates wait on profile before
+  evaluating. Prevents flash-redirect on transient renders.
+
+Frontend (`frontend/src/App.tsx`):
+- `protectedShell(element, gate?)` widens: the gate argument is now
+  `UserRole | UserRole[] | { requires: ... }`. Routes pick whichever
+  shape matches their admission rule.
+- Five capability-shaped routes migrated:
+  - `/admin` → `{ requires: 'see_admin_overview' }`
+  - `/admin/users/:userId` → `{ requires: 'see_admin_overview' }`
+  - `/admin/settings` → `{ requires: ['manage_company_settings',
+    'invite_candidate'] }` (OR — recruiter now reaches the page)
+  - `/recruiter` → `{ requires: 'manage_candidates' }`
+  - `/recruiter/analytics` → `{ requires: 'manage_candidates' }`
+  - `/recruiter/candidates/:candidateId` → `{ requires:
+    'manage_candidates' }`
+- Role-class routes (`/dashboard`, `/new`, `/interview/:id`)
+  intentionally keep `restrictTo: 'user'` — there is no
+  `is_candidate` capability and inventing one would be a pseudo-
+  capability that misuses the action-shaped vocabulary.
+
+Verification:
+- Frontend: `npx tsc --noEmit` clean.
+- Frontend: vitest 14/14 pass.
+- Backend: untouched.
+- Manual browser walk pending: visit `/admin/settings` as
+  `recruiter` of Default tenant — should land on the page, see the
+  Invite card.
+
+Affected files:
+- `docs/adr/0007-route-gates-consult-capabilities.md` (new)
+- `frontend/src/App.tsx`
+- `frontend/src/components/auth/ProtectedRoute.tsx`
+- `CHANGE.md`
+
+Architectural impact: route admission and component gating now share
+one predicate body (`can()`). Adding `company_recruiter` later =
+zero route changes — just one line in `HIRING_ROLES`. Adding a
+capability = one entry in `CAPABILITIES`, one TS mirror, optionally
+one new route declaration. The capability module is the single source
+of truth across all three layers (backend gate, frontend component
+gate, frontend route gate). ADR 0006 D6 is amended in scope; D1–D5
+unchanged.
+
+Future considerations:
+- Candidate C (platform-admin "act-as company" picker) — unchanged
+  by this PR. The honest dead-end for platform admin without a
+  tenant remains; Candidate C plugs into the same capability module
+  as the resolution.
+- The Settings component composes three cards; only the Invite card
+  is capability-gated today. If a card grows a manage-only edit
+  affordance, the section-level `can('manage_company_settings')`
+  gate adds in one place.
+- E2E tests for route admission would lock down this deepening —
+  no React route-test infra yet, so the verification stays
+  browser-walk for now.
+
 ## 29/05/2026 — Fix: /companies/signup reachable while signed out
 Type: Fix
 

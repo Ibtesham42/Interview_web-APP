@@ -17,6 +17,7 @@ import { RecruiterAnalytics } from './components/recruiter/RecruiterAnalytics';
 import { CompanySignup } from './components/companies/CompanySignup';
 import { Settings } from './components/companies/Settings';
 import { Apply } from './components/apply/Apply';
+import type { CapabilityName } from './services/capabilities';
 import type { UserRole } from './types';
 
 function Header() {
@@ -146,9 +147,26 @@ function RoleHome() {
   return <Navigate to="/dashboard" replace />;
 }
 
-function protectedShell(element: ReactNode, restrictTo?: UserRole | UserRole[]) {
+// Route helper. The second argument can be:
+//   - undefined           → any authenticated user
+//   - UserRole | UserRole[] → role-class gate (kept for genuinely
+//                            role-shaped admission, e.g. 'is candidate')
+//   - { requires: Capability | Capability[] } → capability gate
+//                            (ADR 0007 — preferred when an action
+//                            capability exists for the rule)
+type ShellGate =
+  | UserRole
+  | UserRole[]
+  | { requires: CapabilityName | CapabilityName[] };
+
+function protectedShell(element: ReactNode, gate?: ShellGate) {
+  const isCapabilityGate =
+    gate !== undefined && !Array.isArray(gate) && typeof gate === 'object';
   return (
-    <ProtectedRoute restrictTo={restrictTo}>
+    <ProtectedRoute
+      restrictTo={isCapabilityGate ? undefined : (gate as UserRole | UserRole[] | undefined)}
+      requires={isCapabilityGate ? (gate as { requires: CapabilityName | CapabilityName[] }).requires : undefined}
+    >
       <AppShell>{element}</AppShell>
     </ProtectedRoute>
   );
@@ -192,17 +210,24 @@ function App() {
               of defense. */}
           <Route path="/companies/signup" element={<AppShell><CompanySignup /></AppShell>} />
 
-          {/* Admin (platform + company-admin per multi-tenant PR 3) */}
-          <Route path="/admin" element={protectedShell(<AdminDashboard />, ['admin', 'company_admin'])} />
-          <Route path="/admin/users/:userId" element={protectedShell(<AdminUserDetail />, ['admin', 'company_admin'])} />
-          {/* Company settings — multi-tenant PR 5. company_admin only;
-              platform admins land on the empty-state message inside. */}
-          <Route path="/admin/settings" element={protectedShell(<Settings />, ['admin', 'company_admin'])} />
+          {/* Admin (platform + company-admin) — capability-gated per
+              ADR 0007. `see_admin_overview` admits TENANT_ADMINS. */}
+          <Route path="/admin" element={protectedShell(<AdminDashboard />, { requires: 'see_admin_overview' })} />
+          <Route path="/admin/users/:userId" element={protectedShell(<AdminUserDetail />, { requires: 'see_admin_overview' })} />
+          {/* Company settings — multi-tenant PR 5 + ADR 0007 widening.
+              Admits anyone who can manage settings OR invite candidates
+              (OR semantics). This lets `recruiter` reach the page and
+              see the Invite card — the apply-link + meta cards are
+              gated inside the component by `manage_company_settings`,
+              which recruiter fails, so they see only what they can
+              act on. */}
+          <Route path="/admin/settings" element={protectedShell(<Settings />, { requires: ['manage_company_settings', 'invite_candidate'] })} />
 
-          {/* Recruiter (Admins + company-admins inherit per B1 + grill C2) */}
-          <Route path="/recruiter" element={protectedShell(<RecruiterDashboard />, ['recruiter', 'admin', 'company_admin'])} />
-          <Route path="/recruiter/analytics" element={protectedShell(<RecruiterAnalytics />, ['recruiter', 'admin', 'company_admin'])} />
-          <Route path="/recruiter/candidates/:candidateId" element={protectedShell(<RecruiterCandidateDetail />, ['recruiter', 'admin', 'company_admin'])} />
+          {/* Recruiter — capability-gated per ADR 0007. `manage_candidates`
+              admits HIRING_ROLES (recruiter + tenant admins). */}
+          <Route path="/recruiter" element={protectedShell(<RecruiterDashboard />, { requires: 'manage_candidates' })} />
+          <Route path="/recruiter/analytics" element={protectedShell(<RecruiterAnalytics />, { requires: 'manage_candidates' })} />
+          <Route path="/recruiter/candidates/:candidateId" element={protectedShell(<RecruiterCandidateDetail />, { requires: 'manage_candidates' })} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
