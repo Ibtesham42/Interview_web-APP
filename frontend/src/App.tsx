@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, NavLink, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, NavLink, useNavigate, Link } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { Login } from './components/auth/Login';
@@ -20,7 +20,7 @@ import { Apply } from './components/apply/Apply';
 import type { UserRole } from './types';
 
 function Header() {
-  const { user, profile, company, signOut, can } = useAuth();
+  const { user, session, profile, company, signOut, can } = useAuth();
   const navigate = useNavigate();
 
   const handleSignOut = async () => {
@@ -28,6 +28,12 @@ function Header() {
     navigate('/login', { replace: true });
   };
 
+  // Routes that AppShell-wrap may render in either an authenticated or
+  // an unauthenticated state (currently only /companies/signup — Fix 2
+  // 2026-05-29). Header degrades to a Sign-in CTA in the unauth case
+  // so we never render a stale Sign-out button for a user with no
+  // session.
+  const isAuthed = Boolean(session);
   const displayName = profile?.full_name || user?.email || 'Account';
   const role = (profile?.role as UserRole | undefined) ?? 'user';
   const navClass = ({ isActive }: { isActive: boolean }) =>
@@ -74,19 +80,25 @@ function Header() {
         </nav>
       </div>
       <div className="header-user">
-        {/* Tenant chip — surfaces which Company the caller is acting on
-            behalf of. Suppressed for platform admins (no tenant) and
-            for B2C users (no tenant). Multi-tenant PR 5. */}
-        {company && (role === 'company_admin' || role === 'recruiter') && (
-          <span className="tenant-chip" title={`Acting on behalf of ${company.name}`}>
-            {company.name}
-          </span>
+        {isAuthed ? (
+          <>
+            {/* Tenant chip — surfaces which Company the caller is acting on
+                behalf of. Suppressed for platform admins (no tenant) and
+                for B2C users (no tenant). Multi-tenant PR 5. */}
+            {company && (role === 'company_admin' || role === 'recruiter') && (
+              <span className="tenant-chip" title={`Acting on behalf of ${company.name}`}>
+                {company.name}
+              </span>
+            )}
+            {role === 'admin' && <span className="role-badge role-admin">Admin</span>}
+            {role === 'company_admin' && <span className="role-badge role-admin">Company admin</span>}
+            {role === 'recruiter' && <span className="role-badge role-recruiter">Recruiter</span>}
+            <span className="header-user-name">{displayName}</span>
+            <button className="btn btn-secondary" onClick={handleSignOut}>Sign out</button>
+          </>
+        ) : (
+          <Link to="/login" className="btn btn-secondary">Sign in</Link>
         )}
-        {role === 'admin' && <span className="role-badge role-admin">Admin</span>}
-        {role === 'company_admin' && <span className="role-badge role-admin">Company admin</span>}
-        {role === 'recruiter' && <span className="role-badge role-recruiter">Recruiter</span>}
-        <span className="header-user-name">{displayName}</span>
-        <button className="btn btn-secondary" onClick={handleSignOut}>Sign out</button>
       </div>
     </header>
   );
@@ -167,15 +179,18 @@ function App() {
           {/* Reports — viewable by candidates (own) and admins (oversight) */}
           <Route path="/report/:interviewId" element={protectedShell(<Report />)} />
 
-          {/* Self-serve company signup — multi-tenant PR 3. Open to
-              ANY authenticated user — the component itself renders a
-              friendly "you're signed in as X, only standard users can
-              create a company" message for non-'user' roles, and the
-              backend rejects callers who are already in a tenant or
-              already an admin. Keeping the route open means the
-              discoverability link on /signup + /login doesn't bounce
-              logged-in non-user accounts away. */}
-          <Route path="/companies/signup" element={protectedShell(<CompanySignup />)} />
+          {/* Self-serve company signup — multi-tenant PR 3. Reachable
+              by ANY visitor including signed-out (Fix 2, 2026-05-29):
+              the discoverability links on /signup + /login point here,
+              and a user-without-an-account-yet must be able to land on
+              the page rather than bouncing back to /login. The
+              component renders three branches:
+                - !session            → "create account first" CTA
+                - session && eligible → the form
+                - session && !elig.   → "you're signed in as X" message
+              The backend rejects ineligible callers as a second line
+              of defense. */}
+          <Route path="/companies/signup" element={<AppShell><CompanySignup /></AppShell>} />
 
           {/* Admin (platform + company-admin per multi-tenant PR 3) */}
           <Route path="/admin" element={protectedShell(<AdminDashboard />, ['admin', 'company_admin'])} />

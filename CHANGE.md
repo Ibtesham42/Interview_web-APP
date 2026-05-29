@@ -23,6 +23,61 @@
 
 ---
 
+## 29/05/2026 — Fix: /companies/signup reachable while signed out
+Type: Fix
+
+The discoverability links on /login + /signup ("Setting up your
+company? Create one →") routed to /companies/signup which was wrapped
+in `protectedShell`. An unauthenticated visitor — the audience the
+link is targeting — was bounced straight back to /login by
+`ProtectedRoute`. The user experienced this as the page "reloading"
+when they clicked the link.
+
+What landed:
+
+Frontend (`frontend/src/App.tsx`):
+- `/companies/signup` route swapped from `protectedShell(<CompanySignup/>)`
+  to `<AppShell><CompanySignup/></AppShell>`. No `ProtectedRoute` wrap;
+  the page is reachable at any auth state.
+- `Header` learns to degrade gracefully when there's no session:
+  the role chip + Sign-out button collapse into a single
+  `Sign in` link pointing at `/login`. Previously the unauth state
+  would render "Account" + Sign-out which was misleading.
+
+Frontend (`frontend/src/components/companies/CompanySignup.tsx`):
+- New `!session` branch at the top of the component. Renders a brand-
+  styled CTA card explaining that company setup starts with a personal
+  account, with `Create account` / `I already have one` links. The
+  existing two branches (eligible / ineligible-because-of-role) stay
+  unchanged for the authenticated path.
+
+Verification:
+- Frontend: `npx tsc --noEmit` clean; vitest 14/14 pass.
+- Manual browser walk: click "Setting up your company?" from /login
+  → land on /companies/signup → see the new CTA card → click
+  Create account → land on /signup. The previous reload-to-/login
+  behavior is gone.
+
+Affected files:
+- `frontend/src/App.tsx`
+- `frontend/src/components/companies/CompanySignup.tsx`
+- `CHANGE.md`
+
+Architectural impact: the `/companies/signup` route now lives in a
+hybrid auth state — capability gating happens INSIDE the component,
+not at the route. This is exactly the shape Candidate A from the
+2026-05-29 architecture review would generalize (route gates
+consult capabilities). For now it's an opportunistic one-off; the
+broader refactor is deferred.
+
+Future considerations:
+- The "ineligible role" branch and the new "unauthenticated" branch
+  share the same shape (explanatory card + CTAs). If a third such
+  branch appears, extract a `<CompanySignupGate reason={...}/>`.
+- `Header` now has two render modes. Consider extracting an
+  `AuthedHeaderActions` / `AnonHeaderActions` pair when a third
+  mode appears (e.g. a "loading" placeholder).
+
 ## 29/05/2026 — Fix: /api/auth/me dropped company_id (silent capability-gate failure)
 Type: Fix
 

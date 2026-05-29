@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { companiesApi } from '../../services/api';
 
@@ -31,7 +31,7 @@ function slugProblem(slug: string): string | null {
 
 export function CompanySignup() {
   const navigate = useNavigate();
-  const { profile, refreshProfile, can } = useAuth();
+  const { session, profile, refreshProfile, can } = useAuth();
 
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
@@ -82,6 +82,40 @@ export function CompanySignup() {
       setSubmitting(false);
     }
   };
+
+  // Unauthenticated visitor (Fix 2, 2026-05-29). The discoverability
+  // links on /login + /signup land here; previously ProtectedRoute
+  // bounced them straight back to /login, which the user experienced
+  // as a "page reload." Now we render a brand-styled CTA that points
+  // at the right next step.
+  if (!session) {
+    return (
+      <div className="page">
+        <div className="page-head">
+          <div>
+            <h1>Set up your company</h1>
+            <p className="page-sub">
+              Create your account first — then we'll set up your company
+              on the next step.
+            </p>
+          </div>
+        </div>
+        <div className="onboard-wrap">
+          <div className="card">
+            <p>
+              Setting up a company starts with a personal account that
+              becomes the company's admin. Create one now, then come
+              back here to name the company and claim your apply link.
+            </p>
+            <div style={{ display: 'flex', gap: 'var(--space-md)', flexWrap: 'wrap', marginTop: 'var(--space-md)' }}>
+              <Link to="/signup" className="btn btn-primary">Create account</Link>
+              <Link to="/login" className="btn btn-secondary">I already have one</Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Capability gate (ADR 0006) — `create_company` requires role='user'
   // AND company_id IS NULL. Any other caller (admin / company_admin /
