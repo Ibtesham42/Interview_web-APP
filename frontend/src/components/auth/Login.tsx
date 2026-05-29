@@ -152,9 +152,12 @@ export function Login() {
           Continue with Google
         </button>
 
-        <p className="auth-switch">
-          Don't have an account? <Link to="/signup">Create one</Link>
-        </p>
+        {/* ADR 0008: candidate sign-up is invite-only. The generic
+            "Don't have an account? Create one" link previously here
+            led only to an explainer page, so it's been removed. The
+            two surviving signup paths are: an Apply Link from your
+            hiring company (you arrive at /login via /apply/{slug}),
+            or company-founder signup via the link below. */}
         <p className="auth-switch auth-switch-secondary">
           Setting up your company? <Link to="/companies/signup">Create one →</Link>
         </p>

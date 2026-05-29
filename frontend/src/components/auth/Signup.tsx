@@ -30,6 +30,15 @@ export function Signup() {
   const nextPath = safeNext(searchParams.get('next'));
   const isCompanyIntent = nextPath === '/companies/signup';
 
+  // ADR 0008 (Candidate signup is invite-only). Two legitimate intents
+  // surface the form:
+  //   - companySlug      : applicant arrived via /apply/{slug}
+  //   - isCompanyIntent  : founder en route to /companies/signup
+  // Anything else → render the explainer card instead of the form.
+  // The 9 grandfathered B2C accounts already exist; this gate is
+  // prospective only (D2).
+  const hasSignupIntent = Boolean(companySlug) || isCompanyIntent;
+
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -113,6 +122,51 @@ export function Signup() {
     if (oauthError) setError(oauthError);
   };
 
+  // Explainer for the no-intent case (ADR 0008). A wandering visitor
+  // hitting /signup directly sees this and is routed to the two real
+  // signup paths: an apply link (which they'd get from their hiring
+  // company) or company-founder signup.
+  if (!hasSignupIntent) {
+    return (
+      <div className="auth-page">
+        <div className="auth-card">
+          <div className="auth-brand">
+            <div className="auth-brand-logo">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle cx="9" cy="12" r="6" fill="#4f46e5" />
+                <circle cx="15" cy="12" r="6" fill="#0891b2" opacity="0.85" />
+              </svg>
+            </div>
+          </div>
+          <h1 className="auth-title">Sign-up is invite-only</h1>
+          <p className="auth-subtitle">
+            Candidates join through their hiring company. Pick whichever
+            path matches you.
+          </p>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)', marginTop: 'var(--space-lg)' }}>
+            <Link
+              to="/companies/signup"
+              className="btn btn-primary btn-lg"
+              style={{ width: '100%' }}
+            >
+              Set up your own company
+            </Link>
+            <div style={{ fontSize: '0.8125rem', color: 'var(--text-tertiary)', textAlign: 'center' }}>
+              You're a candidate? Ask your hiring company for an apply
+              link (it looks like <code>/apply/&lt;company&gt;</code>) or
+              check your email for an invite.
+            </div>
+          </div>
+
+          <p className="auth-switch" style={{ marginTop: 'var(--space-lg)' }}>
+            Already have an account? <Link to="/login">Sign in</Link>
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="auth-page">
       <div className="auth-card">
@@ -130,7 +184,7 @@ export function Signup() {
         <p className="auth-subtitle">
           {isCompanyIntent
             ? "Step 1 of 2 — after sign-up you'll name your company."
-            : 'Start practicing voice-first interviews'}
+            : `Apply to ${companySlug ?? 'this company'} — create your candidate account`}
         </p>
 
         {info && <div className="auth-info">{info}</div>}

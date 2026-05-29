@@ -23,6 +23,91 @@
 
 ---
 
+## 29/05/2026 — Candidate signup is invite-only + ADR 0008
+Type: Decision + Refactor
+
+User-directed pivot: the platform is B2B-only from this date forward.
+Candidates can only arrive via a registered Company's Apply Link
+(`/apply/{slug}`) or an Invite email. The B2C self-directed signup
+path (a candidate going to /signup directly and creating an
+account with no Company affiliation) is closed.
+
+This reverses MULTI_TENANT_ROLLOUT.md grill C1 (settled 2026-05-27)
+which preserved both flows. The grill resolution table now carries a
+⚠ SUPERSEDED marker pointing at this ADR.
+
+What landed:
+
+Docs:
+- `docs/adr/0008-candidate-signup-is-invite-only.md` (new) — full
+  decision record. D1 (Signup branches on intent → explainer when
+  none), D2 (existing 9 B2C accounts grandfathered, gate is
+  prospective), D3 (backend enforcement deferred — UI gate only; a
+  Supabase Auth signup hook is the natural hardening seam), D4
+  (no new role, no new column — change is purely about which
+  surfaces are reachable).
+- `MULTI_TENANT_ROLLOUT.md` — C1 row marked SUPERSEDED with a
+  pointer to ADR 0008.
+
+Frontend (`frontend/src/components/auth/Signup.tsx`):
+- New explainer branch at the top of the render. When neither
+  `?company={slug}` nor `?next=/companies/signup` is present, the
+  form does not render; instead a brand-styled card explains that
+  signup is invite-only and offers two paths: "Set up your own
+  company" → /companies/signup; and an inline hint to look for an
+  apply link or invite email.
+- The two with-intent branches (applicant via apply-link;
+  company-founder via next) are unchanged. The applicant-form
+  subtitle gained the company slug for clarity.
+
+Frontend (`frontend/src/components/auth/Login.tsx`):
+- The "Don't have an account? Create one →" link is removed. Its
+  destination became an explainer page after D1, so the link had
+  no functional value. The "Setting up your company? Create one →"
+  link stays — it leads to /companies/signup which still allows
+  signup via the `next` round-trip.
+
+Verification:
+- Frontend: `npx tsc --noEmit` clean.
+- Frontend: vitest 20/20 pass (unchanged — no new tests; explainer
+  is a pure render branch).
+- Backend untouched.
+- Manual browser walk pending:
+  - Visit /signup directly → see explainer, not form.
+  - Visit /signup?company=default → see applicant form.
+  - From /companies/signup !session → click Create account →
+    /signup?next=/companies/signup → see founder form.
+  - From /login → no generic "Create one" link visible.
+
+Affected files:
+- `docs/adr/0008-candidate-signup-is-invite-only.md` (new)
+- `frontend/src/components/auth/Signup.tsx`
+- `frontend/src/components/auth/Login.tsx`
+- `MULTI_TENANT_ROLLOUT.md`
+- `CHANGE.md`
+
+Architectural impact: the platform's external surface narrows from
+"two signup paths" to "one signup path with two entry conditions."
+Capability gating, route admission, the act-as picker, and tenant
+scoping are all UNCHANGED — the pivot lands at the Signup
+component's render-branch logic only, exactly the seam ADR 0008
+D4 named. No new role string. No new column. No data migration.
+
+Future considerations (per ADR 0008):
+- **Backend signup hardening (D3).** Supabase Auth signup is
+  unauthenticated by design; a determined caller can curl past the
+  UI gate. The natural hardening is a Supabase Auth hook that
+  rejects signups missing `?company=slug` or `?next=...` from the
+  redirect URL. Defer until abuse is observed.
+- **Invite tokens.** Today an Invite email body carries the Apply
+  Link URL — anyone with the URL can sign up with any email. Single-
+  use tokens bound to a specific recipient email is the next
+  tightening if email integrity matters more than current friction.
+- **Grandfathered B2C UX.** The 9 existing `user` rows are
+  already in Default tenant (migration 004 backfill). They'll
+  appear in Default's recruiter pool. If that's not where they
+  belong semantically, an ops-side reassignment moves them.
+
 ## 29/05/2026 — Fix: company-setup `?next` round-trip through auth
 Type: Fix
 
