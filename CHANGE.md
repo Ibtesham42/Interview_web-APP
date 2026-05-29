@@ -23,6 +23,75 @@
 
 ---
 
+## 29/05/2026 — Fix: /api/auth/me dropped company_id (silent capability-gate failure)
+Type: Fix
+
+Manual browser verification of the Candidate B work caught a real bug
+that explained the user-reported symptoms ("admin can't invite," "no
+recruiter/company workflow visible"). Root cause: the response payload
+whitelist in `routers/profile.py` omitted `company_id`, even though
+the SELECT returned it.
+
+Downstream effect: every tenant-requiring capability gate
+(`invite_candidate`, `manage_company_settings`) silently evaluated to
+False for every account, because the frontend's `can()` predicate
+read `profile.company_id` which was always undefined. A legitimate
+`company_admin` who just created their tenant via
+/companies/signup lost access to their own Settings + Invite
+surfaces despite the DB row being correct.
+
+Additionally, `companiesApi.getMine()` runs only if
+`profile?.company_id` is truthy (AuthContext.tsx:119), so the
+Company state in AuthContext was always null too — Settings page hit
+the `!company` empty-state branch unconditionally.
+
+What landed:
+
+Backend (`backend/app/routers/profile.py`):
+- Added `"company_id": profile.get("company_id")` to the return dict.
+  Comment notes the consumer + the failure mode so a future contributor
+  doesn't drop it again.
+
+Tests (`backend/tests/test_profile.py`, new, +5 cases):
+- `company_id` round-trips for tenanted profile (`company_admin`).
+- NULL `company_id` round-trips for platform admin.
+- NULL `company_id` round-trips for B2C user.
+- Auto-create branch (missing profile) returns the complete shape.
+- Response key set locked down with set-equality — drift on either
+  side fails the test before it can ship.
+
+Verification:
+- Backend: `python -c "from app.main import app"` clean.
+- Backend: 260/260 pytest pass (255 prior + 5 new).
+- Browser walk: confirmed company_admin sees Settings + Invite after
+  fresh /api/auth/me fetch.
+
+Affected files:
+- `backend/app/routers/profile.py`
+- `backend/tests/test_profile.py` (new)
+- `CHANGE.md`
+
+Architectural impact: this is a handler-level field-list bug, not a
+deeper architectural failure. BUT the bug is symptomatic — the
+response shape is hand-rolled per endpoint instead of derived from a
+shared schema. A future deepening would replace the inline dict with
+a Pydantic `ProfileResponse` model whose field set is verified against
+the frontend `Profile` interface (one of: codegen, manual mirror test,
+or single TS-generated model). For today: the set-equality test locks
+down today's contract.
+
+Future considerations:
+- Fix 2 (route /companies/signup public for unauthenticated visitors)
+  is in the same session — clicking "Set up your company" from /login
+  no longer bounces to /login.
+- Fix 3 (platform-admin honest dead-end) deferred — needs the
+  "act as company" picker (Candidate C from the architecture review).
+- The browser walk that should have caught this on 2026-05-29 (the
+  Candidate B ship) didn't happen — I claimed "browser walk pending"
+  without actually executing it. Stronger discipline: don't write
+  "Verification: pending" in CHANGE.md if the verification really
+  is pending — write "Known issue: verification not yet done."
+
 ## 29/05/2026 — Invite card on /recruiter + shared InviteCandidateForm (deepening B)
 Type: Feature
 

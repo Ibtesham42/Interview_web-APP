@@ -35,10 +35,17 @@ async def get_me(user=Depends(get_current_user)):
         except Exception:
             profile = {**new_row, "role": "user"}
 
+    # `company_id` MUST be included — the frontend's `AuthContext` uses
+    # it to drive `companiesApi.getMine()` and every tenant-scoped
+    # capability gate (`invite_candidate`, `manage_company_settings`).
+    # Omitting it silently fails every TENANT-requiring capability for
+    # `company_admin` / `recruiter` accounts, even though their DB row
+    # has the right value. Surfaced on 2026-05-29 — see CHANGE.md.
     return {
         "id": profile["id"],
         "email": profile.get("email"),
         "full_name": profile.get("full_name"),
         "role": profile.get("role", "user"),
+        "company_id": profile.get("company_id"),
         "created_at": profile.get("created_at", ""),
     }
