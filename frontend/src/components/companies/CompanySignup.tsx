@@ -88,7 +88,13 @@ export function CompanySignup() {
   // bounced them straight back to /login, which the user experienced
   // as a "page reload." Now we render a brand-styled CTA that points
   // at the right next step.
+  //
+  // Both CTAs thread `?next=/companies/signup` so the auth flow knows
+  // to bounce the user BACK here after signup/sign-in (2026-05-29
+  // follow-up: previously /signup would land them on /dashboard
+  // because nothing remembered they were mid-company-setup).
   if (!session) {
+    const NEXT = encodeURIComponent('/companies/signup');
     return (
       <div className="page">
         <div className="page-head">
@@ -108,8 +114,8 @@ export function CompanySignup() {
               back here to name the company and claim your apply link.
             </p>
             <div style={{ display: 'flex', gap: 'var(--space-md)', flexWrap: 'wrap', marginTop: 'var(--space-md)' }}>
-              <Link to="/signup" className="btn btn-primary">Create account</Link>
-              <Link to="/login" className="btn btn-secondary">I already have one</Link>
+              <Link to={`/signup?next=${NEXT}`} className="btn btn-primary">Create account</Link>
+              <Link to={`/login?next=${NEXT}`} className="btn btn-secondary">I already have one</Link>
             </div>
           </div>
         </div>

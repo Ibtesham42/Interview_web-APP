@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { applyApi } from '../../services/api';
+import { safeNext } from '../../utils/safeNext';
 
 /**
  * Landing route for the Google OAuth redirect AND the email-confirm
@@ -24,12 +25,17 @@ export function AuthCallback() {
     if (loading) return;
 
     const company = searchParams.get('company');
+    // `?next=/path` (2026-05-29 follow-up — company-setup round-trip).
+    // safeNext rejects off-origin / protocol-relative values so a
+    // malicious OAuth redirect can't ship the user off-platform.
+    const target = safeNext(searchParams.get('next'));
+
     if (!session) {
       navigate('/login', { replace: true });
       return;
     }
     if (!company || claimedRef.current) {
-      navigate('/', { replace: true });
+      navigate(target, { replace: true });
       return;
     }
     // Claim the company once per mount. The ref guards against the
@@ -45,7 +51,7 @@ export function AuthCallback() {
       })
       .finally(() => {
         refreshProfile()
-          .finally(() => navigate('/', { replace: true }));
+          .finally(() => navigate(target, { replace: true }));
       });
   }, [session, loading, searchParams, navigate, refreshProfile]);
 

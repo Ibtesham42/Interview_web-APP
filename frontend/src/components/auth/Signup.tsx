@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { applyApi } from '../../services/api';
+import { safeNext } from '../../utils/safeNext';
 
 const GoogleIcon = () => (
   <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
@@ -22,6 +23,12 @@ export function Signup() {
   // now"), the slug is threaded through the auth flow so the new
   // candidate is stamped with the company on first session.
   const companySlug = searchParams.get('company');
+  // Company-setup flow (2026-05-29 follow-up): the CompanySignup
+  // !session branch sends users here with ?next=/companies/signup so
+  // we know to bounce them BACK to company setup after auth lands.
+  // safeNext rejects off-origin / protocol-relative values.
+  const nextPath = safeNext(searchParams.get('next'));
+  const isCompanyIntent = nextPath === '/companies/signup';
 
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -32,11 +39,20 @@ export function Signup() {
 
   if (session) return <Navigate to="/" replace />;
 
-  // Build the email-confirm redirect URL with the company slug embedded
-  // so it survives the round-trip. AuthCallback reads it and calls
-  // claim-company once the session lands.
-  const emailRedirectTo = companySlug
-    ? `${window.location.origin}/auth/callback?company=${encodeURIComponent(companySlug)}`
+  // Build the email-confirm redirect URL. Two optional payloads ride
+  // the round-trip:
+  //   - `company=slug` triggers claim-company in AuthCallback (apply-
+  //     link flow).
+  //   - `next=/path` tells AuthCallback where to land the user after
+  //     the session settles (company-setup flow).
+  // Both can be present simultaneously; AuthCallback handles each
+  // independently.
+  const callbackParams = new URLSearchParams();
+  if (companySlug) callbackParams.set('company', companySlug);
+  if (nextPath !== '/') callbackParams.set('next', nextPath);
+  const qs = callbackParams.toString();
+  const emailRedirectTo = qs
+    ? `${window.location.origin}/auth/callback?${qs}`
     : `${window.location.origin}/auth/callback`;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -81,16 +97,19 @@ export function Signup() {
     }
     await refreshProfile();
     setSubmitting(false);
-    navigate('/', { replace: true });
+    // Honor `?next=/path` if set (company-setup flow); otherwise the
+    // default role-aware home.
+    navigate(nextPath, { replace: true });
   };
 
   const handleGoogle = async () => {
     setError(null);
-    // Google OAuth: pass the slug through the OAuth redirect URL so
-    // AuthCallback can claim after the redirect lands.
-    const { error: oauthError } = await signInWithGoogle(
-      companySlug ? `${window.location.origin}/auth/callback?company=${encodeURIComponent(companySlug)}` : undefined,
-    );
+    // Google OAuth: same payload as the email-confirm path. company
+    // triggers claim-company; next routes the post-callback landing.
+    const oauthRedirect = qs
+      ? `${window.location.origin}/auth/callback?${qs}`
+      : undefined;
+    const { error: oauthError } = await signInWithGoogle(oauthRedirect);
     if (oauthError) setError(oauthError);
   };
 
@@ -105,8 +124,14 @@ export function Signup() {
             </svg>
           </div>
         </div>
-        <h1 className="auth-title">Create your account</h1>
-        <p className="auth-subtitle">Start practicing voice-first interviews</p>
+        <h1 className="auth-title">
+          {isCompanyIntent ? 'Create your founder account' : 'Create your account'}
+        </h1>
+        <p className="auth-subtitle">
+          {isCompanyIntent
+            ? "Step 1 of 2 — after sign-up you'll name your company."
+            : 'Start practicing voice-first interviews'}
+        </p>
 
         {info && <div className="auth-info">{info}</div>}
 

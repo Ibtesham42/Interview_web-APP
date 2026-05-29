@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { applyApi } from '../../services/api';
+import { safeNext } from '../../utils/safeNext';
 import { Button } from '../Button';
 
 const GoogleIcon = () => (
@@ -18,19 +19,31 @@ export function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const from = (location.state as { from?: string } | null)?.from ?? '/';
+  // Destination precedence:
+  //   1. `?next=/path` (explicit) — set by CompanySignup's !session
+  //      branch and by future flows that route through Login.
+  //   2. location.state.from (ProtectedRoute bounce-back).
+  //   3. '/' (role-aware home).
+  // safeNext rejects off-origin / protocol-relative values.
+  const explicitNext = safeNext(searchParams.get('next'));
+  const fromState = (location.state as { from?: string } | null)?.from;
+  const postLoginPath =
+    explicitNext !== '/'
+      ? explicitNext
+      : (fromState && safeNext(fromState)) || '/';
 
   // Multi-tenant PR 4: if a candidate clicked "Sign in" from an apply
   // landing page, the company slug is on the URL — claim it after the
   // session lands so the existing account becomes a member of that tenant.
   const companySlug = searchParams.get('company');
+  const isCompanyIntent = explicitNext === '/companies/signup';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  if (session) return <Navigate to={from} replace />;
+  if (session) return <Navigate to={postLoginPath} replace />;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,14 +64,22 @@ export function Login() {
       await refreshProfile();
     }
     setSubmitting(false);
-    navigate(from, { replace: true });
+    navigate(postLoginPath, { replace: true });
   };
 
   const handleGoogle = async () => {
     setError(null);
-    const { error: oauthError } = await signInWithGoogle(
-      companySlug ? `${window.location.origin}/auth/callback?company=${encodeURIComponent(companySlug)}` : undefined,
-    );
+    // Pass both company-claim and post-callback-next through the OAuth
+    // round-trip so the Google flow lands users the same place the
+    // email flow does.
+    const callbackParams = new URLSearchParams();
+    if (companySlug) callbackParams.set('company', companySlug);
+    if (explicitNext !== '/') callbackParams.set('next', explicitNext);
+    const qs = callbackParams.toString();
+    const redirect = qs
+      ? `${window.location.origin}/auth/callback?${qs}`
+      : undefined;
+    const { error: oauthError } = await signInWithGoogle(redirect);
     if (oauthError) setError(oauthError);
   };
 
@@ -73,8 +94,14 @@ export function Login() {
             </svg>
           </div>
         </div>
-        <h1 className="auth-title">Welcome back</h1>
-        <p className="auth-subtitle">Sign in to continue to your interviews</p>
+        <h1 className="auth-title">
+          {isCompanyIntent ? 'Sign in to set up your company' : 'Welcome back'}
+        </h1>
+        <p className="auth-subtitle">
+          {isCompanyIntent
+            ? "We'll bring you to company setup after sign-in."
+            : 'Sign in to continue to your interviews'}
+        </p>
 
         <form onSubmit={handleSubmit}>
           <div className="form-group">

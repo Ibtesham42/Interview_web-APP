@@ -23,6 +23,102 @@
 
 ---
 
+## 29/05/2026 — Fix: company-setup `?next` round-trip through auth
+Type: Fix
+
+User-reported bug from the Fix-2 follow-up: clicking "Create one →"
+on /login lands on /companies/signup (the !session CTA card), but
+clicking "Create account" from that card sent the user to /signup
+which then bounced them to /dashboard after signup — the round-trip
+forgot the user was mid-company-setup.
+
+Root cause: the CompanySignup !session branch's Sign-up / Sign-in
+links pointed at /signup and /login without any signal that the user
+should be returned to /companies/signup after auth. The Signup flow
+landed everyone at /, which RoleHome routes to /dashboard for a
+fresh `user` role. Three layers (the CTA links, the post-auth
+navigation in Signup/Login, the AuthCallback email-confirm landing)
+all needed to thread a `next` param.
+
+What landed:
+
+Frontend (`frontend/src/utils/safeNext.ts`, new):
+- Single source of truth for the redirect-safety check. Returns the
+  supplied path if it's a same-origin relative path (starts with /
+  and not //); otherwise returns /. Open-redirect protection — a
+  malicious `next=//evil.example.com/x` would otherwise send users
+  off-platform via React Router's navigate(url) behavior.
+
+Frontend (`frontend/src/utils/__tests__/safeNext.test.ts`, new, +6 cases):
+- Same-origin paths pass through; null/empty fall back to /;
+  protocol-relative URLs rejected; absolute URLs rejected; relative
+  paths without leading / rejected; intra-app query strings + hashes
+  preserved.
+
+Frontend (`frontend/src/components/companies/CompanySignup.tsx`):
+- !session branch CTAs now point at `/signup?next=/companies/signup`
+  and `/login?next=/companies/signup`. URL-encoded.
+
+Frontend (`frontend/src/components/auth/Signup.tsx`):
+- Reads `?next=...` via safeNext.
+- emailRedirectTo carries `next` AND `company` (if present); both
+  payloads can ride the email-confirm round-trip simultaneously.
+- Post-signup navigation uses nextPath instead of hardcoded '/'.
+- Heading copy adapts: "Create your founder account" / "Step 1 of 2
+  — after sign-up you'll name your company." when intent is company.
+- Google OAuth redirect URL carries the same payload.
+
+Frontend (`frontend/src/components/auth/Login.tsx`):
+- Reads `?next=...` via safeNext.
+- Destination precedence: explicit `next` > location.state.from
+  (ProtectedRoute bounce-back) > '/'.
+- Both the immediate-redirect `<Navigate>` and the post-submit
+  navigate use the new postLoginPath.
+- Heading copy adapts: "Sign in to set up your company" / "We'll
+  bring you to company setup after sign-in." when intent is company.
+- Google OAuth redirect URL carries the same payload.
+
+Frontend (`frontend/src/components/auth/AuthCallback.tsx`):
+- Reads `?next=...` via safeNext. Final navigate() uses target
+  instead of hardcoded '/' in both the no-claim and post-claim
+  branches.
+
+Verification:
+- Frontend: `npx tsc --noEmit` clean.
+- Frontend: vitest 20/20 pass (14 prior + 6 new safeNext cases).
+- Backend untouched.
+- Manual browser walk pending: /login → "Create one →" → /companies/
+  signup → "Create account" → /signup (heading says "Create your
+  founder account") → submit → land back on /companies/signup with
+  session live + form rendering. The email-confirm and Google OAuth
+  paths should carry the same `next` through their round-trips.
+
+Affected files:
+- `frontend/src/utils/safeNext.ts` (new)
+- `frontend/src/utils/__tests__/safeNext.test.ts` (new)
+- `frontend/src/components/companies/CompanySignup.tsx`
+- `frontend/src/components/auth/Signup.tsx`
+- `frontend/src/components/auth/Login.tsx`
+- `frontend/src/components/auth/AuthCallback.tsx`
+- `CHANGE.md`
+
+Architectural impact: the auth flow now has a generic post-landing
+hook (`?next=/path`). Today's only consumer is the company-setup
+round-trip, but the same mechanism could thread any
+"interrupted flow" (e.g. a future "save your spot on this apply
+page" or "you have to confirm email before you can do X" path)
+without re-inventing the redirect chain.
+
+Future considerations:
+- The 3 entry-point files (Signup, Login, AuthCallback) and the
+  CompanySignup CTA all duplicate the param-building dance. If a
+  third intent ever appears, extract a `<AuthNextProvider/>` context
+  or a shared hook. For one intent it's premature.
+- A more elaborate "intent" registry (intent=company-setup,
+  intent=apply-link, intent=accept-invite) could replace raw `next`
+  paths with named flows whose target URLs are looked up in code.
+  Add when the second non-trivial intent appears.
+
 ## 29/05/2026 — Platform-admin "act-as company" picker (Candidate C)
 Type: Feature
 
