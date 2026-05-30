@@ -1,8 +1,11 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, WebSocket, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from postgrest.exceptions import APIError
 from app.config import get_settings
+from app.readiness import assert_ready
 from app.routers import candidates, interviews, questions
 from app.routers.reports import router as reports_router
 from app.routers.voice import router as voice_router
@@ -16,10 +19,22 @@ from app.routers.interview_session import interview_websocket
 
 settings = get_settings()
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Validate critical production config before serving the first request.
+    # A missing required dependency raises here, so uvicorn aborts the boot
+    # with a clear report instead of starting a broken app that only fails
+    # at the first interview/signup. Warnings are logged, not fatal.
+    assert_ready(get_settings())
+    yield
+
+
 app = FastAPI(
     title="AI Mock Interview Agent",
     description="Industrial-grade AI-powered mock interview system",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 # CORS — allow local dev plus the configured production origins, and Vercel

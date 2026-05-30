@@ -9,10 +9,19 @@ STT_MODEL = "whisper-large-v3"          # speech-to-text
 
 
 class Settings(BaseSettings):
-    groq_api_key: str
+    # Deployment environment — "development" (default) or "production".
+    # Drives the startup readiness check (app/readiness.py): in production
+    # a localhost FRONTEND_BASE_URL becomes a fatal misconfiguration.
+    environment: str = "development"
+
+    # Required at runtime. Defaulted to "" so a missing value yields the
+    # clear consolidated readiness report at startup (app/readiness.py)
+    # rather than a cryptic Pydantic "field required" stack trace. The
+    # readiness check is the authoritative gate and fails the boot loudly.
+    groq_api_key: str = ""
     openai_api_key: str = ""  # optional - only the (unused) embedding seed needs it
-    supabase_url: str
-    supabase_key: str
+    supabase_url: str = ""
+    supabase_key: str = ""
     host: str = "0.0.0.0"
     port: int = 8000
 

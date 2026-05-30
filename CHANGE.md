@@ -23,6 +23,67 @@
 
 ---
 
+## 30/05/2026 16:32
+Type: Feature (production-readiness / deployment safety)
+
+Startup readiness gate. A misconfigured deploy (missing GROQ/Supabase
+creds, localhost invite URL in prod) previously started fine and only
+failed at the first interview/signup. Now the app validates critical
+config at boot and refuses to start with a clear, consolidated report.
+
+What landed:
+- `app/readiness.py` (new) — `check_readiness(settings)` is a pure
+  function returning (fatal, warnings):
+  - FATAL (always): GROQ_API_KEY, SUPABASE_URL, SUPABASE_KEY missing OR
+    still an .env.example placeholder (e.g. `gsk_your-key-here`).
+  - FATAL (production only): FRONTEND_BASE_URL is localhost → invite
+    links would be unclickable.
+  - WARN (logged, non-blocking): wide-open CORS (wildcard regex + no
+    explicit origins), RESEND_API_KEY unset (invite emails disabled),
+    localhost FRONTEND_BASE_URL in dev.
+  `assert_ready` logs warnings and raises `ReadinessError` on any fatal.
+  Messages are ASCII-safe so they render in any log pipeline.
+- `app/main.py` — a FastAPI `lifespan` calls `assert_ready(get_settings())`
+  before serving. A fatal issue aborts the uvicorn boot with the report
+  visible, instead of starting a broken app. Lifespan (not import-time)
+  so unit tests that import modules directly are unaffected.
+- `app/config.py` — new `environment` setting ("development"|"production").
+  The three required creds are now defaulted to "" so the readiness
+  report (not a cryptic Pydantic "field required" trace) is the
+  authoritative gate. `environment` drives the prod-only fatal rules.
+- `.env.example` — documents `ENVIRONMENT` + that missing creds fail the
+  readiness check.
+- `tests/test_readiness.py` (new, 12 cases) — full fatal/warning matrix
+  + assert_ready raise/log/silent behavior.
+
+Verification:
+- pytest 293/293 (281 prior + 12 new); import clean.
+- Live: invoked the real `lifespan` with a misconfigured settings →
+  printed the 4-fatal/2-warning report and aborted with ReadinessError
+  ("Refusing to start"). With good config, startup is silent.
+
+Decision context: scoped strictly to deployment safety — the 3 hard
+creds + the prod invite-URL are fatal; CORS/Resend are advisory warnings
+(the app still functions, just less safely / without invite email), so a
+deploy isn't bricked over a hardening preference.
+
+Affected files:
+- `backend/app/readiness.py` (new)
+- `backend/app/main.py`
+- `backend/app/config.py`
+- `backend/.env.example`
+- `backend/tests/test_readiness.py` (new)
+- `CHANGE.md`
+
+Architectural impact: additive startup gate. No request-path, schema,
+auth, or tenant change. Pairs with the CORS + WS-auth posture already in
+place (both audited solid this session).
+
+Future considerations: a `/ready` endpoint was deliberately NOT added —
+exposing config warnings publicly is minor info disclosure, and a
+fatally-misconfigured app never serves anyway. The known accepted-risk
+backend signup gate (ADR 0008 D3) is separate and still open.
+
 ## 30/05/2026 16:08
 Type: Fix (production-readiness)
 
