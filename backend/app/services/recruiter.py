@@ -30,8 +30,10 @@ from app.services.interview_orchestrator import (
 
 
 # Terminal decisions stamp `decided_at`; reverting to 'undecided' clears it.
+# 'hold' (migration 009) is a deliberate but NON-terminal parked state, so it
+# is writable but does not stamp decided_at — reversible like 'undecided'.
 TERMINAL_DECISIONS = {"shortlisted", "rejected"}
-WRITABLE_DECISIONS = {"shortlisted", "rejected", "undecided"}
+WRITABLE_DECISIONS = {"shortlisted", "rejected", "undecided", "hold"}
 
 
 VALID_SORTS = {
@@ -43,12 +45,12 @@ VALID_SORTS = {
 }
 VALID_ORDERS = {"asc", "desc"}
 VALID_INTEGRITY_FILTERS = {"any", "with_warnings", "without_warnings"}
-VALID_DECISION_FILTERS = {"shortlisted", "rejected", "undecided", "bookmarked"}
+VALID_DECISION_FILTERS = {"shortlisted", "rejected", "undecided", "hold", "bookmarked"}
 
 
 # Score thresholds match recommendation_for() — kept in sync so a
 # Recruiter filter pill and the rec-tier label never disagree.
-_DECISION_RANK = {"shortlisted": 0, "undecided": 1, "rejected": 2}
+_DECISION_RANK = {"shortlisted": 0, "hold": 1, "undecided": 2, "rejected": 3}
 
 
 @dataclass

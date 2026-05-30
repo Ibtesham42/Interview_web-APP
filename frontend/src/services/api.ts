@@ -7,6 +7,7 @@ import type {
   EmailDraft,
   EmailListResponse,
   EmailOutboxRow,
+  EmailTemplateKind,
   InviteCandidateResponse,
   Interview,
   InterviewReport,
@@ -236,8 +237,10 @@ export const recruiterApi = {
   // Email composer (PR 7) — draft + send + list. The composer opens
   // a draft, the recruiter optionally edits, then sends. The list is
   // shown as a "previous messages" panel on the candidate detail page.
-  emailDraft: (candidateId: string) =>
-    fetchJson<EmailDraft>(`/recruiter/candidates/${candidateId}/email/draft`),
+  emailDraft: (candidateId: string, template: EmailTemplateKind = 'shortlist') =>
+    fetchJson<EmailDraft>(
+      `/recruiter/candidates/${candidateId}/email/draft?template=${template}`,
+    ),
   emailSend: (candidateId: string, payload: EmailDraft) =>
     fetchJson<EmailOutboxRow>(
       `/recruiter/candidates/${candidateId}/email/send`,

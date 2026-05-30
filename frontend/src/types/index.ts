@@ -310,7 +310,21 @@ export interface AdminUserDetail {
 // Recruiter dashboard (PR 3 — recruiter rollout)
 // ---------------------------------------------------------------------------
 
-export type RecruiterDecision = 'shortlisted' | 'rejected' | 'undecided';
+export type RecruiterDecision = 'shortlisted' | 'rejected' | 'undecided' | 'hold';
+
+// Which default email template the composer pre-fills (candidate status
+// management). Maps to the backend ?template= query param.
+export type EmailTemplateKind = 'shortlist' | 'rejection';
+
+// Derived candidate status surfaced on the review screen. Combines the
+// caller's Decision (shortlisted/rejected/hold) with funnel state
+// (invited vs interview_completed) — not a stored column.
+export type CandidateStatus =
+  | 'invited'
+  | 'interview_completed'
+  | 'shortlisted'
+  | 'rejected'
+  | 'on_hold';
 
 export interface RecruiterDecisionRow {
   candidate_id: string;

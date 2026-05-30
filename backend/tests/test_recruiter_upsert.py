@@ -21,6 +21,7 @@ import pytest
 
 from app.services.recruiter import (
     TERMINAL_DECISIONS,
+    WRITABLE_DECISIONS,
     candidate_exists,
     upsert_recruiter_decision,
 )
@@ -251,6 +252,43 @@ class TestUpsertValidation:
     def test_terminal_decisions_constant_lists_both_terminals(self):
         """If this ever drifts, decided_at semantics drift with it."""
         assert TERMINAL_DECISIONS == {"shortlisted", "rejected"}
+
+
+# ---------------------------------------------------------------------------
+# 'hold' decision (migration 009 — candidate status management)
+# ---------------------------------------------------------------------------
+
+class TestHoldDecision:
+    def test_hold_is_writable(self):
+        supabase, store = _supabase_with_store()
+        row = upsert_recruiter_decision(supabase, "cand-1", "rec-1", decision="hold")
+        assert row["decision"] == "hold"
+        assert len(store.rows) == 1
+
+    def test_hold_is_non_terminal_no_decided_at(self):
+        """'On Hold' is a parked, reversible state — it must NOT stamp
+        decided_at, so funnel analytics don't count it as a terminal
+        decision."""
+        assert "hold" in WRITABLE_DECISIONS
+        assert "hold" not in TERMINAL_DECISIONS
+        supabase, _ = _supabase_with_store()
+        row = upsert_recruiter_decision(supabase, "cand-1", "rec-1", decision="hold")
+        assert row.get("decided_at") is None
+
+    def test_shortlist_then_hold_clears_decided_at(self):
+        supabase, store = _supabase_with_store([{
+            "id": "dec-1",
+            "candidate_id": "cand-1",
+            "recruiter_id": "rec-1",
+            "decision": "shortlisted",
+            "bookmarked": False,
+            "notes": "",
+            "decided_at": "2026-05-25T00:00:00Z",
+            "updated_at": "2026-05-25T00:00:00Z",
+        }])
+        upsert_recruiter_decision(supabase, "cand-1", "rec-1", decision="hold")
+        assert store.rows[0]["decision"] == "hold"
+        assert store.rows[0]["decided_at"] is None
 
 
 # ---------------------------------------------------------------------------

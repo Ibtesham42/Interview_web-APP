@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react';
 import { recruiterApi } from '../../services/api';
-import type { EmailDraft, EmailOutboxRow } from '../../types';
+import type { EmailDraft, EmailOutboxRow, EmailTemplateKind } from '../../types';
 
 interface EmailComposerModalProps {
   candidateId: string;
   candidateName: string;
+  /** Which default template to pre-fill (candidate status management).
+   * 'shortlist' (default) for advance-to-next-round; 'rejection' for a
+   * courtesy decline. The recruiter edits freely before Send either way. */
+  template?: EmailTemplateKind;
   /** Fired after a successful send so the parent can refresh the
    * "previous messages" list. The argument is the outbox row that
    * was written — `status` reflects what actually happened (a
@@ -36,6 +40,7 @@ interface EmailComposerModalProps {
 export function EmailComposerModal({
   candidateId,
   candidateName,
+  template = 'shortlist',
   onSent,
   onClose,
 }: EmailComposerModalProps) {
@@ -49,7 +54,7 @@ export function EmailComposerModal({
     let cancelled = false;
     setLoading(true);
     recruiterApi
-      .emailDraft(candidateId)
+      .emailDraft(candidateId, template)
       .then((d) => {
         if (!cancelled) setDraft(d);
       })
@@ -64,7 +69,7 @@ export function EmailComposerModal({
     return () => {
       cancelled = true;
     };
-  }, [candidateId]);
+  }, [candidateId, template]);
 
   // Close on Escape — standard modal-dismiss UX. Click-outside also
   // closes (handled in the backdrop's onClick below).

@@ -33,7 +33,10 @@ from app.models.schemas import (
     ScoresByFieldResponse,
 )
 from app.services import email as email_svc
-from app.services.email_templates import default_shortlist_template
+from app.services.email_templates import (
+    default_rejection_template,
+    default_shortlist_template,
+)
 from app.services.recruiter import (
     RankFilters,
     candidate_tenant,
@@ -298,20 +301,30 @@ def _load_company_for_template(supabase, company_id) -> dict:
 )
 async def email_draft(
     candidate_id: UUID,
+    template: str = Query(
+        "shortlist",
+        description="Which default template to render: 'shortlist' or 'rejection'.",
+    ),
     user=Depends(get_current_recruiter),
 ):
     """Return a template-rendered draft for the composer.
 
-    Today only the shortlist template is wired up (the default for the
-    "Send email" button). A future query param could pick a different
-    template (`?template=rejection` etc.) — out of scope until the
-    composer UI grows a template picker.
+    `template` selects the starting copy (candidate status management):
+    - 'shortlist'  (default) — "you've advanced to the next round".
+    - 'rejection'  — a respectful courtesy decline.
+    The recruiter edits freely before Send either way; the template is
+    only a starting point.
     """
     supabase = get_supabase()
     candidate = _load_candidate_for_email(supabase, candidate_id, user)
     company = _load_company_for_template(supabase, candidate.get("company_id"))
 
-    rendered = default_shortlist_template(candidate, company)
+    renderer = (
+        default_rejection_template
+        if template == "rejection"
+        else default_shortlist_template
+    )
+    rendered = renderer(candidate, company)
     return EmailDraftResponse(
         to=candidate.get("email") or "",
         subject=rendered["subject"],

@@ -168,6 +168,35 @@ class TestEmailDraft:
             _run(email_draft(uuid.UUID(CANDIDATE_IN_B), user=_ctx(company_id=A)))
         assert exc.value.status_code == 404
 
+    def test_rejection_template_returns_decline_copy(self, monkeypatch):
+        """template='rejection' renders the courtesy-decline copy instead
+        of the shortlist congrats (candidate status management)."""
+        supabase = _two_tenant_supabase()
+        monkeypatch.setattr(
+            "app.routers.recruiter.get_supabase", lambda: supabase
+        )
+        result = _run(email_draft(
+            uuid.UUID(CANDIDATE_IN_A), template="rejection", user=_ctx()
+        ))
+        assert result.to == "alice@x.com"
+        assert "Update on your application" in result.subject
+        assert "other candidates" in result.body
+
+    def test_company_admin_cannot_draft_other_tenant(self, monkeypatch):
+        """A company_admin of A drafting for a candidate of B gets 404 —
+        the 'company admins manage only their own candidates' requirement
+        holds on the email path too."""
+        supabase = _two_tenant_supabase()
+        monkeypatch.setattr(
+            "app.routers.recruiter.get_supabase", lambda: supabase
+        )
+        with pytest.raises(HTTPException) as exc:
+            _run(email_draft(
+                uuid.UUID(CANDIDATE_IN_B),
+                user=_ctx(role="company_admin", company_id=A),
+            ))
+        assert exc.value.status_code == 404
+
 
 # ---------------------------------------------------------------------------
 # POST /email/send

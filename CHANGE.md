@@ -23,6 +23,74 @@
 
 ---
 
+## 30/05/2026 20:42
+Type: Feature
+
+Candidate status management for company admins (Shortlist / Reject /
+Hold + a derived status). Built by extending the existing recruiter
+workflow rather than adding a parallel system — ~80% already existed
+(per-recruiter decisions, email composer + outbox, shortlist & rejection
+templates, tenant scoping). ADR 0011.
+
+Deltas:
+- Migration 009 (additive): widen `recruiter_decisions.decision` CHECK to
+  add `'hold'` — a non-terminal, reversible parked state (does NOT stamp
+  `decided_at`, so funnel analytics don't count it as decided).
+- Backend `services/recruiter.py`: `hold` added to WRITABLE_DECISIONS,
+  VALID_DECISION_FILTERS, and the sort rank; TERMINAL unchanged.
+- Backend `routers/recruiter.py`: email-draft endpoint takes
+  `?template=shortlist|rejection` (rejection template already existed,
+  just wired up). No new endpoint/table/column.
+- Frontend `RecruiterCandidateDetail`: Hold button; Shortlist/Reject now
+  save the decision AND open the composer pre-filled with the matching
+  template (editable subject/body, send-or-close — status saved either
+  way); a derived **status chip** (Invited / Interview Completed /
+  Shortlisted / Rejected / On Hold). `EmailComposerModal` takes a
+  `template` prop. Dashboard decision filter gains "On Hold".
+- Status is DERIVED (decision-or-funnel), not a stored column — can't
+  drift from the decision.
+
+Tenant safety: company admins can only manage their own Company's
+candidates — already enforced by `get_current_recruiter` + `tenant_scope`
+on every decision/email path; added a `company_admin` cross-tenant 404
+regression test to pin it.
+
+Docs: ADR 0011 (hold non-terminal; status derived; per-recruiter model
+reused over a candidate-level status column). CONTEXT.md: Decision gains
+`On Hold`; new terms On Hold + Candidate Status.
+
+Verification:
+- Backend pytest 298/298 (293 prior + 5 new: hold writable/non-terminal
+  ×3, rejection-template draft, company_admin cross-tenant 404).
+- Frontend tsc clean; vitest 20/20; build ok.
+- NOT verified here (needs deploy + live click-through): the modal
+  send round-trip and the status chip in a browser.
+
+Operational prerequisite: **run migration 009** in the Supabase SQL
+editor (after 008) before `hold` works — writing `decision='hold'` fails
+the CHECK constraint until then. (Verified via REST that 009 is NOT yet
+applied to the hosted project.)
+
+Affected files:
+- `backend/app/migrations/009_candidate_hold_decision.sql` (new)
+- `backend/app/services/recruiter.py`
+- `backend/app/routers/recruiter.py`
+- `backend/app/models/schemas.py`
+- `backend/tests/test_recruiter_upsert.py`, `backend/tests/test_email_endpoints.py`
+- `frontend/src/components/recruiter/RecruiterCandidateDetail.tsx`
+- `frontend/src/components/recruiter/EmailComposerModal.tsx`
+- `frontend/src/components/recruiter/RecruiterDashboard.tsx`
+- `frontend/src/services/api.ts`, `frontend/src/types/index.ts`, `frontend/src/index.css`
+- `docs/adr/0011-candidate-status-management.md` (new), `CONTEXT.md`, `CHANGE.md`
+
+Architectural impact: additive decision value + a derived status
+projection. No new table/column, no auth/tenant change. Reuses the
+PR 7 composer + templates.
+
+Future considerations: per-company email templates and a
+single-authoritative-status-per-candidate model are both deferred (ADR
+0011 open follow-ups). Migration 009 must be applied to each environment.
+
 ## 30/05/2026 16:32
 Type: Feature (production-readiness / deployment safety)
 

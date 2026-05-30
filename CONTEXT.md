@@ -77,10 +77,31 @@ _Avoid_: Reviewer (overloaded with the AI evaluator's review of an answer),
 Hiring manager (a downstream role we don't model).
 
 **Decision**:
-A Recruiter's stance on a Candidate: one of `Shortlisted`, `Rejected`, or
-`Undecided` (default). Mutually exclusive. Per-Recruiter, per-Candidate — two
-Recruiters can hold opposite Decisions on the same Candidate simultaneously.
-_Avoid_: Verdict, Status (Status is already overloaded with interview status).
+A Recruiter's stance on a Candidate: one of `Shortlisted`, `Rejected`,
+`On Hold`, or `Undecided` (default). Mutually exclusive. Per-Recruiter,
+per-Candidate — two Recruiters can hold opposite Decisions on the same
+Candidate simultaneously. `Shortlisted` and `Rejected` are terminal (they
+stamp a decided-at time); `On Hold` is a deliberate but reversible parked
+state, `Undecided` is the absence of a decision.
+_Avoid_: Verdict, Status (Status is the derived candidate-facing label —
+see Candidate Status — not the Decision itself).
+
+**On Hold**:
+The non-terminal "parked for later" Decision — the Recruiter has neither
+advanced nor declined the Candidate but wants them flagged as actively
+deferred (distinct from the never-touched `Undecided` default). Reversible;
+sends no email.
+_Avoid_: Pending, Waitlist, Maybe.
+
+**Candidate Status**:
+The single human-readable label shown when reviewing a Candidate:
+`Invited`, `Interview Completed`, `Shortlisted`, `Rejected`, or `On Hold`.
+DERIVED, not stored — it is the reviewer's terminal/parked Decision when one
+exists, otherwise the Candidate's furthest Funnel Stage (Interview Completed
+vs Invited). The Shortlist/Reject/Hold actions on the review screen set the
+underlying Decision; Status is the read-side projection of it.
+_Avoid_: State, Stage (Stage is the Funnel position; Status folds Decision
+over it).
 
 **Shortlist**:
 The terminal positive Decision — a Recruiter has marked this Candidate as

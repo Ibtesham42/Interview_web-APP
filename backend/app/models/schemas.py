@@ -174,7 +174,7 @@ class IntegrityVolumeResponse(BaseModel):
 
 
 class RecruiterDecisionUpdate(BaseModel):
-    decision: str = Field(..., description="shortlisted | rejected | undecided")
+    decision: str = Field(..., description="shortlisted | rejected | undecided | hold")
 
 
 class RecruiterBookmarkUpdate(BaseModel):

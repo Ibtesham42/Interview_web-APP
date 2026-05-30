@@ -40,6 +40,7 @@ function formatDate(d: string | null): string {
 function decisionLabel(decision: RecruiterDecision): string {
   if (decision === 'shortlisted') return 'Shortlisted';
   if (decision === 'rejected') return 'Rejected';
+  if (decision === 'hold') return 'On Hold';
   return 'Undecided';
 }
 
@@ -73,6 +74,7 @@ const DECISION_OPTIONS: { value: RecruiterDecisionFilter | ''; label: string }[]
   { value: '', label: 'All' },
   { value: 'shortlisted', label: 'Shortlisted' },
   { value: 'rejected', label: 'Rejected' },
+  { value: 'hold', label: 'On Hold' },
   { value: 'undecided', label: 'Undecided' },
   { value: 'bookmarked', label: 'Bookmarked' },
 ];

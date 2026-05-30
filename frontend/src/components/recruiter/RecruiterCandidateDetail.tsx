@@ -4,7 +4,9 @@ import { recruiterApi } from '../../services/api';
 import { Button } from '../Button';
 import { EmailComposerModal } from './EmailComposerModal';
 import type {
+  CandidateStatus,
   EmailOutboxRow,
+  EmailTemplateKind,
   RecruiterCandidateDetail as DetailData,
   RecruiterDecision,
 } from '../../types';
@@ -35,7 +37,25 @@ function formatDate(d: string | null): string {
 function decisionLabel(decision: RecruiterDecision): string {
   if (decision === 'shortlisted') return 'Shortlisted';
   if (decision === 'rejected') return 'Rejected';
+  if (decision === 'hold') return 'On Hold';
   return 'Undecided';
+}
+
+const STATUS_LABELS: Record<CandidateStatus, string> = {
+  invited: 'Invited',
+  interview_completed: 'Interview Completed',
+  shortlisted: 'Shortlisted',
+  rejected: 'Rejected',
+  on_hold: 'On Hold',
+};
+
+// Status = the caller's terminal/parked Decision if any, else the funnel
+// stage. Derived (not stored) so it always reflects the live decision.
+function deriveStatus(decision: RecruiterDecision, hasCompletedInterview: boolean): CandidateStatus {
+  if (decision === 'shortlisted') return 'shortlisted';
+  if (decision === 'rejected') return 'rejected';
+  if (decision === 'hold') return 'on_hold';
+  return hasCompletedInterview ? 'interview_completed' : 'invited';
 }
 
 export function RecruiterCandidateDetail() {
@@ -49,8 +69,10 @@ export function RecruiterCandidateDetail() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [pendingShortlist, setPendingShortlist] = useState(false);
 
-  // Composer modal + previous-emails panel (multi-tenant PR 7).
+  // Composer modal + previous-emails panel (multi-tenant PR 7). The
+  // template controls whether Shortlist/Reject pre-fills congrats vs decline.
   const [composerOpen, setComposerOpen] = useState(false);
+  const [composerTemplate, setComposerTemplate] = useState<EmailTemplateKind>('shortlist');
   const [emails, setEmails] = useState<EmailOutboxRow[]>([]);
   const [emailsLoading, setEmailsLoading] = useState(false);
 
@@ -125,6 +147,8 @@ export function RecruiterCandidateDetail() {
   const myDecision: RecruiterDecision = myDecisionRow?.decision ?? 'undecided';
   const iAmBookmarked = !!myDecisionRow?.bookmarked;
   const integrityTotal = interviews.reduce((acc, iv) => acc + iv.integrity_warnings, 0);
+  const hasCompletedInterview = interviews.some((iv) => iv.completed);
+  const status = deriveStatus(myDecision, hasCompletedInterview);
 
   const writeDecision = async (next: RecruiterDecision) => {
     setActionError(null);
@@ -136,7 +160,26 @@ export function RecruiterCandidateDetail() {
     }
   };
 
+  // Set the decision AND open the email composer pre-filled with the
+  // matching template — the composer only opens if the status save
+  // succeeds, and the recruiter can still close without sending.
+  const decideAndCompose = async (
+    decision: RecruiterDecision,
+    template: EmailTemplateKind,
+  ) => {
+    setActionError(null);
+    try {
+      await recruiterApi.setDecision(candidateId, decision);
+      setComposerTemplate(template);
+      setComposerOpen(true);
+      load();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Could not save decision');
+    }
+  };
+
   const handleShortlistClick = () => {
+    // Toggling OFF a shortlist is a silent status change — no email.
     if (myDecision === 'shortlisted') {
       void writeDecision('undecided');
       return;
@@ -145,16 +188,25 @@ export function RecruiterCandidateDetail() {
       setPendingShortlist(true);
       return;
     }
-    void writeDecision('shortlisted');
+    void decideAndCompose('shortlisted', 'shortlist');
   };
 
   const handleRejectClick = () => {
-    void writeDecision(myDecision === 'rejected' ? 'undecided' : 'rejected');
+    if (myDecision === 'rejected') {
+      void writeDecision('undecided');
+      return;
+    }
+    void decideAndCompose('rejected', 'rejection');
+  };
+
+  // Hold is a parked, reversible state — no email is sent for it.
+  const handleHoldClick = () => {
+    void writeDecision(myDecision === 'hold' ? 'undecided' : 'hold');
   };
 
   const confirmShortlist = async () => {
     setPendingShortlist(false);
-    await writeDecision('shortlisted');
+    await decideAndCompose('shortlisted', 'shortlist');
   };
 
   const handleBookmarkToggle = async () => {
@@ -189,7 +241,10 @@ export function RecruiterCandidateDetail() {
           <Link to="/recruiter" className="back-link">
             ← Candidates
           </Link>
-          <h1>{candidate.name}</h1>
+          <h1>
+            {candidate.name}
+            <span className={`status-chip status-${status}`}>{STATUS_LABELS[status]}</span>
+          </h1>
           <p className="page-sub">
             {fieldLabel(candidate.field_specialization)}
             {' · '}
@@ -206,6 +261,14 @@ export function RecruiterCandidateDetail() {
             {myDecision === 'shortlisted' ? '✓ Shortlisted' : 'Shortlist'}
           </Button>
           <Button
+            variant={myDecision === 'hold' ? 'primary' : 'secondary'}
+            onClick={handleHoldClick}
+            aria-pressed={myDecision === 'hold'}
+            title="Park this candidate for later (no email sent)"
+          >
+            {myDecision === 'hold' ? '⏸ On Hold' : 'Hold'}
+          </Button>
+          <Button
             variant={myDecision === 'rejected' ? 'danger' : 'secondary'}
             onClick={handleRejectClick}
             aria-pressed={myDecision === 'rejected'}
@@ -214,7 +277,10 @@ export function RecruiterCandidateDetail() {
           </Button>
           <Button
             variant="secondary"
-            onClick={() => setComposerOpen(true)}
+            onClick={() => {
+              setComposerTemplate('shortlist');
+              setComposerOpen(true);
+            }}
             title="Compose an email to this candidate"
           >
             ✉ Send email
@@ -236,6 +302,7 @@ export function RecruiterCandidateDetail() {
         <EmailComposerModal
           candidateId={candidateId}
           candidateName={candidate.name}
+          template={composerTemplate}
           onSent={(row) => {
             // Optimistically prepend the new row so the recruiter sees
             // their send in the panel immediately. A subsequent fetch
