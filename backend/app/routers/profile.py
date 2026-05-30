@@ -28,6 +28,10 @@ async def get_me(user=Depends(get_current_user)):
             "id": user.id,
             "email": getattr(user, "email", None),
             "full_name": metadata.get("full_name", ""),
+            # Cosmetic display handle (migration 008 / ADR 0010). Mirrors
+            # the trigger's metadata copy so a backend-created fallback row
+            # carries it too. Not a login identifier.
+            "username": metadata.get("username", ""),
         }
         try:
             inserted = supabase.table("profiles").insert(new_row).execute()
@@ -45,6 +49,10 @@ async def get_me(user=Depends(get_current_user)):
         "id": profile["id"],
         "email": profile.get("email"),
         "full_name": profile.get("full_name"),
+        # Display handle (migration 008). Included explicitly so it isn't
+        # dropped from the response even though the SELECT returns it —
+        # the same whitelist trap that hid company_id on 2026-05-29.
+        "username": profile.get("username"),
         "role": profile.get("role", "user"),
         "company_id": profile.get("company_id"),
         "created_at": profile.get("created_at", ""),

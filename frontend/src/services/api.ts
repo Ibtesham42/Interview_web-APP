@@ -261,6 +261,12 @@ export const companiesApi = {
     email: string;
     phone?: string;
     address?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    postal_code?: string;
+    website?: string;
+    company_size?: string;
   }) =>
     fetchJson<CompanySignupResponse>('/companies/', {
       method: 'POST',

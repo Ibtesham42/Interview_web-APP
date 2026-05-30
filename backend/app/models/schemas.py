@@ -289,12 +289,24 @@ class CompanyCreate(BaseModel):
     Contact fields (migration 007): email is required; phone + address
     are optional. Email is validated as a deliverable address shape;
     phone is a free-form string (international formats vary too widely
-    to lock down at this layer)."""
+    to lock down at this layer).
+
+    Onboarding fields (migration 008 / ADR 0010): structured address
+    (city / state / country / postal_code) beside the street `address`,
+    plus optional `website` and `company_size`. All optional — the
+    `username` (a profile display handle) is NOT here; it rides through
+    Supabase user_metadata at signup, not the company-create payload."""
     name: str = Field(..., min_length=2, max_length=80)
     slug: str = Field(..., min_length=3, max_length=40, pattern=r"^[a-z][a-z0-9-]*$")
     email: str = Field(..., min_length=5, max_length=200, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
     phone: Optional[str] = Field(None, max_length=40)
     address: Optional[str] = Field(None, max_length=400)
+    city: Optional[str] = Field(None, max_length=120)
+    state: Optional[str] = Field(None, max_length=120)
+    country: Optional[str] = Field(None, max_length=120)
+    postal_code: Optional[str] = Field(None, max_length=20)
+    website: Optional[str] = Field(None, max_length=200)
+    company_size: Optional[str] = Field(None, max_length=40)
 
 
 class CompanyResponse(BaseModel):
@@ -304,6 +316,12 @@ class CompanyResponse(BaseModel):
     email: str = ""
     phone: Optional[str] = None
     address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    country: Optional[str] = None
+    postal_code: Optional[str] = None
+    website: Optional[str] = None
+    company_size: Optional[str] = None
     created_at: datetime
 
     class Config:

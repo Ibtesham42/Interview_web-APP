@@ -174,6 +174,51 @@ class TestCreateCompanyHappyPath:
         assert result.company.phone == "+1 555 0100"
         assert result.profile["role"] == "company_admin"
 
+    def test_persists_onboarding_fields(self, monkeypatch):
+        """Migration 008 / ADR 0010 — structured address + website +
+        company_size persist on insert AND surface back in the response
+        (guards the SELECT-has-it / response-drops-it class of bug via
+        the shared `_company_response` mapper)."""
+        supabase = _supabase(profiles=[{"id": "u-1", "role": "user", "company_id": None}])
+        monkeypatch.setattr("app.routers.companies.get_supabase", lambda: supabase)
+
+        body = CompanyCreate(
+            name="Acme", slug="acme", email="hr@acme.com",
+            address="123 Main St", city="San Francisco", state="California",
+            country="United States", postal_code="94105",
+            website="https://acme.com", company_size="11-50",
+        )
+        result = _run(create_company(body, ctx=_ctx_user()))
+
+        stored = supabase._store["companies"][0]
+        assert stored["city"] == "San Francisco"
+        assert stored["country"] == "United States"
+        assert stored["postal_code"] == "94105"
+        assert stored["website"] == "https://acme.com"
+        assert stored["company_size"] == "11-50"
+
+        assert result.company.city == "San Francisco"
+        assert result.company.state == "California"
+        assert result.company.country == "United States"
+        assert result.company.postal_code == "94105"
+        assert result.company.website == "https://acme.com"
+        assert result.company.company_size == "11-50"
+
+    def test_blank_onboarding_fields_collapse_to_null(self, monkeypatch):
+        """Empty optional strings are stored as NULL so `if company.city`
+        stays clean — same posture as phone/address."""
+        supabase = _supabase(profiles=[{"id": "u-1", "role": "user", "company_id": None}])
+        monkeypatch.setattr("app.routers.companies.get_supabase", lambda: supabase)
+
+        body = CompanyCreate(
+            name="Acme", slug="acme", email="hr@acme.com",
+            city="   ", website="",
+        )
+        result = _run(create_company(body, ctx=_ctx_user()))
+        assert result.company.city is None
+        assert result.company.website is None
+        assert result.company.company_size is None
+
     def test_optional_phone_address_omitted(self, monkeypatch):
         """Phone + address are optional. Empty strings should be stored
         as NULL so consumers can use `if company.phone` safely."""

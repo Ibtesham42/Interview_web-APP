@@ -165,5 +165,32 @@ class TestGetMe:
 
         result = _run(get_me(user=_user()))
         assert set(result.keys()) == {
-            "id", "email", "full_name", "role", "company_id", "created_at",
+            "id", "email", "full_name", "username", "role", "company_id",
+            "created_at",
         }
+
+    def test_returns_username_for_existing_profile(self, monkeypatch):
+        """`username` (migration 008 / ADR 0010) round-trips like
+        company_id did — a display handle that must not be dropped from
+        the payload even though the SELECT returns it."""
+        supabase = _supabase(profiles=[{
+            "id": "u-1", "email": "admin@acme.com", "full_name": "Acme Admin",
+            "username": "acme-admin", "role": "company_admin",
+            "company_id": "co-acme", "created_at": "2026-05-30T00:00:00Z",
+        }])
+        monkeypatch.setattr("app.routers.profile.get_supabase", lambda: supabase)
+
+        result = _run(get_me(user=_user()))
+        assert result["username"] == "acme-admin"
+
+    def test_autocreate_copies_username_from_metadata(self, monkeypatch):
+        """The auto-create branch mirrors the handle_new_user trigger:
+        username is read from user_metadata so a backend-created fallback
+        row carries it too."""
+        supabase = _supabase(profiles=[])
+        monkeypatch.setattr("app.routers.profile.get_supabase", lambda: supabase)
+
+        user = _user()
+        user.user_metadata = {"full_name": "Dana", "username": "dana"}
+        result = _run(get_me(user=user))
+        assert result["username"] == "dana"

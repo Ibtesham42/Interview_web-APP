@@ -501,6 +501,50 @@ a:hover { color: var(--primary); }
   line-height: 1.4;
 }
 
+/* Two form-groups side by side on wider viewports; stacks on narrow.
+   Introduced for the company-onboarding structured address (migration
+   008): city/state and country/postal sit two-up. */
+.form-row {
+  display: flex;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.form-row .form-group {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+/* Label paired with an inline action (e.g. the password Show/Hide
+   toggle) on the same baseline row. */
+.form-label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.form-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--primary-light);
+  font-family: var(--font-sans);
+}
+
+.form-toggle:hover {
+  text-decoration: underline;
+}
+
+.form-toggle:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
 /* ========================================
    TENANT CHIP (header) + SETTINGS (page)
    Multi-tenant PR 5

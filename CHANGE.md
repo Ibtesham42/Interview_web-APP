@@ -23,6 +23,87 @@
 
 ---
 
+## 30/05/2026 15:18
+Type: Fix + Feature + Decision
+
+Company-onboarding diagnosis + form expansion. Two issues from manual
+testing: (a) signup confirmation email never arrives; (b) the company
+registration form is too thin. Investigated with
+`improve-codebase-architecture` + `grill-with-docs`; decisions in
+ADR 0010.
+
+DIAGNOSIS — email (config, NOT code):
+- The reported UI strings ("Create your founder account" / "Step 1 of 2
+  — after sign-up you'll name your company" / "…then sign in.") are the
+  PRE-4d4699d founder branch already removed in the last commit → the
+  tester was on a stale build. Redeploy/rebuild to get the new flow.
+- The signup confirmation email is sent by **Supabase Auth**, not this
+  app's Resend outbox (`services/email.py`, invites only). Root cause:
+  the hosted project has email confirmation ON but **no custom SMTP**,
+  so Supabase's built-in sender (~2–4/hr, testing-only) is used → mail
+  is throttled/undelivered. Local `supabase/config.toml` has
+  `enable_confirmations=false` + inbucket, so localhost differs from
+  prod. Decision (ADR 0010 D1): keep confirmation ON, configure custom
+  SMTP (Resend SMTP). Fully documented in
+  `docs/SUPABASE_AUTH_EMAIL.md` (dashboard steps + Site URL/redirect
+  allow-list + localhost-vs-prod). No app code change needed for
+  delivery.
+
+BUILD — registration form expansion (ADR 0010 D2–D4):
+- Migration 008 (additive): `companies` gains city / state / country /
+  postal_code / website / company_size; `profiles` gains `username`
+  (cosmetic display handle — NOT a login identifier; identity stays
+  email-based); `handle_new_user` trigger updated to copy username from
+  user_metadata.
+- Backend: `CompanyCreate`/`CompanyResponse` gain the six company fields;
+  `create_company` persists + returns them through a new shared
+  `_company_response` mapper (single source of truth — guards the
+  SELECT-has-it/response-drops-it bug class). `/api/auth/me` threads
+  `username` (auto-create row + response dict).
+- Frontend: `CompanySignup` step 1 adds username + confirm-password +
+  show/hide toggle; step 2 adds structured address + website + company
+  size (a select). `AuthContext.signUp` threads username via metadata;
+  `Profile`/`Company` types + `companiesApi.create` payload extended.
+  New `.form-row` / `.form-label-row` / `.form-toggle` CSS.
+- "username" challenged in the grill: chosen as a display handle over
+  drop / login-identifier. CONTEXT.md unchanged (cosmetic attribute, not
+  a domain concept; new company fields are attributes of the existing
+  Company term).
+
+Verification:
+- Backend: import clean; pytest 281/281 (277 prior + 4 new — 2 company
+  field-persistence + 2 /me username; the existing exact-key-set /me
+  test correctly tripped on the new field and was updated).
+- Frontend: `npx tsc --noEmit` clean; vitest 20/20; `npm run build` ok.
+- NOT verified here (needs the hosted env + creds): actual email
+  delivery, and a live browser e2e of signup→company→/admin. Requires
+  the user to (1) deploy ≥4d4699d, (2) run migration 008 in Supabase,
+  (3) configure SMTP per docs/SUPABASE_AUTH_EMAIL.md.
+
+Affected files:
+- `backend/app/migrations/008_company_onboarding_fields.sql` (new)
+- `backend/app/models/schemas.py`
+- `backend/app/routers/companies.py`
+- `backend/app/routers/profile.py`
+- `backend/tests/test_companies.py`, `backend/tests/test_profile.py`
+- `frontend/src/components/companies/CompanySignup.tsx`
+- `frontend/src/contexts/AuthContext.tsx`
+- `frontend/src/services/api.ts`, `frontend/src/types/index.ts`
+- `frontend/src/index.css`
+- `docs/SUPABASE_AUTH_EMAIL.md` (new),
+  `docs/adr/0010-company-onboarding-data-model.md` (new)
+- `CHANGE.md`
+
+Architectural impact: additive company columns + a profile display
+handle + form fields. The email finding is config, not architecture.
+Tenant scoping, roles, capability gates, ADR 0009 signup flow, and
+realtime/voice are untouched — stability/scalability preserved.
+
+Future considerations: website/company_size are free-form (URL-shape +
+size-enum validation are easy follow-ups); backend signup gate still
+open (ADR 0008 D3). Migration 008 + SMTP config are operational
+prerequisites for the deployed flow.
+
 ## 30/05/2026 14:41
 Type: Fix + Decision
 

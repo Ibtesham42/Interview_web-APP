@@ -43,7 +43,7 @@ interface AuthContextValue {
     email: string,
     password: string,
     fullName: string,
-    options?: { emailRedirectTo?: string },
+    options?: { emailRedirectTo?: string; username?: string },
   ) => Promise<SignUpResult>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   // `redirectTo` overrides the default /auth/callback redirect — used by
@@ -191,13 +191,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     email: string,
     password: string,
     fullName: string,
-    options: { emailRedirectTo?: string } = {},
+    options: { emailRedirectTo?: string; username?: string } = {},
   ): Promise<SignUpResult> => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: { full_name: fullName },
+        // full_name + the optional username display handle (migration
+        // 008) ride in user_metadata; the handle_new_user trigger copies
+        // both into the profile row on insert.
+        data: { full_name: fullName, username: options.username ?? '' },
         // emailRedirectTo carries query params (e.g. ?company=slug)
         // through Supabase's email-confirm link so the AuthCallback
         // can claim a tenant after the round-trip (multi-tenant PR 4).

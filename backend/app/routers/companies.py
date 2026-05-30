@@ -39,6 +39,36 @@ from app.supabase_client import get_supabase
 
 router = APIRouter()
 
+# Every column CompanyResponse needs, in one place so the two read sites
+# (create + get_my_company) can't drift out of sync. Migration 008 added
+# the structured-address + website/company_size columns.
+_COMPANY_COLUMNS = (
+    "id,slug,name,email,phone,address,"
+    "city,state,country,postal_code,website,company_size,created_at"
+)
+
+
+def _company_response(row: Dict[str, Any]) -> CompanyResponse:
+    """Map a raw `companies` row to the response model. Single source of
+    truth for the field set so a newly-added column is surfaced from
+    every endpoint at once (avoids the SELECT-has-it / response-drops-it
+    class of bug)."""
+    return CompanyResponse(
+        id=row["id"],
+        slug=row["slug"],
+        name=row["name"],
+        email=row.get("email", ""),
+        phone=row.get("phone"),
+        address=row.get("address"),
+        city=row.get("city"),
+        state=row.get("state"),
+        country=row.get("country"),
+        postal_code=row.get("postal_code"),
+        website=row.get("website"),
+        company_size=row.get("company_size"),
+        created_at=row["created_at"],
+    )
+
 
 @router.get("/all")
 async def list_all_companies(ctx=Depends(get_tenant_context)):
@@ -107,7 +137,7 @@ async def get_my_company(user=Depends(get_current_user)):
 
     company_rows = (
         supabase.table("companies")
-        .select("id,slug,name,email,phone,address,created_at")
+        .select(_COMPANY_COLUMNS)
         .eq("id", company_id)
         .execute()
         .data
@@ -119,16 +149,7 @@ async def get_my_company(user=Depends(get_current_user)):
         # ops-side (orphan rows from a manual delete).
         raise HTTPException(status_code=404, detail="Company not found")
 
-    row = company_rows[0]
-    return CompanyResponse(
-        id=row["id"],
-        slug=row["slug"],
-        name=row["name"],
-        email=row.get("email", ""),
-        phone=row.get("phone"),
-        address=row.get("address"),
-        created_at=row["created_at"],
-    )
+    return _company_response(company_rows[0])
 
 
 # Slugs reserved for either operational reasons (so /apply/admin doesn't
@@ -227,14 +248,25 @@ async def create_company(body: CompanyCreate, ctx=Depends(get_tenant_context)):
     # write fails we orphan the company row. A real ATS would wrap this
     # in a Postgres function (SECURITY DEFINER) — deferred until the
     # orphan rate is non-zero. For now: log + best-effort cleanup.
+    # Collapse blank optionals to NULL so `if company.city` etc. stays
+    # truthy-clean for consumers — same posture as phone/address.
+    def _clean(value):
+        return (value or "").strip() or None
+
     insert_result = (
         supabase.table("companies")
         .insert({
             "slug": slug,
             "name": name,
             "email": body.email.strip(),
-            "phone": (body.phone or "").strip() or None,
-            "address": (body.address or "").strip() or None,
+            "phone": _clean(body.phone),
+            "address": _clean(body.address),
+            "city": _clean(body.city),
+            "state": _clean(body.state),
+            "country": _clean(body.country),
+            "postal_code": _clean(body.postal_code),
+            "website": _clean(body.website),
+            "company_size": _clean(body.company_size),
             "created_by": ctx.id,
         })
         .execute()
@@ -271,15 +303,7 @@ async def create_company(body: CompanyCreate, ctx=Depends(get_tenant_context)):
     )
 
     return CompanySignupResponse(
-        company=CompanyResponse(
-            id=company_row["id"],
-            slug=company_row["slug"],
-            name=company_row["name"],
-            email=company_row.get("email", ""),
-            phone=company_row.get("phone"),
-            address=company_row.get("address"),
-            created_at=company_row["created_at"],
-        ),
+        company=_company_response(company_row),
         profile=profile_payload,
     )
 

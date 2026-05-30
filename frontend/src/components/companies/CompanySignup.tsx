@@ -42,11 +42,18 @@ export function CompanySignup() {
   const navigate = useNavigate();
   const { session, profile, refreshProfile, can, signUp, signInWithGoogle } = useAuth();
 
+  // Step 2 — company details (migration 008 / ADR 0010).
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
+  const [city, setCity] = useState('');
+  const [state, setState] = useState('');
+  const [country, setCountry] = useState('');
+  const [postalCode, setPostalCode] = useState('');
+  const [website, setWebsite] = useState('');
+  const [companySize, setCompanySize] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -55,8 +62,11 @@ export function CompanySignup() {
   // forms never render at the same time, but separate names avoid the
   // "is this the account email or the company contact email?" trap.
   const [accountName, setAccountName] = useState('');
+  const [accountUsername, setAccountUsername] = useState('');
   const [accountEmail, setAccountEmail] = useState('');
   const [accountPassword, setAccountPassword] = useState('');
+  const [accountConfirm, setAccountConfirm] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [accountError, setAccountError] = useState<string | null>(null);
   const [accountInfo, setAccountInfo] = useState<string | null>(null);
   const [accountSubmitting, setAccountSubmitting] = useState(false);
@@ -77,13 +87,21 @@ export function CompanySignup() {
       setAccountError('Password must be at least 6 characters.');
       return;
     }
+    if (accountPassword !== accountConfirm) {
+      setAccountError('Passwords do not match.');
+      return;
+    }
 
     setAccountSubmitting(true);
     const { error: signUpError, needsEmailConfirm } = await signUp(
       accountEmail.trim(),
       accountPassword,
       accountName.trim(),
-      { emailRedirectTo: companySetupRedirect },
+      {
+        emailRedirectTo: companySetupRedirect,
+        // Optional display handle — sent only when typed (migration 008).
+        username: accountUsername.trim() || undefined,
+      },
     );
 
     if (signUpError) {
@@ -139,10 +157,16 @@ export function CompanySignup() {
         name: name.trim(),
         slug: slug.trim(),
         email: email.trim(),
-        // Send phone/address only when provided — keeps the API payload
+        // Send optional fields only when provided — keeps the API payload
         // clean and the backend collapse-to-null logic stays simple.
         phone: phone.trim() || undefined,
         address: address.trim() || undefined,
+        city: city.trim() || undefined,
+        state: state.trim() || undefined,
+        country: country.trim() || undefined,
+        postal_code: postalCode.trim() || undefined,
+        website: website.trim() || undefined,
+        company_size: companySize.trim() || undefined,
       });
       // Server flipped our role to company_admin + stamped company_id.
       // Refresh local profile so the SPA's role-aware routing picks up
@@ -194,6 +218,23 @@ export function CompanySignup() {
               </div>
 
               <div className="form-group">
+                <label className="form-label" htmlFor="founder-username">
+                  Username <span className="form-optional">(optional)</span>
+                </label>
+                <input
+                  id="founder-username"
+                  type="text"
+                  className="form-input"
+                  value={accountUsername}
+                  onChange={(e) => setAccountUsername(e.target.value)}
+                  placeholder="A display handle"
+                  autoComplete="username"
+                  maxLength={40}
+                />
+                <p className="form-hint">A display name. You still sign in with your email.</p>
+              </div>
+
+              <div className="form-group">
                 <label className="form-label" htmlFor="founder-email">Work email</label>
                 <input
                   id="founder-email"
@@ -208,14 +249,38 @@ export function CompanySignup() {
               </div>
 
               <div className="form-group">
-                <label className="form-label" htmlFor="founder-password">Password</label>
+                <div className="form-label-row">
+                  <label className="form-label" htmlFor="founder-password">Password</label>
+                  <button
+                    type="button"
+                    className="form-toggle"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-pressed={showPassword}
+                  >
+                    {showPassword ? 'Hide' : 'Show'}
+                  </button>
+                </div>
                 <input
                   id="founder-password"
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   className="form-input"
                   value={accountPassword}
                   onChange={(e) => setAccountPassword(e.target.value)}
                   placeholder="At least 6 characters"
+                  autoComplete="new-password"
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" htmlFor="founder-confirm">Confirm password</label>
+                <input
+                  id="founder-confirm"
+                  type={showPassword ? 'text' : 'password'}
+                  className="form-input"
+                  value={accountConfirm}
+                  onChange={(e) => setAccountConfirm(e.target.value)}
+                  placeholder="Re-enter your password"
                   autoComplete="new-password"
                   required
                 />
@@ -358,16 +423,101 @@ export function CompanySignup() {
             </div>
 
             <div className="form-group">
-              <label className="form-label" htmlFor="company-address">Address <span className="form-optional">(optional)</span></label>
+              <label className="form-label" htmlFor="company-address">Street address <span className="form-optional">(optional)</span></label>
               <textarea
                 id="company-address"
                 className="form-input"
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
-                placeholder="Street, City, Country"
+                placeholder="123 Main St"
                 maxLength={400}
                 rows={2}
               />
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label" htmlFor="company-city">City <span className="form-optional">(optional)</span></label>
+                <input
+                  id="company-city"
+                  type="text"
+                  className="form-input"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  placeholder="San Francisco"
+                  maxLength={120}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label" htmlFor="company-state">State / Province <span className="form-optional">(optional)</span></label>
+                <input
+                  id="company-state"
+                  type="text"
+                  className="form-input"
+                  value={state}
+                  onChange={(e) => setState(e.target.value)}
+                  placeholder="California"
+                  maxLength={120}
+                />
+              </div>
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label" htmlFor="company-country">Country <span className="form-optional">(optional)</span></label>
+                <input
+                  id="company-country"
+                  type="text"
+                  className="form-input"
+                  value={country}
+                  onChange={(e) => setCountry(e.target.value)}
+                  placeholder="United States"
+                  maxLength={120}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label" htmlFor="company-postal">ZIP / Pincode <span className="form-optional">(optional)</span></label>
+                <input
+                  id="company-postal"
+                  type="text"
+                  className="form-input"
+                  value={postalCode}
+                  onChange={(e) => setPostalCode(e.target.value)}
+                  placeholder="94105"
+                  maxLength={20}
+                />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="company-website">Website <span className="form-optional">(optional)</span></label>
+              <input
+                id="company-website"
+                type="url"
+                className="form-input"
+                value={website}
+                onChange={(e) => setWebsite(e.target.value)}
+                placeholder="https://acme.com"
+                maxLength={200}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="company-size">Company size <span className="form-optional">(optional)</span></label>
+              <select
+                id="company-size"
+                className="form-input"
+                value={companySize}
+                onChange={(e) => setCompanySize(e.target.value)}
+              >
+                <option value="">Select a range…</option>
+                <option value="1-10">1–10</option>
+                <option value="11-50">11–50</option>
+                <option value="51-200">51–200</option>
+                <option value="201-500">201–500</option>
+                <option value="501-1000">501–1000</option>
+                <option value="1000+">1000+</option>
+              </select>
             </div>
 
             {error && <div className="error-message">{error}</div>}

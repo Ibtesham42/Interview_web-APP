@@ -9,6 +9,9 @@ export interface Profile {
   id: string;
   email: string | null;
   full_name: string | null;
+  // Cosmetic display handle (migration 008). NOT a login identifier —
+  // auth is email-based. Null for accounts created before the column.
+  username?: string | null;
   role: UserRole;
   // Multi-tenant PR 3 - present on every B2B profile; null for platform
   // admins and B2C users. Frontend uses it only for display (the backend
@@ -34,6 +37,14 @@ export interface Company {
   email: string;
   phone?: string | null;
   address?: string | null;
+  // Onboarding fields from migration 008 (ADR 0010) — structured address
+  // + optional company facts. All nullable.
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
+  postal_code?: string | null;
+  website?: string | null;
+  company_size?: string | null;
   created_at: string;
 }
 
