@@ -46,6 +46,11 @@ VALID_SORTS = {
 VALID_ORDERS = {"asc", "desc"}
 VALID_INTEGRITY_FILTERS = {"any", "with_warnings", "without_warnings"}
 VALID_DECISION_FILTERS = {"shortlisted", "rejected", "undecided", "hold", "bookmarked"}
+# Derived candidate status (ADR 0011) — the lifecycle label, distinct from
+# the raw decision (adds invited / interview_completed for not-yet-decided).
+VALID_STATUS_FILTERS = {
+    "invited", "interview_completed", "shortlisted", "rejected", "on_hold",
+}
 
 
 # Score thresholds match recommendation_for() — kept in sync so a
@@ -58,6 +63,7 @@ class RankFilters:
     search: Optional[str] = None
     field: Optional[str] = None
     decision: Optional[str] = None
+    status: Optional[str] = None
     min_score: Optional[float] = None
     max_score: Optional[float] = None
     integrity: Optional[str] = None
@@ -83,6 +89,8 @@ class RankFilters:
             raise ValueError(f"invalid integrity filter '{self.integrity}'")
         if self.decision is not None and self.decision not in VALID_DECISION_FILTERS:
             raise ValueError(f"invalid decision filter '{self.decision}'")
+        if self.status is not None and self.status not in VALID_STATUS_FILTERS:
+            raise ValueError(f"invalid status filter '{self.status}'")
         self.page = max(1, int(self.page))
         # Clamp page_size to A3 grill resolution (max 100, default 50).
         self.page_size = max(1, min(100, int(self.page_size)))
@@ -96,30 +104,49 @@ class RankFilters:
 def _apply_candidate_filters(query, filters: RankFilters):
     """SQL WHERE clauses safe to push down to PostgREST.
 
-    Decision/score/integrity filters happen later in Python because they
-    depend on derived data (recruiter_decisions row, scored interviews,
-    integrity event count) not present on the candidates table.
+    Field/date filters push down here. Search moved to Python (see
+    `_search_matches`) so a single token can match across name / email /
+    phone-in-resume / username (the last lives on `profiles`, not
+    `candidates`, so it can't be expressed in one PostgREST `.or_`).
+    Decision/status/score/integrity filters also happen in Python because
+    they depend on derived data not present on the candidates row.
     """
     if filters.field:
         query = query.eq("field_specialization", filters.field)
-    if filters.date_from:
-        query = query.gte("created_at", filters.date_from)
-    if filters.date_to:
-        query = query.lte("created_at", filters.date_to)
-    if filters.search:
-        # Multi-word AND-of-ORs per grill A2: every token must hit at
-        # least one of (name, field_specialization, resume_text). ILIKE is
-        # case-insensitive; pg_trgm + GIN is the documented upgrade path
-        # if this ever feels slow.
-        tokens = [t for t in filters.search.split() if t]
-        for token in tokens:
-            pattern = f"%{token}%"
-            query = query.or_(
-                f"name.ilike.{pattern},"
-                f"field_specialization.ilike.{pattern},"
-                f"resume_text.ilike.{pattern}"
-            )
+    # date_from/date_to are an INTERVIEW date range (handled in Python
+    # against each candidate's interviews) — not a signup-date filter.
     return query
+
+
+def _iv_in_range(ts: Optional[str], date_from: Optional[str], date_to: Optional[str]) -> bool:
+    """ISO-timestamp range check (lexicographic — safe for ISO-8601)."""
+    if ts is None:
+        return False
+    if date_from and ts < date_from:
+        return False
+    if date_to and ts > date_to:
+        return False
+    return True
+
+
+def _search_matches(tokens: List[str], fields: List[Optional[str]]) -> bool:
+    """Multi-word AND-of-ORs: every token must appear (case-insensitive)
+    in at least one of the supplied fields. Tokens are pre-lowercased."""
+    lowered = [(f or "").lower() for f in fields]
+    return all(any(tok in f for f in lowered) for tok in tokens)
+
+
+def _status_from_decision(decision: str, has_completed: bool) -> str:
+    """Per-recruiter derived candidate status — mirrors the frontend
+    `deriveStatus` and ADR 0011. Uses THIS recruiter's decision (the value
+    shown on their row), falling back to the funnel position."""
+    if decision == "shortlisted":
+        return "shortlisted"
+    if decision == "rejected":
+        return "rejected"
+    if decision == "hold":
+        return "on_hold"
+    return "interview_completed" if has_completed else "invited"
 
 
 def _decision_matches(filter_value: Optional[str], decision_row: Dict[str, Any]) -> bool:
@@ -215,9 +242,16 @@ def rank_candidates(
     """
     filters = filters.normalise()
 
-    cand_query = supabase.table("candidates").select(
-        "id,name,email,field_specialization,created_at,user_id"
+    search_tokens = (
+        [t.lower() for t in filters.search.split() if t] if filters.search else []
     )
+
+    # resume_text carries the phone number (no structured phone column) and
+    # is large, so only fetch it when a search is actually running.
+    cols = "id,name,email,field_specialization,created_at,user_id"
+    if search_tokens:
+        cols += ",resume_text"
+    cand_query = supabase.table("candidates").select(cols)
     if company_id is not None:
         cand_query = cand_query.eq("company_id", company_id)
     cand_query = _apply_candidate_filters(cand_query, filters)
@@ -233,6 +267,25 @@ def rank_candidates(
         }
 
     candidate_ids = [c["id"] for c in candidates]
+
+    # Username lives on profiles (linked by candidate.user_id), not on the
+    # candidate row — fetch a small id→username map for search. Only when
+    # searching, so the common list load pays nothing.
+    username_of: Dict[str, str] = {}
+    if search_tokens:
+        user_ids = [c["user_id"] for c in candidates if c.get("user_id")]
+        if user_ids:
+            prof_rows = (
+                supabase.table("profiles")
+                .select("id,username")
+                .in_("id", user_ids)
+                .execute()
+                .data
+                or []
+            )
+            username_of = {
+                p["id"]: (p.get("username") or "") for p in prof_rows
+            }
 
     # Interviews for the filtered candidate set — one bulk query.
     interviews = (
@@ -299,6 +352,31 @@ def rank_candidates(
         latest = max((iv.get("created_at") for iv in ivs if iv.get("created_at")), default=None)
         warnings = sum(integrity_counts.get(iv["id"], 0) for iv in ivs)
         decision_row = decisions.get(cand["id"], {})
+        completed_count = sum(1 for iv in ivs if iv.get("status") == "completed")
+
+        # Interview date range — keep only candidates with an interview in
+        # the window (a candidate with no interviews can't match a date
+        # range that's about interview activity).
+        if (filters.date_from or filters.date_to) and not any(
+            _iv_in_range(iv.get("created_at"), filters.date_from, filters.date_to)
+            for iv in ivs
+        ):
+            continue
+
+        # Search (name / email / phone-in-resume / username) — AND-of-ORs
+        # across the fields. Done here so username (on profiles) and the
+        # candidates-table columns are searched together.
+        if search_tokens and not _search_matches(
+            search_tokens,
+            [
+                cand.get("name"),
+                cand.get("email"),
+                cand.get("resume_text"),
+                cand.get("field_specialization"),
+                username_of.get(cand.get("user_id"), ""),
+            ],
+        ):
+            continue
 
         # Apply derived-data filters here, after we have the numbers.
         if filters.min_score is not None and best_score < filters.min_score:
@@ -309,6 +387,10 @@ def rank_candidates(
             continue
         if not _decision_matches(filters.decision, decision_row):
             continue
+        if filters.status is not None and _status_from_decision(
+            decision_row.get("decision", "undecided"), completed_count > 0
+        ) != filters.status:
+            continue
 
         items.append({
             "candidate_id": cand["id"],
@@ -317,7 +399,7 @@ def rank_candidates(
             "field_specialization": cand.get("field_specialization") or "general",
             "created_at": cand.get("created_at"),
             "interview_count": len(ivs),
-            "completed_count": sum(1 for iv in ivs if iv.get("status") == "completed"),
+            "completed_count": completed_count,
             "final_score": best_score,
             "recommendation": recommendation_for(best_score) if best_score > 0 else "",
             "latest_interview_at": latest,

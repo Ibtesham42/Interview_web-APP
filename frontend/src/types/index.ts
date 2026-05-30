@@ -509,6 +509,7 @@ export interface RecruiterListParams {
   search?: string;
   field?: string;
   decision?: RecruiterDecisionFilter;
+  status?: CandidateStatus;
   min_score?: number;
   max_score?: number;
   integrity?: RecruiterIntegrityFilter;

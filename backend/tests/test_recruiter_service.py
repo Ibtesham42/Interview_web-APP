@@ -50,7 +50,7 @@ class _FakeQueryChain:
 
 
 def _fake_supabase(*, candidates=None, interviews=None, evaluations=None,
-                    integrity=None, decisions=None):
+                    integrity=None, decisions=None, profiles=None):
     """Build a fake supabase client whose `.table('x')` routes per name."""
     table_rows = {
         "candidates": candidates or [],
@@ -58,6 +58,7 @@ def _fake_supabase(*, candidates=None, interviews=None, evaluations=None,
         "evaluations": evaluations or [],
         "interview_integrity_events": integrity or [],
         "recruiter_decisions": decisions or [],
+        "profiles": profiles or [],
     }
     supabase = MagicMock()
     supabase.table.side_effect = lambda name: _FakeQueryChain(table_rows[name])
@@ -146,6 +147,138 @@ def _candidate(cid, name, *, field="ml", created_at="2026-05-01T00:00:00Z"):
 
 def _interview(iid, cid, *, status="completed", created_at="2026-05-10T00:00:00Z"):
     return {"id": iid, "candidate_id": cid, "status": status, "created_at": created_at}
+
+
+# ---------------------------------------------------------------------------
+# Search (name / email / phone-in-resume / username) + status filter.
+# These run in Python (the fake no-ops SQL), so they exercise the real
+# matching logic rather than the push-down.
+# ---------------------------------------------------------------------------
+
+def _ids(result):
+    return [r["candidate_id"] for r in result["items"]]
+
+
+class TestRankCandidatesSearch:
+    def _supabase(self):
+        candidates = [
+            {"id": "c1", "name": "Alice Smith", "email": "alice@acme.com",
+             "field_specialization": "ml", "created_at": "2026-05-01T00:00:00Z",
+             "user_id": "u1", "resume_text": "Python ML. Phone 8638278249."},
+            {"id": "c2", "name": "Bob Jones", "email": "bob@globex.com",
+             "field_specialization": "web_dev", "created_at": "2026-05-02T00:00:00Z",
+             "user_id": "u2", "resume_text": "React dev. Call 5551234567."},
+        ]
+        return _fake_supabase(
+            candidates=candidates,
+            interviews=[_interview("iv1", "c1"), _interview("iv2", "c2")],
+            profiles=[
+                {"id": "u1", "username": "alice-handle"},
+                {"id": "u2", "username": "bobby"},
+            ],
+        )
+
+    def test_search_by_name(self):
+        r = rank_candidates(self._supabase(), "rec", RankFilters(search="alice"))
+        assert _ids(r) == ["c1"]
+
+    def test_search_by_email_domain(self):
+        r = rank_candidates(self._supabase(), "rec", RankFilters(search="globex"))
+        assert _ids(r) == ["c2"]
+
+    def test_search_by_phone_in_resume(self):
+        r = rank_candidates(self._supabase(), "rec", RankFilters(search="8638278249"))
+        assert _ids(r) == ["c1"]
+
+    def test_search_by_username(self):
+        r = rank_candidates(self._supabase(), "rec", RankFilters(search="bobby"))
+        assert _ids(r) == ["c2"]
+
+    def test_multi_token_and_of_ors(self):
+        # "alice" (name) AND "ml" (field) — both must hit, possibly
+        # different fields. Only c1 satisfies both.
+        r = rank_candidates(self._supabase(), "rec", RankFilters(search="alice ml"))
+        assert _ids(r) == ["c1"]
+
+    def test_search_no_match_returns_empty(self):
+        r = rank_candidates(self._supabase(), "rec", RankFilters(search="zzzznope"))
+        assert _ids(r) == []
+
+
+class TestRankCandidatesStatusFilter:
+    def _supabase(self):
+        candidates = [
+            _candidate("c1", "Short"),     # shortlisted
+            _candidate("c2", "Reject"),    # rejected
+            _candidate("c3", "Held"),      # hold
+            _candidate("c4", "Done"),      # completed, no decision
+            _candidate("c5", "New"),       # no interview, no decision
+        ]
+        interviews = [
+            _interview("iv1", "c1"), _interview("iv2", "c2"),
+            _interview("iv3", "c3"), _interview("iv4", "c4"),
+            # c5 has no interview → "invited"
+        ]
+        decisions = [
+            {"candidate_id": "c1", "decision": "shortlisted", "bookmarked": False, "notes": ""},
+            {"candidate_id": "c2", "decision": "rejected", "bookmarked": False, "notes": ""},
+            {"candidate_id": "c3", "decision": "hold", "bookmarked": False, "notes": ""},
+        ]
+        return _fake_supabase(candidates=candidates, interviews=interviews,
+                              decisions=decisions)
+
+    def test_status_shortlisted(self):
+        r = rank_candidates(self._supabase(), "rec", RankFilters(status="shortlisted"))
+        assert _ids(r) == ["c1"]
+
+    def test_status_rejected(self):
+        r = rank_candidates(self._supabase(), "rec", RankFilters(status="rejected"))
+        assert _ids(r) == ["c2"]
+
+    def test_status_on_hold(self):
+        r = rank_candidates(self._supabase(), "rec", RankFilters(status="on_hold"))
+        assert _ids(r) == ["c3"]
+
+    def test_status_interview_completed_excludes_decided(self):
+        """Completed-but-undecided only — c1/c2/c3 have decisions, c5 has
+        no interview, so only c4 is 'interview_completed'."""
+        r = rank_candidates(self._supabase(), "rec", RankFilters(status="interview_completed"))
+        assert _ids(r) == ["c4"]
+
+    def test_status_invited_is_no_interview_no_decision(self):
+        r = rank_candidates(self._supabase(), "rec", RankFilters(status="invited"))
+        assert _ids(r) == ["c5"]
+
+    def test_invalid_status_raises(self):
+        with pytest.raises(ValueError):
+            RankFilters(status="pending").normalise()
+
+
+class TestRankCandidatesInterviewDateRange:
+    def _supabase(self):
+        candidates = [_candidate("c1", "Early"), _candidate("c2", "Late"),
+                      _candidate("c3", "NoIv")]
+        interviews = [
+            _interview("iv1", "c1", created_at="2026-05-05T00:00:00Z"),
+            _interview("iv2", "c2", created_at="2026-05-20T00:00:00Z"),
+            # c3 has no interview
+        ]
+        return _fake_supabase(candidates=candidates, interviews=interviews)
+
+    def test_date_range_keeps_only_interviews_in_window(self):
+        r = rank_candidates(
+            self._supabase(), "rec",
+            RankFilters(date_from="2026-05-01T00:00:00Z", date_to="2026-05-10T00:00:00Z"),
+        )
+        assert _ids(r) == ["c1"]
+
+    def test_date_range_excludes_candidates_with_no_interview(self):
+        r = rank_candidates(
+            self._supabase(), "rec",
+            RankFilters(date_from="2026-05-01T00:00:00Z", date_to="2026-12-31T00:00:00Z"),
+        )
+        assert "c3" not in _ids(r)
+        assert set(_ids(r)) == {"c1", "c2"}
 
 
 def _phase4_eval(iid, *, accuracy, layer=None):

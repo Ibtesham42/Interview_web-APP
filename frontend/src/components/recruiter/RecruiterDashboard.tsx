@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../Button';
 import { InviteCandidateModal } from './InviteCandidateModal';
 import type {
+  CandidateStatus,
   RecruiterCandidate,
   RecruiterDecision,
   RecruiterDecisionFilter,
@@ -85,6 +86,15 @@ const INTEGRITY_OPTIONS: { value: RecruiterIntegrityFilter | ''; label: string }
   { value: 'without_warnings', label: 'Clean only' },
 ];
 
+const STATUS_OPTIONS: { value: CandidateStatus | ''; label: string }[] = [
+  { value: '', label: 'Any status' },
+  { value: 'invited', label: 'Invited' },
+  { value: 'interview_completed', label: 'Completed' },
+  { value: 'shortlisted', label: 'Shortlisted' },
+  { value: 'rejected', label: 'Rejected' },
+  { value: 'on_hold', label: 'On Hold' },
+];
+
 const DEFAULT_PAGE_SIZE = 25;
 
 // Workflow signals the actions mutate locally before/without a refetch.
@@ -110,7 +120,12 @@ export function RecruiterDashboard() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [field, setField] = useState('');
   const [decision, setDecision] = useState<RecruiterDecisionFilter | ''>('');
+  const [status, setStatus] = useState<CandidateStatus | ''>('');
   const [integrity, setIntegrity] = useState<RecruiterIntegrityFilter | ''>('');
+  const [minScore, setMinScore] = useState('');
+  const [maxScore, setMaxScore] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [sort, setSort] = useState<RecruiterSortField>('final_score');
   const [order, setOrder] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState(1);
@@ -137,20 +152,27 @@ export function RecruiterDashboard() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, field, decision, integrity, sort, order]);
+  }, [debouncedSearch, field, decision, status, integrity, minScore, maxScore, dateFrom, dateTo, sort, order]);
 
   const params: RecruiterListParams = useMemo(
     () => ({
       search: debouncedSearch || undefined,
       field: field || undefined,
       decision: decision || undefined,
+      status: status || undefined,
       integrity: integrity || undefined,
+      min_score: minScore ? Number(minScore) : undefined,
+      max_score: maxScore ? Number(maxScore) : undefined,
+      // <input type="date"> gives YYYY-MM-DD; widen the upper bound to
+      // end-of-day so same-day interviews are included.
+      date_from: dateFrom ? `${dateFrom}T00:00:00Z` : undefined,
+      date_to: dateTo ? `${dateTo}T23:59:59Z` : undefined,
       sort,
       order,
       page,
       page_size: DEFAULT_PAGE_SIZE,
     }),
-    [debouncedSearch, field, decision, integrity, sort, order, page],
+    [debouncedSearch, field, decision, status, integrity, minScore, maxScore, dateFrom, dateTo, sort, order, page],
   );
 
   useEffect(() => {
@@ -199,13 +221,19 @@ export function RecruiterDashboard() {
   }, [rows]);
 
   const hasActiveFilters =
-    !!debouncedSearch || !!field || !!decision || !!integrity;
+    !!debouncedSearch || !!field || !!decision || !!status || !!integrity ||
+    !!minScore || !!maxScore || !!dateFrom || !!dateTo;
 
   const handleClearFilters = () => {
     setSearchInput('');
     setField('');
     setDecision('');
+    setStatus('');
     setIntegrity('');
+    setMinScore('');
+    setMaxScore('');
+    setDateFrom('');
+    setDateTo('');
   };
 
   const handleSortChange = (value: RecruiterSortField) => {
@@ -330,7 +358,7 @@ export function RecruiterDashboard() {
         <input
           type="search"
           className="recruiter-search"
-          placeholder="Search by name, field or resume…"
+          placeholder="Search by name, email, phone or username…"
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
           aria-label="Search candidates"
@@ -359,6 +387,18 @@ export function RecruiterDashboard() {
           ))}
         </div>
 
+        <div className="recruiter-pill-row" role="group" aria-label="Status">
+          {STATUS_OPTIONS.map((opt) => (
+            <Pill
+              key={opt.value || 'any-status'}
+              active={status === opt.value}
+              onClick={() => setStatus(opt.value)}
+            >
+              {opt.label}
+            </Pill>
+          ))}
+        </div>
+
         <div className="recruiter-pill-row" role="group" aria-label="Integrity">
           {INTEGRITY_OPTIONS.map((opt) => (
             <Pill
@@ -369,6 +409,53 @@ export function RecruiterDashboard() {
               {opt.label}
             </Pill>
           ))}
+        </div>
+
+        <div className="recruiter-range-row">
+          <label className="recruiter-range">
+            <span className="recruiter-range-label">Score</span>
+            <input
+              type="number"
+              className="form-input recruiter-range-input"
+              value={minScore}
+              onChange={(e) => setMinScore(e.target.value)}
+              min={0}
+              max={10}
+              step={0.1}
+              placeholder="min"
+              aria-label="Minimum score"
+            />
+            <span className="recruiter-range-sep">–</span>
+            <input
+              type="number"
+              className="form-input recruiter-range-input"
+              value={maxScore}
+              onChange={(e) => setMaxScore(e.target.value)}
+              min={0}
+              max={10}
+              step={0.1}
+              placeholder="max"
+              aria-label="Maximum score"
+            />
+          </label>
+          <label className="recruiter-range">
+            <span className="recruiter-range-label">Interview date</span>
+            <input
+              type="date"
+              className="form-input recruiter-range-input"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              aria-label="Interviews from date"
+            />
+            <span className="recruiter-range-sep">–</span>
+            <input
+              type="date"
+              className="form-input recruiter-range-input"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              aria-label="Interviews to date"
+            />
+          </label>
         </div>
 
         {hasActiveFilters && (

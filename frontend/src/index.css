@@ -501,6 +501,38 @@ a:hover { color: var(--primary); }
   line-height: 1.4;
 }
 
+/* Recruiter dashboard score/date range controls — sit in the filter bar
+   beside the pill rows; wrap on narrow viewports. */
+.recruiter-range-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  align-items: center;
+}
+
+.recruiter-range {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.recruiter-range-label {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  margin-right: var(--space-xs);
+}
+
+.recruiter-range-input {
+  width: auto;
+  max-width: 8.5rem;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.8125rem;
+}
+
+.recruiter-range-sep {
+  color: var(--text-tertiary);
+}
+
 /* Recruiter-analytics recent-activity filter bar — inputs wrap on narrow
    viewports; each takes a sensible min width before stacking. */
 .analytics-filter-bar {

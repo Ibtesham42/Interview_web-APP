@@ -23,6 +23,74 @@
 
 ---
 
+## 30/05/2026 22:17
+Type: Feature
+
+Candidate search & advanced filtering on the recruiter dashboard. Most
+of the machinery existed (`rank_candidates` + `RecruiterDashboard`); this
+fills the gaps and reuses existing candidate/interview data — no schema,
+no migration.
+
+Backend (`services/recruiter.py` + `routers/recruiter.py`):
+- Search now spans name + email + phone (via resume_text) + username.
+  Moved search from the SQL `.or_` push-down to Python so a single token
+  can match across candidate columns AND `profiles.username` (a different
+  table) with correct multi-word AND-of-ORs. resume_text + the username
+  map are fetched ONLY when a search is active, so the common list load
+  pays nothing extra. (No structured phone column exists; phone numbers
+  live in resume_text, which is searched.)
+- New `status` filter (Invited / Interview Completed / Shortlisted /
+  Rejected / On Hold) — the derived per-recruiter status from ADR 0011
+  (`_status_from_decision`). Distinct from the existing decision filter
+  (which keeps Undecided/Bookmarked). `VALID_STATUS_FILTERS` validated at
+  the boundary (400 on bad value).
+- `date_from`/`date_to` now mean an INTERVIEW date range (keep candidates
+  with an interview in the window), not signup date — matches the request
+  and the analytics summary. The filter was previously unexposed in the
+  UI, so the semantic change has no live impact.
+- `min_score`/`max_score` already existed in the backend; now surfaced.
+- Sort (newest/oldest/highest/lowest) already covered by the existing
+  sort-field + order controls — unchanged.
+
+Frontend (`RecruiterDashboard.tsx`):
+- Search placeholder updated; new Status pill row; score-range (min/max
+  number inputs) and interview-date-range (date inputs, date_to widened
+  to end-of-day) controls; all wired into params + clear-filters +
+  hasActiveFilters + page reset. New `.recruiter-range-*` CSS.
+- `RecruiterListParams` gains `status`; the generic param serializer
+  already forwards min_score/max_score/date_from/date_to.
+
+Tenant isolation: unchanged — `rank_candidates` is tenant-scoped via
+`tenant_scope` (company_admin = own company; platform admin = all). The
+new username lookup is scoped to the already-tenant-filtered candidate
+set.
+
+Verification:
+- Backend pytest 323/323 (+14: search by name/email/phone/username +
+  multi-token, status ×6, interview-date-range ×2). Frontend tsc +
+  vitest 20/20 + build.
+- LIVE read-only run against the hosted DB: search 'sham'→22,
+  '@gmail'→22 (email search works), status=interview_completed→8
+  (matches analytics), invited→28, score 5–10→0, sort asc lowest-first.
+
+Affected files:
+- `backend/app/services/recruiter.py`
+- `backend/app/routers/recruiter.py`
+- `backend/tests/test_recruiter_service.py`
+- `frontend/src/components/recruiter/RecruiterDashboard.tsx`
+- `frontend/src/services/api.ts` (unchanged behavior — generic serializer)
+- `frontend/src/types/index.ts`, `frontend/src/index.css`
+- `CHANGE.md`
+
+Architectural impact: search moved SQL→Python (resume_text/username only
+fetched when searching). Bulk-query invariant preserved. No schema/auth/
+tenant-model change. CONTEXT.md unchanged (reuses Candidate Status).
+
+Future considerations: a structured candidate `phone` column (parser
+extraction) would make phone search exact rather than resume-substring;
+pg_trgm + GIN remains the documented upgrade if Python search ever feels
+slow at scale.
+
 ## 30/05/2026 21:28
 Type: Feature
 
