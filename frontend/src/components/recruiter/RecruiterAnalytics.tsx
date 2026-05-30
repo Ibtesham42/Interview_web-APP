@@ -1,11 +1,31 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { recruiterApi } from '../../services/api';
 import type {
+  CandidateStatus,
   FunnelFieldBreakdown,
   HiringFunnelResponse,
   IntegrityVolumeResponse,
+  RecruiterAnalyticsSummary,
   ScoresByFieldResponse,
 } from '../../types';
+
+const STATUS_LABELS: Record<CandidateStatus, string> = {
+  invited: 'Invited',
+  interview_completed: 'Interview Completed',
+  shortlisted: 'Shortlisted',
+  rejected: 'Rejected',
+  on_hold: 'On Hold',
+};
+
+function formatDate(d: string | null): string {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString([], {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
 
 function fieldLabel(f: string): string {
   if (!f) return 'General';
@@ -91,6 +111,14 @@ export function RecruiterAnalytics() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Summary KPIs (company all-time) + filterable recent activity.
+  const [summary, setSummary] = useState<RecruiterAnalyticsSummary | null>(null);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [statusFilter, setStatusFilter] = useState<CandidateStatus | ''>('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+
   useEffect(() => {
     let cancelled = false;
     Promise.all([recruiterApi.funnel(), recruiterApi.scores(), recruiterApi.integrity()])
@@ -112,6 +140,28 @@ export function RecruiterAnalytics() {
       cancelled = true;
     };
   }, []);
+
+  // Summary refetches (debounced) whenever a filter changes. Totals are
+  // company-wide and don't move with the filters; the recent-activity
+  // list does. Failures are swallowed — the summary is supplemental to
+  // the funnel/scores/integrity panels above.
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      recruiterApi
+        .summary({
+          name: name || undefined,
+          email: email || undefined,
+          status: statusFilter || undefined,
+          date_from: dateFrom ? `${dateFrom}T00:00:00Z` : undefined,
+          date_to: dateTo ? `${dateTo}T23:59:59Z` : undefined,
+        })
+        .then(setSummary)
+        .catch(() => {
+          /* keep prior summary; supplemental panel */
+        });
+    }, 300);
+    return () => window.clearTimeout(handle);
+  }, [name, email, statusFilter, dateFrom, dateTo]);
 
   if (loading) {
     return (
@@ -145,11 +195,47 @@ export function RecruiterAnalytics() {
         <div>
           <h1>Recruiter analytics</h1>
           <p className="page-sub">
-            Hiring funnel, score distribution, and integrity-event volume across
-            the platform.
+            Candidate pipeline, hiring funnel, scores, and integrity volume.
           </p>
         </div>
       </div>
+
+      {summary && (
+        <div className="stat-grid auto">
+          <div className="stat-card">
+            <div className="stat-value">{summary.totals.invited}</div>
+            <div className="stat-label">Invited</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-value">{summary.totals.registrations}</div>
+            <div className="stat-label">Registrations</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-value">{summary.totals.interviews_completed}</div>
+            <div className="stat-label">Interviews completed</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-value score-good">{summary.totals.shortlisted}</div>
+            <div className="stat-label">Shortlisted</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-value score-low">{summary.totals.rejected}</div>
+            <div className="stat-label">Rejected</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-value">{summary.totals.on_hold}</div>
+            <div className="stat-label">On hold</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-value">{summary.totals.completion_rate}%</div>
+            <div className="stat-label">Completion rate</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-value">{summary.totals.shortlist_rate}%</div>
+            <div className="stat-label">Shortlist rate</div>
+          </div>
+        </div>
+      )}
 
       <div className="panel">
         <div className="panel-head">
@@ -243,6 +329,107 @@ export function RecruiterAnalytics() {
                 </div>
               );
             })}
+          </div>
+        )}
+      </div>
+
+      <div className="panel">
+        <div className="panel-head">
+          <h3>Recent candidate activity</h3>
+          <span className="cell-sub">
+            {summary?.recent_total ?? 0} matching · filters apply to this list
+          </span>
+        </div>
+
+        <div className="analytics-filter-bar">
+          <input
+            className="form-input"
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Filter by name"
+            aria-label="Filter by candidate name"
+          />
+          <input
+            className="form-input"
+            type="text"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Filter by email"
+            aria-label="Filter by candidate email"
+          />
+          <select
+            className="form-input"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as CandidateStatus | '')}
+            aria-label="Filter by status"
+          >
+            <option value="">All statuses</option>
+            <option value="invited">Invited</option>
+            <option value="interview_completed">Interview Completed</option>
+            <option value="shortlisted">Shortlisted</option>
+            <option value="rejected">Rejected</option>
+            <option value="on_hold">On Hold</option>
+          </select>
+          <input
+            className="form-input"
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            aria-label="Interviews from date"
+          />
+          <input
+            className="form-input"
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            aria-label="Interviews to date"
+          />
+        </div>
+
+        {!summary ? (
+          <p className="report-empty">Loading activity…</p>
+        ) : summary.recent_activity.length === 0 ? (
+          <p className="report-empty">No candidates match these filters.</p>
+        ) : (
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Candidate</th>
+                  <th>Status</th>
+                  <th>Best score</th>
+                  <th>Last interview</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summary.recent_activity.map((row) => (
+                  <tr key={row.candidate_id}>
+                    <td>
+                      <Link to={`/recruiter/candidates/${row.candidate_id}`} className="cell-name">
+                        {row.name || 'Unnamed candidate'}
+                      </Link>
+                      <div className="cell-sub">{row.email || '—'}</div>
+                    </td>
+                    <td>
+                      <span className={`status-chip status-${row.status}`}>
+                        {STATUS_LABELS[row.status]}
+                      </span>
+                    </td>
+                    <td>
+                      {row.best_score > 0 ? (
+                        <span className={`score-${scoreClass(row.best_score)}`}>
+                          {row.best_score.toFixed(1)}
+                        </span>
+                      ) : (
+                        <span className="cell-sub">—</span>
+                      )}
+                    </td>
+                    <td className="cell-sub">{formatDate(row.last_interview_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

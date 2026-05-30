@@ -23,6 +23,76 @@
 
 ---
 
+## 30/05/2026 21:28
+Type: Feature
+
+Recruiter/company analytics dashboard. Extended the existing analytics
+page (funnel/scores/integrity) with a candidate-pipeline summary rather
+than building a new screen — the route + capability gate + tenant
+scoping already existed.
+
+KPI totals (company all-time, tenant-scoped): invited, registrations,
+interviews completed, shortlisted, rejected, on hold, completion rate,
+shortlist rate. Plus a filterable Recent Candidate Activity table.
+
+Access (requirement) is satisfied by REUSE: the endpoint uses
+`get_current_recruiter` + `tenant_scope`, so a company_admin sees only
+their own company and a platform admin (NULL company_id) gets the
+cross-company view — same pattern as funnel/scores/integrity.
+
+Design choices:
+- KPI totals are company ALL-TIME; the name/email/status/interview-date
+  filters scope the Recent Activity table ONLY. This avoids nonsensical
+  filtered aggregate rates (e.g. status=shortlisted → 100% shortlist
+  rate) and matches the conventional dashboard pattern.
+- "Invited" = distinct invite-email recipients (`email_outbox` rows with
+  `candidate_id IS NULL`); a shortlist/reject email (candidate_id set)
+  does not count as an invite. Swallows a missing migration-006 table.
+- Status counts use the effective-status precedence from ADR 0011
+  (shortlisted > rejected > on_hold > completed > invited) so each
+  candidate sits in exactly one bucket.
+- completion_rate = candidates who completed ≥1 interview / registrations;
+  shortlist_rate = shortlisted / completed. Reuses `_conversion_rate`.
+
+What landed:
+- Backend `services/recruiter_analytics.py`: `candidate_analytics_summary`
+  (one bulk-query set: candidates, interviews, decisions, invite outbox,
+  bulk scores — no N+1) + `_effective_status` / `_within` helpers.
+- Backend `routers/recruiter.py`: `GET /recruiter/analytics/summary`
+  with name/email/status/date_from/date_to query params, tenant-scoped.
+  Returns a dict (same pattern as admin overview).
+- Frontend `RecruiterAnalytics.tsx`: KPI stat-card row + a Recent
+  Candidate Activity panel with a filter bar (name, email, status select,
+  interview date range) and a table linking to each candidate detail.
+  Debounced refetch (300ms) on filter change; date_to widened to
+  end-of-day so same-day interviews are included.
+- Frontend types + `recruiterApi.summary(filters)` + `.analytics-filter-bar` CSS.
+
+Verification:
+- Backend pytest 309/309 (+12 summary: totals, status precedence,
+  name/email/status/date filters, totals-unaffected-by-filters, tenant
+  scope ×2). Frontend tsc + vitest 20/20 + build.
+- LIVE read-only run against the hosted DB (platform-admin scope):
+  36 registrations / 8 completed / 1 invited / 1 shortlisted,
+  completion 22.2%, shortlist 12.5%; recent activity returned real
+  candidates newest-first with derived status. No migration needed
+  (reuses existing tables).
+
+Affected files:
+- `backend/app/services/recruiter_analytics.py`
+- `backend/app/routers/recruiter.py`
+- `backend/tests/test_recruiter_analytics.py`
+- `frontend/src/components/recruiter/RecruiterAnalytics.tsx`
+- `frontend/src/services/api.ts`, `frontend/src/types/index.ts`, `frontend/src/index.css`
+- `CHANGE.md`
+
+Architectural impact: additive read endpoint + UI. No schema, auth, or
+tenant-model change; bulk-query invariant preserved. No new migration.
+
+Future considerations: a date-range over the KPI cards (cohort view) and
+CSV export are easy follow-ups if asked; per-company email templates
+remain the deferred item from ADR 0011.
+
 ## 30/05/2026 20:42
 Type: Feature
 

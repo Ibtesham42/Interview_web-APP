@@ -501,6 +501,20 @@ a:hover { color: var(--primary); }
   line-height: 1.4;
 }
 
+/* Recruiter-analytics recent-activity filter bar — inputs wrap on narrow
+   viewports; each takes a sensible min width before stacking. */
+.analytics-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+.analytics-filter-bar .form-input {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+
 /* Two form-groups side by side on wider viewports; stacks on narrow.
    Introduced for the company-onboarding structured address (migration
    008): city/state and country/postal sit two-up. */

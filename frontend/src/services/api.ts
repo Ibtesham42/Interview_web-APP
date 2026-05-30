@@ -19,6 +19,8 @@ import type {
   Profile,
   HiringFunnelResponse,
   IntegrityVolumeResponse,
+  RecruiterAnalyticsFilters,
+  RecruiterAnalyticsSummary,
   RecruiterCandidateDetail,
   RecruiterDecision,
   RecruiterDecisionRow,
@@ -233,6 +235,18 @@ export const recruiterApi = {
   scores: () => fetchJson<ScoresByFieldResponse>('/recruiter/analytics/scores'),
   integrity: () =>
     fetchJson<IntegrityVolumeResponse>('/recruiter/analytics/integrity'),
+  summary: (filters: RecruiterAnalyticsFilters = {}) => {
+    const qs = new URLSearchParams();
+    if (filters.name) qs.set('name', filters.name);
+    if (filters.email) qs.set('email', filters.email);
+    if (filters.status) qs.set('status', filters.status);
+    if (filters.date_from) qs.set('date_from', filters.date_from);
+    if (filters.date_to) qs.set('date_to', filters.date_to);
+    const q = qs.toString();
+    return fetchJson<RecruiterAnalyticsSummary>(
+      `/recruiter/analytics/summary${q ? `?${q}` : ''}`,
+    );
+  },
 
   // Email composer (PR 7) — draft + send + list. The composer opens
   // a draft, the recruiter optionally edits, then sends. The list is

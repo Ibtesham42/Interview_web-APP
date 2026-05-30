@@ -455,6 +455,43 @@ export interface IntegrityVolumeResponse {
   total: number;
 }
 
+// Recruiter/company analytics summary (GET /recruiter/analytics/summary).
+// Totals are company all-time (tenant-scoped); recent_activity respects
+// the name/email/status/interview-date filters.
+export interface RecruiterAnalyticsTotals {
+  invited: number;
+  registrations: number;
+  interviews_completed: number;
+  shortlisted: number;
+  rejected: number;
+  on_hold: number;
+  completion_rate: number;
+  shortlist_rate: number;
+}
+
+export interface RecruiterActivityRow {
+  candidate_id: string;
+  name: string;
+  email: string | null;
+  status: CandidateStatus;
+  last_interview_at: string | null;
+  best_score: number;
+}
+
+export interface RecruiterAnalyticsSummary {
+  totals: RecruiterAnalyticsTotals;
+  recent_activity: RecruiterActivityRow[];
+  recent_total: number;
+}
+
+export interface RecruiterAnalyticsFilters {
+  name?: string;
+  email?: string;
+  status?: string;
+  date_from?: string;
+  date_to?: string;
+}
+
 export type RecruiterSortField =
   | 'final_score'
   | 'created_at'

@@ -225,3 +225,177 @@ def integrity_event_volume(supabase, company_id: Optional[str] = None) -> Dict[s
     ]
     items.sort(key=lambda r: r["count"], reverse=True)
     return {"items": items, "total": sum(counts.values())}
+
+
+# Effective company-level status precedence (mirrors the frontend
+# deriveStatus / ADR 0011): a candidate sits in exactly one bucket — the
+# strongest decision any recruiter made, else their funnel position.
+def _effective_status(decisions: set, has_completed: bool) -> str:
+    if "shortlisted" in decisions:
+        return "shortlisted"
+    if "rejected" in decisions:
+        return "rejected"
+    if "hold" in decisions:
+        return "on_hold"
+    return "interview_completed" if has_completed else "invited"
+
+
+def candidate_analytics_summary(
+    supabase,
+    company_id: Optional[str] = None,
+    *,
+    name: Optional[str] = None,
+    email: Optional[str] = None,
+    status: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    recent_limit: int = 20,
+) -> Dict[str, Any]:
+    """Recruiter/company analytics summary.
+
+    KPI totals are company all-time (tenant-scoped) — the standard
+    dashboard snapshot. The filters (name / email / status / interview
+    date range) scope ONLY the `recent_activity` table, so filtering can
+    never produce nonsensical aggregate rates.
+
+    `company_id` mirrors the other aggregations: non-None tenant-scopes
+    every SELECT; None = no scope (platform admin → cross-company).
+
+    Bulk-query invariant holds: a fixed set of SELECTs (candidates,
+    interviews, decisions, invite outbox, bulk scores), never N+1.
+    """
+    cand_q = supabase.table("candidates").select("id,name,email,created_at")
+    iv_q = supabase.table("interviews").select("id,candidate_id,status,created_at")
+    dec_q = supabase.table("recruiter_decisions").select("candidate_id,decision")
+    if company_id is not None:
+        cand_q = cand_q.eq("company_id", company_id)
+        iv_q = iv_q.eq("company_id", company_id)
+        dec_q = dec_q.eq("company_id", company_id)
+    candidates = cand_q.execute().data or []
+    interviews = iv_q.execute().data or []
+    decisions = dec_q.execute().data or []
+
+    # Invites live in email_outbox with candidate_id IS NULL (sent before
+    # the candidate signs up). Swallow a missing table so the screen still
+    # renders pre-migration-006.
+    invited = 0
+    try:
+        out_q = supabase.table("email_outbox").select("to_email,candidate_id")
+        if company_id is not None:
+            out_q = out_q.eq("company_id", company_id)
+        outbox = out_q.execute().data or []
+        invited = len({
+            o.get("to_email") for o in outbox
+            if o.get("candidate_id") is None and o.get("to_email")
+        })
+    except Exception:
+        invited = 0
+
+    # Decision set + completion per candidate (over ALL tenant candidates).
+    decisions_by_cand: Dict[str, set] = {}
+    for d in decisions:
+        cid = d.get("candidate_id")
+        if cid:
+            decisions_by_cand.setdefault(cid, set()).add(d.get("decision"))
+
+    completed_ids: set = {
+        iv["candidate_id"] for iv in interviews
+        if iv.get("status") == "completed" and iv.get("candidate_id")
+    }
+    interviews_completed = sum(
+        1 for iv in interviews if iv.get("status") == "completed"
+    )
+
+    status_of: Dict[str, str] = {
+        c["id"]: _effective_status(
+            decisions_by_cand.get(c["id"], set()), c["id"] in completed_ids
+        )
+        for c in candidates
+    }
+
+    registrations = len(candidates)
+    completed_candidates = len(completed_ids)
+    shortlisted = sum(1 for s in status_of.values() if s == "shortlisted")
+    rejected = sum(1 for s in status_of.values() if s == "rejected")
+    on_hold = sum(1 for s in status_of.values() if s == "on_hold")
+
+    totals = {
+        "invited": invited,
+        "registrations": registrations,
+        "interviews_completed": interviews_completed,
+        "shortlisted": shortlisted,
+        "rejected": rejected,
+        "on_hold": on_hold,
+        # completion = registered candidates who finished ≥1 interview.
+        "completion_rate": _conversion_rate(completed_candidates, registrations),
+        # shortlist = of those who completed, how many got shortlisted.
+        "shortlist_rate": _conversion_rate(shortlisted, completed_candidates),
+    }
+
+    # --- Recent activity (filtered) ---
+    latest_iv: Dict[str, Optional[str]] = {}
+    interviews_in_range_by_cand: Dict[str, bool] = {}
+    for iv in interviews:
+        cid = iv.get("candidate_id")
+        if not cid:
+            continue
+        ts = iv.get("created_at")
+        if ts and (latest_iv.get(cid) is None or ts > latest_iv[cid]):
+            latest_iv[cid] = ts
+        if _within(ts, date_from, date_to):
+            interviews_in_range_by_cand[cid] = True
+
+    iv_scores = score_interviews_bulk(supabase, [iv["id"] for iv in interviews])
+    best_score: Dict[str, float] = {}
+    for iv in interviews:
+        if iv.get("status") != "completed":
+            continue
+        score = iv_scores.get(iv["id"], {}).get("score", 0)
+        cid = iv["candidate_id"]
+        if score > best_score.get(cid, 0):
+            best_score[cid] = score
+
+    name_l = (name or "").strip().lower()
+    email_l = (email or "").strip().lower()
+    date_active = bool(date_from or date_to)
+
+    rows: List[Dict[str, Any]] = []
+    for c in candidates:
+        cid = c["id"]
+        if name_l and name_l not in (c.get("name") or "").lower():
+            continue
+        if email_l and email_l not in (c.get("email") or "").lower():
+            continue
+        if status and status_of.get(cid) != status:
+            continue
+        if date_active and not interviews_in_range_by_cand.get(cid):
+            continue
+        rows.append({
+            "candidate_id": cid,
+            "name": c.get("name") or "",
+            "email": c.get("email"),
+            "status": status_of.get(cid, "invited"),
+            "last_interview_at": latest_iv.get(cid),
+            "best_score": round(best_score.get(cid, 0.0), 1),
+        })
+
+    # Most recent activity first; candidates with no interview sort last.
+    rows.sort(key=lambda r: r["last_interview_at"] or "", reverse=True)
+
+    return {
+        "totals": totals,
+        "recent_activity": rows[:recent_limit],
+        "recent_total": len(rows),
+    }
+
+
+def _within(ts: Optional[str], date_from: Optional[str], date_to: Optional[str]) -> bool:
+    """ISO-timestamp range check (lexicographic — safe for ISO-8601).
+    A missing timestamp is never in range."""
+    if ts is None:
+        return False
+    if date_from and ts < date_from:
+        return False
+    if date_to and ts > date_to:
+        return False
+    return True

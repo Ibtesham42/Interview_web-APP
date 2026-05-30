@@ -45,6 +45,7 @@ from app.services.recruiter import (
     upsert_recruiter_decision,
 )
 from app.services.recruiter_analytics import (
+    candidate_analytics_summary,
     hiring_funnel,
     integrity_event_volume,
     scores_by_field,
@@ -240,6 +241,36 @@ async def analytics_scores(user=Depends(get_current_recruiter)):
 @router.get("/analytics/integrity", response_model=IntegrityVolumeResponse)
 async def analytics_integrity(user=Depends(get_current_recruiter)):
     return integrity_event_volume(get_supabase(), company_id=tenant_scope(user))
+
+
+@router.get("/analytics/summary")
+async def analytics_summary(
+    name: Optional[str] = Query(None, description="Substring match on candidate name (activity table)"),
+    email: Optional[str] = Query(None, description="Substring match on candidate email (activity table)"),
+    status: Optional[str] = Query(
+        None,
+        description="Filter activity by derived status: invited | interview_completed | shortlisted | rejected | on_hold",
+    ),
+    date_from: Optional[str] = Query(None, description="ISO lower bound on interview date (activity table)"),
+    date_to: Optional[str] = Query(None, description="ISO upper bound on interview date (activity table)"),
+    user=Depends(get_current_recruiter),
+):
+    """Recruiter/company analytics summary.
+
+    KPI totals are company all-time (tenant-scoped). The filters scope the
+    `recent_activity` table only. `tenant_scope` gives a `company_admin`
+    their own company and a platform admin (NULL company_id) the
+    cross-company view — the access requirement is satisfied by reuse.
+    """
+    return candidate_analytics_summary(
+        get_supabase(),
+        company_id=tenant_scope(user),
+        name=name,
+        email=email,
+        status=status,
+        date_from=date_from,
+        date_to=date_to,
+    )
 
 
 # ---------------------------------------------------------------------------

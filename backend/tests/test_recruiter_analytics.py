@@ -21,6 +21,7 @@ from unittest.mock import MagicMock
 
 from app.services.recruiter_analytics import (
     FUNNEL_STAGES,
+    candidate_analytics_summary,
     hiring_funnel,
     integrity_event_volume,
     scores_by_field,
@@ -55,7 +56,7 @@ class _FakeQueryChain:
 
 
 def _fake_supabase(*, candidates=None, interviews=None, decisions=None,
-                    evaluations=None, integrity=None,
+                    evaluations=None, integrity=None, email_outbox=None,
                     integrity_raises=False):
     table_rows = {
         "candidates": candidates or [],
@@ -63,6 +64,7 @@ def _fake_supabase(*, candidates=None, interviews=None, decisions=None,
         "recruiter_decisions": decisions or [],
         "evaluations": evaluations or [],
         "interview_integrity_events": integrity or [],
+        "email_outbox": email_outbox or [],
     }
     supabase = MagicMock()
 
@@ -346,3 +348,155 @@ class TestIntegrityEventVolume:
         )
         result = integrity_event_volume(supabase)
         assert result["items"] == [{"event_type": "unknown", "count": 2}]
+
+
+# ---------------------------------------------------------------------------
+# candidate_analytics_summary (recruiter/company analytics dashboard)
+# ---------------------------------------------------------------------------
+
+def _summary_fixture():
+    """Three candidates: one shortlisted (completed), one rejected
+    (completed), one on-hold (not completed), plus a 4th invited-only
+    (signed up, no interview). Two invite emails. All in company A."""
+    A = "co-a"
+    candidates = [
+        {"id": "c1", "name": "Alice Smith", "email": "alice@x.com",
+         "created_at": "2026-05-01T00:00:00Z", "company_id": A},
+        {"id": "c2", "name": "Bob Jones", "email": "bob@x.com",
+         "created_at": "2026-05-02T00:00:00Z", "company_id": A},
+        {"id": "c3", "name": "Carol Lee", "email": "carol@x.com",
+         "created_at": "2026-05-03T00:00:00Z", "company_id": A},
+        {"id": "c4", "name": "Dan Roe", "email": "dan@x.com",
+         "created_at": "2026-05-04T00:00:00Z", "company_id": A},
+    ]
+    interviews = [
+        {"id": "iv1", "candidate_id": "c1", "status": "completed",
+         "created_at": "2026-05-10T00:00:00Z", "company_id": A},
+        {"id": "iv2", "candidate_id": "c2", "status": "completed",
+         "created_at": "2026-05-11T00:00:00Z", "company_id": A},
+        {"id": "iv3", "candidate_id": "c3", "status": "in_progress",
+         "created_at": "2026-05-12T00:00:00Z", "company_id": A},
+    ]
+    decisions = [
+        {"candidate_id": "c1", "decision": "shortlisted", "company_id": A},
+        {"candidate_id": "c2", "decision": "rejected", "company_id": A},
+        {"candidate_id": "c3", "decision": "hold", "company_id": A},
+    ]
+    email_outbox = [
+        {"to_email": "alice@x.com", "candidate_id": None, "company_id": A},
+        {"to_email": "newperson@x.com", "candidate_id": None, "company_id": A},
+        # A shortlist email (candidate_id set) must NOT count as an invite.
+        {"to_email": "alice@x.com", "candidate_id": "c1", "company_id": A},
+    ]
+    return _fake_supabase(candidates=candidates, interviews=interviews,
+                          decisions=decisions, email_outbox=email_outbox)
+
+
+class TestCandidateAnalyticsSummaryTotals:
+    def test_empty_state(self):
+        result = candidate_analytics_summary(_fake_supabase())
+        t = result["totals"]
+        assert t == {
+            "invited": 0, "registrations": 0, "interviews_completed": 0,
+            "shortlisted": 0, "rejected": 0, "on_hold": 0,
+            "completion_rate": 0.0, "shortlist_rate": 0.0,
+        }
+        assert result["recent_activity"] == []
+
+    def test_totals_counts(self):
+        result = candidate_analytics_summary(_summary_fixture())
+        t = result["totals"]
+        assert t["registrations"] == 4
+        assert t["interviews_completed"] == 2          # iv1 + iv2
+        assert t["shortlisted"] == 1
+        assert t["rejected"] == 1
+        assert t["on_hold"] == 1
+        assert t["invited"] == 2                        # distinct invite recipients
+        # 2 of 4 candidates completed → 50%
+        assert t["completion_rate"] == 50.0
+        # 1 shortlisted of 2 completed → 50%
+        assert t["shortlist_rate"] == 50.0
+
+    def test_status_precedence_shortlist_wins(self):
+        """A candidate both shortlisted and rejected counts once, as
+        shortlisted (mirrors deriveStatus / ADR 0011)."""
+        supabase = _fake_supabase(
+            candidates=[{"id": "c1", "name": "X", "email": "x@x.com",
+                         "created_at": "2026-05-01T00:00:00Z"}],
+            interviews=[{"id": "iv1", "candidate_id": "c1",
+                         "status": "completed", "created_at": "2026-05-10T00:00:00Z"}],
+            decisions=[
+                {"candidate_id": "c1", "decision": "shortlisted"},
+                {"candidate_id": "c1", "decision": "rejected"},
+            ],
+        )
+        t = candidate_analytics_summary(supabase)["totals"]
+        assert t["shortlisted"] == 1
+        assert t["rejected"] == 0
+
+
+class TestCandidateAnalyticsSummaryActivity:
+    def test_recent_activity_shape_and_order(self):
+        result = candidate_analytics_summary(_summary_fixture())
+        rows = result["recent_activity"]
+        # 4 candidates; ordered by latest interview desc, the
+        # interview-less candidate (Dan) sorts last.
+        assert [r["candidate_id"] for r in rows] == ["c3", "c2", "c1", "c4"]
+        assert rows[-1]["candidate_id"] == "c4"
+        assert rows[0]["status"] == "on_hold"
+
+    def test_name_filter(self):
+        result = candidate_analytics_summary(_summary_fixture(), name="alice")
+        assert [r["candidate_id"] for r in result["recent_activity"]] == ["c1"]
+
+    def test_email_filter(self):
+        result = candidate_analytics_summary(_summary_fixture(), email="bob@")
+        assert [r["candidate_id"] for r in result["recent_activity"]] == ["c2"]
+
+    def test_status_filter(self):
+        result = candidate_analytics_summary(_summary_fixture(), status="rejected")
+        ids = [r["candidate_id"] for r in result["recent_activity"]]
+        assert ids == ["c2"]
+
+    def test_interview_date_range_filter(self):
+        # Only iv1 (c1) falls in this window.
+        result = candidate_analytics_summary(
+            _summary_fixture(),
+            date_from="2026-05-10T00:00:00Z",
+            date_to="2026-05-10T23:59:59Z",
+        )
+        assert [r["candidate_id"] for r in result["recent_activity"]] == ["c1"]
+
+    def test_totals_unaffected_by_activity_filters(self):
+        """KPI totals are company all-time — a name filter narrows the
+        activity table but not the headline numbers."""
+        result = candidate_analytics_summary(_summary_fixture(), name="alice")
+        assert result["totals"]["registrations"] == 4
+        assert len(result["recent_activity"]) == 1
+
+
+class TestCandidateAnalyticsSummaryTenantScope:
+    def _two_tenant(self):
+        return _fake_supabase(
+            candidates=[
+                {"id": "a1", "name": "A One", "email": "a1@x.com",
+                 "created_at": "2026-05-01T00:00:00Z", "company_id": "co-a"},
+                {"id": "b1", "name": "B One", "email": "b1@x.com",
+                 "created_at": "2026-05-01T00:00:00Z", "company_id": "co-b"},
+            ],
+            interviews=[
+                {"id": "ia", "candidate_id": "a1", "status": "completed",
+                 "created_at": "2026-05-10T00:00:00Z", "company_id": "co-a"},
+                {"id": "ib", "candidate_id": "b1", "status": "completed",
+                 "created_at": "2026-05-10T00:00:00Z", "company_id": "co-b"},
+            ],
+        )
+
+    def test_scoped_to_own_company(self):
+        result = candidate_analytics_summary(self._two_tenant(), company_id="co-a")
+        assert result["totals"]["registrations"] == 1
+        assert [r["candidate_id"] for r in result["recent_activity"]] == ["a1"]
+
+    def test_platform_admin_sees_all(self):
+        result = candidate_analytics_summary(self._two_tenant(), company_id=None)
+        assert result["totals"]["registrations"] == 2
