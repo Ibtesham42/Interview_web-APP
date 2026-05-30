@@ -23,6 +23,80 @@
 
 ---
 
+## 30/05/2026 14:21
+Type: Refactor
+
+Self-host the MediaPipe BlazeFace WASM runtime + model instead of
+lazy-loading from jsdelivr / GCS. Production-hardening task from
+`CURRENT_TASKS.md` "Now" slice. Phase C face monitoring
+(`hooks/useFaceMonitor.ts`) used to fetch the WASM runtime from
+`cdn.jsdelivr.net` and the `.tflite` model from
+`storage.googleapis.com`; a blocked or down CDN silently disabled the
+face checks (silent-degradation failure mode). Both now resolve
+same-origin from the Vercel `dist/`.
+
+What landed:
+
+- `frontend/public/mediapipe/blaze_face_short_range.tflite` (new, ~224
+  KB, committed) — the float16 BlazeFace short-range model. Committed to
+  git because it isn't shipped in the npm package; keeping it in-repo
+  makes the build fully offline / air-gap friendly.
+- `frontend/scripts/copy-mediapipe-wasm.mjs` (new) — copies the 4 WASM
+  runtime files (SIMD + nosimd, js loader + wasm binary; ~21 MB) out of
+  `node_modules/@mediapipe/tasks-vision/wasm` into
+  `public/mediapipe/wasm/` at build time. The runtime is a build artifact
+  of the already-pinned `@mediapipe/tasks-vision@^0.10.14` dep, so it's
+  reproducible from the lockfile and kept OUT of git (gitignored) rather
+  than committing 21 MB of binaries. Fails the build loudly if the dep
+  or its expected asset names are missing.
+- `frontend/package.json` — `predev` + `prebuild` lifecycle scripts run
+  the copy so both `vite dev` and `vite build` populate `public/` before
+  serving / bundling. Plus a standalone `copy-mediapipe-wasm` script.
+- `frontend/.gitignore` — ignores `public/mediapipe/wasm/` (the copied
+  runtime); the committed `.tflite` model is unaffected.
+- `frontend/src/hooks/useFaceMonitor.ts` — `MEDIAPIPE_WASM_BASE` →
+  `/mediapipe/wasm`; `BLAZEFACE_MODEL_URL` →
+  `/mediapipe/blaze_face_short_range.tflite`. Dropped the now-unused
+  `MEDIAPIPE_WASM_VERSION` const. Detector-selection logic, sampling
+  loop, and event semantics are unchanged.
+
+Verification:
+- `npx tsc --noEmit` clean; vitest 20/20 pass.
+- `npm run build` — prebuild copies the runtime, `vite build` succeeds,
+  and `dist/mediapipe/{blaze_face_short_range.tflite,wasm/*}` are present
+  (Vite copies `public/` verbatim).
+- `git add -n` confirms only the model + script are staged; the 21 MB
+  WASM is correctly gitignored.
+- Manual browser walk pending: on a Firefox/Safari session (the
+  MediaPipe path; Chromium uses the native FaceDetector and never
+  touches these files), start an interview, confirm the network tab
+  fetches the wasm + model from the app origin (not jsdelivr/GCS), and
+  that `no_face` / `multi_face` events still fire.
+
+Affected files:
+- `frontend/public/mediapipe/blaze_face_short_range.tflite` (new)
+- `frontend/scripts/copy-mediapipe-wasm.mjs` (new)
+- `frontend/package.json`
+- `frontend/.gitignore`
+- `frontend/src/hooks/useFaceMonitor.ts`
+- `CURRENT_TASKS.md`, `CHANGE.md`
+
+Architectural impact: removes two third-party runtime dependencies
+(jsdelivr, GCS) from the candidate's interview path. The integrity
+pipeline is now self-contained on our origin. No change to the WS
+protocol, event semantics, or the graceful-degradation fallback chain
+(native FaceDetector → MediaPipe → off).
+
+Future considerations: the Vercel build command must be `npm run build`
+for `prebuild` to fire (the default for a Vite project — confirm if a
+custom build command is ever set). Vercel serves `.wasm` as
+`application/wasm` by default, so streaming compilation still works.
+URLs are root-absolute (`/mediapipe/...`); if the app is ever deployed
+under a sub-path, switch to `import.meta.env.BASE_URL`. When
+`@mediapipe/tasks-vision` is bumped, the copy script picks up the new
+runtime automatically, but re-download the matching model if the model
+format ever changes.
+
 ## 30/05/2026 14:11
 Type: Feature
 

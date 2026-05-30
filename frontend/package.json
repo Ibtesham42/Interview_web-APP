@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "copy-mediapipe-wasm": "node scripts/copy-mediapipe-wasm.mjs",
+    "predev": "node scripts/copy-mediapipe-wasm.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/copy-mediapipe-wasm.mjs",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest run",

@@ -53,9 +53,7 @@ _All items burned down this phase — see "Done" section below._
 
 ### Production hardening
 
-| Item | Size | Notes |
-|---|---|---|
-| Self-host MediaPipe BlazeFace WASM + model in Vercel `dist/` | S | Phase C currently lazy-loads from jsdelivr / GCS. Air-gap-friendly and removes a silent-degradation failure mode. |
+_All items burned down this phase — see "Done" section below._
 
 ---
 
@@ -361,6 +359,15 @@ visual report back, or just work from this section.
 ## Done in this phase
 
 (Update as items land. Newest at the top.)
+
+- 2026-05-30 — Shipped the Production-hardening item: self-hosted the
+  MediaPipe BlazeFace WASM runtime + model. Phase C face monitoring now
+  fetches both from our own origin (Vercel `dist/`) instead of jsdelivr /
+  GCS — removes the silent-degradation failure mode if a CDN is
+  blocked/down. WASM copied from the pinned dep at build time
+  (predev/prebuild, gitignored); the ~224 KB model is committed under
+  `public/mediapipe/`. tsc + vitest + build all green. See `CHANGE.md`
+  2026-05-30 14:21.
 
 - 2026-05-30 — Shipped the Reliability item: integrity-event volume
   (by event type) now surfaces in the admin overview dashboard. Backend

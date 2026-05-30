@@ -21,3 +21,9 @@ build/
 
 # Testing
 coverage/
+
+# MediaPipe WASM runtime — copied from node_modules at build time by
+# scripts/copy-mediapipe-wasm.mjs (predev/prebuild). Reproducible from the
+# pinned @mediapipe/tasks-vision dep, so kept out of git. The companion
+# model (public/mediapipe/*.tflite) IS committed — it isn't in the package.
+public/mediapipe/wasm/

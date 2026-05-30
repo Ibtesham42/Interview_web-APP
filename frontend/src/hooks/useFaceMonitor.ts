@@ -22,12 +22,14 @@ const NO_FACE_COOLDOWN_MS = 10000;
 const MULTI_FACE_COOLDOWN_MS = 8000;
 
 // MediaPipe Tasks Vision is pinned in package.json (^0.10.14). The WASM
-// runtime is loaded separately from CDN; pinning the URL keeps it lockstep
-// with the resolved package version (^0.10 = >=0.10.0 <0.11.0, API-stable).
-const MEDIAPIPE_WASM_VERSION = '0.10.14';
-const MEDIAPIPE_WASM_BASE = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_WASM_VERSION}/wasm`;
-const BLAZEFACE_MODEL_URL =
-  'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite';
+// runtime and the BlazeFace model are self-hosted from our own origin
+// (Vercel `dist/`) rather than jsdelivr / GCS — a blocked or down CDN used
+// to silently disable the face checks. The WASM runtime is copied out of
+// node_modules at build time (scripts/copy-mediapipe-wasm.mjs, run by
+// predev/prebuild), keeping it lockstep with the resolved package version;
+// the model is committed under public/mediapipe/. Both resolve same-origin.
+const MEDIAPIPE_WASM_BASE = '/mediapipe/wasm';
+const BLAZEFACE_MODEL_URL = '/mediapipe/blaze_face_short_range.tflite';
 
 // Native FaceDetector API — Chromium / Edge / Opera. Not in TS lib.dom yet,
 // so declare the slice we touch.
