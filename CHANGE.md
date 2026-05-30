@@ -23,6 +23,62 @@
 
 ---
 
+## 30/05/2026 16:08
+Type: Fix (production-readiness)
+
+Production-readiness pass. Runtime-verified migration 008 against the
+hosted project (columns exist + round-trip writes + the username trigger
+fires on signup metadata — all probe data cleaned up). Audited the
+production-hardening surface: CORS (`main.py`) is env-driven with
+`allow_credentials=False` (not a wildcard+credentials hole), and the
+interview WebSocket is already authenticated (`_authenticate_ws_token`,
+close 4401) + tenant/ownership-checked (4403/4404) — both prior
+"pending hardening" items are in fact done. GoTrue settings snapshot:
+`email:true, google:true, mailer_autoconfirm:false` (email confirmation
+IS required), `disable_signup:false`.
+
+The one code-fixable production gap was the dead-end "check your email"
+state — with no SMTP validated, founders/candidates whose confirmation
+mail never arrived were stuck. Fix:
+
+- `contexts/AuthContext.tsx` — new `resendConfirmation(email, {emailRedirectTo})`
+  wrapping `supabase.auth.resend({type:'signup'})`.
+- `components/auth/EmailConfirmNotice.tsx` (new) — recoverable
+  confirmation panel: shows the target address, spam/Google guidance,
+  and a Resend button with a 30s client cooldown (avoids Supabase 429s).
+- `CompanySignup.tsx` (founder) + `Signup.tsx` (candidate) now render the
+  notice instead of a static one-liner when `needsEmailConfirm`. The
+  Google OAuth path (provider enabled) remains the no-email escape hatch.
+- New `.email-confirm-*` styles.
+
+Decision — keep email confirmation REQUIRED (B2B: prevents fake company
+accounts), and rely on: (a) custom SMTP for the email path, (b) Google
+OAuth for instant onboarding, (c) this recoverable resend UX. Disabling
+confirmation is a dashboard toggle the operator can flip if they accept
+unverified emails; not changed here.
+
+Verification: tsc clean; vitest 20/20; build ok. The resend round-trip
+itself needs a deployed env with working SMTP to confirm delivery.
+
+Affected files:
+- `frontend/src/contexts/AuthContext.tsx`
+- `frontend/src/components/auth/EmailConfirmNotice.tsx` (new)
+- `frontend/src/components/companies/CompanySignup.tsx`
+- `frontend/src/components/auth/Signup.tsx`
+- `frontend/src/index.css`
+- `CHANGE.md`
+
+Architectural impact: none — additive UX component + one AuthContext
+method. No backend, schema, or auth-flow change. CORS/WS/tenant scoping
+untouched.
+
+Future considerations: backend signup gate (ADR 0008 D3) remains the one
+known accepted-risk hardening item — Supabase Auth signup is
+unauthenticated (`disable_signup:false`), so the UI is the only gate. A
+Supabase Auth hook / pending_invites table is the seam when abuse
+appears. RESEND_API_KEY + a verified sender are still required for
+candidate invite emails (config, operator-side).
+
 ## 30/05/2026 15:18
 Type: Fix + Feature + Decision
 

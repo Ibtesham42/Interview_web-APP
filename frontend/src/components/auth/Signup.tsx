@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { applyApi } from '../../services/api';
+import { EmailConfirmNotice } from './EmailConfirmNotice';
 
 const GoogleIcon = () => (
   <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
@@ -36,7 +37,7 @@ export function Signup() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
+  const [awaitingConfirm, setAwaitingConfirm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   if (session) return <Navigate to="/" replace />;
@@ -54,7 +55,7 @@ export function Signup() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setInfo(null);
+    setAwaitingConfirm(false);
 
     if (password.length < 6) {
       setError('Password must be at least 6 characters.');
@@ -76,7 +77,7 @@ export function Signup() {
     }
     if (needsEmailConfirm) {
       setSubmitting(false);
-      setInfo('Account created. Check your email to confirm, then sign in.');
+      setAwaitingConfirm(true);
       return;
     }
 
@@ -170,8 +171,14 @@ export function Signup() {
           Apply to {companySlug ?? 'this company'} — create your candidate account
         </p>
 
-        {info && <div className="auth-info">{info}</div>}
-
+        {awaitingConfirm ? (
+          <EmailConfirmNotice
+            email={email.trim()}
+            emailRedirectTo={emailRedirectTo}
+            nextHint="Once confirmed, sign in to start your interview."
+          />
+        ) : (
+        <>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label className="form-label" htmlFor="signup-name">Full name</label>
@@ -240,6 +247,8 @@ export function Signup() {
         <p className="auth-switch auth-switch-secondary">
           Setting up your company instead? <Link to="/companies/signup">Create one →</Link>
         </p>
+        </>
+        )}
       </div>
     </div>
   );

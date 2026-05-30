@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { companiesApi } from '../../services/api';
+import { EmailConfirmNotice } from '../auth/EmailConfirmNotice';
 
 const GoogleIcon = () => (
   <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
@@ -68,7 +69,7 @@ export function CompanySignup() {
   const [accountConfirm, setAccountConfirm] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [accountError, setAccountError] = useState<string | null>(null);
-  const [accountInfo, setAccountInfo] = useState<string | null>(null);
+  const [accountAwaitingConfirm, setAccountAwaitingConfirm] = useState(false);
   const [accountSubmitting, setAccountSubmitting] = useState(false);
 
   // Both the email-confirm link and the Google OAuth round-trip return
@@ -81,7 +82,7 @@ export function CompanySignup() {
   const handleAccountSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAccountError(null);
-    setAccountInfo(null);
+    setAccountAwaitingConfirm(false);
 
     if (accountPassword.length < 6) {
       setAccountError('Password must be at least 6 characters.');
@@ -111,9 +112,7 @@ export function CompanySignup() {
     }
     if (needsEmailConfirm) {
       setAccountSubmitting(false);
-      setAccountInfo(
-        'Account created. Check your email to confirm, then return here to name your company.',
-      );
+      setAccountAwaitingConfirm(true);
       return;
     }
 
@@ -201,7 +200,14 @@ export function CompanySignup() {
         </div>
         <div className="onboard-wrap">
           <div className="card">
-            {accountInfo && <div className="auth-info">{accountInfo}</div>}
+            {accountAwaitingConfirm ? (
+              <EmailConfirmNotice
+                email={accountEmail.trim()}
+                emailRedirectTo={companySetupRedirect}
+                nextHint="Once confirmed, return here to name your company."
+              />
+            ) : (
+            <>
             <form onSubmit={handleAccountSubmit}>
               <div className="form-group">
                 <label className="form-label" htmlFor="founder-name">Full name</label>
@@ -309,6 +315,8 @@ export function CompanySignup() {
               Already have an account?{' '}
               <Link to={`/login?next=${LOGIN_NEXT}`}>Sign in →</Link>
             </p>
+            </>
+            )}
           </div>
         </div>
       </div>

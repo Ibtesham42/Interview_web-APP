@@ -50,6 +50,13 @@ interface AuthContextValue {
   // the apply flow (PR 4) to thread ?company=slug through the OAuth
   // round-trip so AuthCallback can claim a tenant after sign-in.
   signInWithGoogle: (redirectTo?: string) => Promise<{ error: string | null }>;
+  // Re-send the signup confirmation email (Supabase `resend`). Used by the
+  // email-verification notice so a founder/candidate whose first mail never
+  // arrived can retry without re-entering the form.
+  resendConfirmation: (
+    email: string,
+    options?: { emailRedirectTo?: string },
+  ) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   // Re-fetch the profile from /api/auth/me. Called after actions that
   // mutate role/company_id server-side (currently: POST /api/companies/
@@ -230,6 +237,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: friendly };
   };
 
+  const resendConfirmation = async (
+    email: string,
+    options: { emailRedirectTo?: string } = {},
+  ) => {
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email,
+      options: { emailRedirectTo: options.emailRedirectTo },
+    });
+    return { error: error?.message ?? null };
+  };
+
   const signOut = async () => {
     await supabase.auth.signOut();
     setProfile(null);
@@ -289,6 +308,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signUp,
     signIn,
     signInWithGoogle,
+    resendConfirmation,
     signOut,
     refreshProfile,
     can,
