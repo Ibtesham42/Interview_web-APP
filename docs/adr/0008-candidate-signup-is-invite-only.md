@@ -41,6 +41,13 @@ The `/signup` route now branches on the URL's query string:
 | `?next=/companies/signup` | Company-founder signup form (existing — unchanged) |
 | no recognized intent | Explainer card: "This platform is invite-only. Ask your hiring company for an Apply Link, or set up your own company." |
 
+> ⚠ **Superseded in part by [ADR 0009](0009-company-registration-is-self-contained.md)
+> (2026-05-30).** The `?next=/companies/signup` row is gone: company
+> founders now create their admin account *inside* `/companies/signup`,
+> not through `/signup`. `/signup` is candidate-only (the `?company`
+> row) plus the no-intent explainer. The two rows above that remain
+> accurate are unchanged; only the founder detour moved.
+
 The form is unreachable from a fresh visitor's perspective. The
 discoverability links on `/login` no longer expose a generic
 "Create one" CTA — only the "Setting up your company? Create one →"

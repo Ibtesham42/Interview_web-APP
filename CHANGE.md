@@ -23,6 +23,86 @@
 
 ---
 
+## 30/05/2026 14:41
+Type: Fix + Decision
+
+Fix the company-signup workflow: clicking "Create account" from
+`/companies/signup` opened what looked like the candidate registration
+flow. Root cause was architectural — company registration had no
+dedicated form. The signed-out `/companies/signup` rendered a CTA card
+that navigated to `/signup?next=/companies/signup`, and `/signup` then
+showed a "founder" branch that was *the same personal-account form the
+candidate apply flow uses*, distinguished only by a title string. The
+`?next=/companies/signup` magic string coupled five modules
+(`CompanySignup`, `Signup`, `Login`, `AuthCallback`, `safeNext`).
+
+Investigated with `improve-codebase-architecture` (deletion test:
+deleting `/signup`'s founder branch concentrates the company-
+registration concept into `CompanySignup` rather than scattering it)
+and `grill-with-docs` (form-shape decision settled with the user:
+two-step inside one module, not a single combined form — robust to
+Supabase email confirmation, which would otherwise leave no session at
+submit time).
+
+What landed (frontend only — backend, schema, roles, tenant scoping,
+capability gates all UNCHANGED):
+
+- `components/companies/CompanySignup.tsx` — the signed-out branch is
+  now a dedicated, company-branded **step 1 account form** (full name,
+  work email, password, + Google OAuth) that calls `signUp` directly.
+  On an immediate session it `refreshProfile()`s and re-renders into the
+  existing **step 2 company-details form**; on email-confirm it shows a
+  "check your email" notice and the `/auth/callback?next=/companies/signup`
+  link returns the founder here. "Already have an account? Sign in →"
+  still round-trips through `/login?next=/companies/signup`.
+- `components/auth/Signup.tsx` — founder branch removed. `/signup` is
+  candidate-only now: `hasSignupIntent = Boolean(companySlug)`. Dropped
+  the `?next` reading, `isCompanyIntent`, the "founder account" title,
+  the `next` email-redirect payload, and the post-submit
+  `navigate(next)` (candidate signup lands on the role-aware home).
+- `Login.tsx`, `AuthCallback.tsx`, `safeNext.ts` — untouched; the
+  `?next` round-trip is still used by the "I already have one" path.
+
+Docs:
+- `docs/adr/0009-company-registration-is-self-contained.md` (new) —
+  D1 (account created inside `/companies/signup`), D2 (two-step in one
+  module, not a combined form), D3 (`/signup` is candidate-only), D4
+  (`/login` round-trip preserved).
+- `docs/adr/0008-…md` — D1 table marked partially superseded with a
+  pointer to ADR 0009.
+- `CONTEXT.md` — no change; the glossary already said "Company —
+  Created via `/companies/signup`," which the fix makes literally true.
+
+Verification:
+- `npx tsc --noEmit` clean; vitest 20/20; `npm run build` succeeds.
+- Manual browser walk pending (I can't drive a browser here):
+  - `/companies/signup` signed out → step 1 account form (NOT the
+    candidate form); submit → step 2 company form → `/admin`.
+  - Google OAuth founder path returns via `/auth/callback` to step 2.
+  - Email-confirm-on path: notice shown, confirm link returns to step 2.
+  - `/apply/{slug}` → "Apply" → `/signup?company=slug` still shows the
+    candidate form unchanged.
+  - `/login` "Setting up your company? Create one →" →
+    `/companies/signup` → step 1.
+
+Affected files:
+- `frontend/src/components/companies/CompanySignup.tsx`
+- `frontend/src/components/auth/Signup.tsx`
+- `docs/adr/0009-company-registration-is-self-contained.md` (new)
+- `docs/adr/0008-candidate-signup-is-invite-only.md`
+- `CHANGE.md`
+
+Architectural impact: company registration is now one self-contained
+module instead of a five-module detour wired by a magic string. `/signup`
+sheds one of its three intents (candidate-apply, founder, explainer →
+now candidate-apply + explainer). No backend, schema, role, or capability
+change — stability/scalability constraints preserved.
+
+Future considerations: backend signup hardening (ADR 0008 D3 / ADR 0009)
+is still open — the UI gate is the only barrier on Supabase Auth signup.
+If Google founder signups prove rare, the OAuth button can be dropped
+from step 1 without touching the email path.
+
 ## 30/05/2026 14:21
 Type: Refactor
 

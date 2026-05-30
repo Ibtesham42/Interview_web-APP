@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { applyApi } from '../../services/api';
-import { safeNext } from '../../utils/safeNext';
 
 const GoogleIcon = () => (
   <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
@@ -23,21 +22,15 @@ export function Signup() {
   // now"), the slug is threaded through the auth flow so the new
   // candidate is stamped with the company on first session.
   const companySlug = searchParams.get('company');
-  // Company-setup flow (2026-05-29 follow-up): the CompanySignup
-  // !session branch sends users here with ?next=/companies/signup so
-  // we know to bounce them BACK to company setup after auth lands.
-  // safeNext rejects off-origin / protocol-relative values.
-  const nextPath = safeNext(searchParams.get('next'));
-  const isCompanyIntent = nextPath === '/companies/signup';
 
-  // ADR 0008 (Candidate signup is invite-only). Two legitimate intents
-  // surface the form:
-  //   - companySlug      : applicant arrived via /apply/{slug}
-  //   - isCompanyIntent  : founder en route to /companies/signup
-  // Anything else → render the explainer card instead of the form.
-  // The 9 grandfathered B2C accounts already exist; this gate is
-  // prospective only (D2).
-  const hasSignupIntent = Boolean(companySlug) || isCompanyIntent;
+  // ADR 0008 (Candidate signup is invite-only) + ADR 0009 (company
+  // registration is self-contained in /companies/signup). The ONLY
+  // intent that surfaces this form is an applicant who arrived via
+  // /apply/{slug} (?company=slug). Company founders now create their
+  // admin account inside /companies/signup and never reach here.
+  // Anything else → the invite-only explainer card. The grandfathered
+  // B2C accounts already exist; this gate is prospective only (D2).
+  const hasSignupIntent = Boolean(companySlug);
 
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -48,17 +41,11 @@ export function Signup() {
 
   if (session) return <Navigate to="/" replace />;
 
-  // Build the email-confirm redirect URL. Two optional payloads ride
-  // the round-trip:
-  //   - `company=slug` triggers claim-company in AuthCallback (apply-
-  //     link flow).
-  //   - `next=/path` tells AuthCallback where to land the user after
-  //     the session settles (company-setup flow).
-  // Both can be present simultaneously; AuthCallback handles each
-  // independently.
+  // Build the email-confirm redirect URL. The apply-link flow rides one
+  // payload through the round-trip: `company=slug` triggers claim-company
+  // in AuthCallback so the new candidate is stamped with the tenant.
   const callbackParams = new URLSearchParams();
   if (companySlug) callbackParams.set('company', companySlug);
-  if (nextPath !== '/') callbackParams.set('next', nextPath);
   const qs = callbackParams.toString();
   const emailRedirectTo = qs
     ? `${window.location.origin}/auth/callback?${qs}`
@@ -106,9 +93,9 @@ export function Signup() {
     }
     await refreshProfile();
     setSubmitting(false);
-    // Honor `?next=/path` if set (company-setup flow); otherwise the
-    // default role-aware home.
-    navigate(nextPath, { replace: true });
+    // Candidate signup lands on the role-aware home (RoleHome routes by
+    // role). Company founders no longer route through here (ADR 0009).
+    navigate('/', { replace: true });
   };
 
   const handleGoogle = async () => {
@@ -178,13 +165,9 @@ export function Signup() {
             </svg>
           </div>
         </div>
-        <h1 className="auth-title">
-          {isCompanyIntent ? 'Create your founder account' : 'Create your account'}
-        </h1>
+        <h1 className="auth-title">Create your account</h1>
         <p className="auth-subtitle">
-          {isCompanyIntent
-            ? "Step 1 of 2 — after sign-up you'll name your company."
-            : `Apply to ${companySlug ?? 'this company'} — create your candidate account`}
+          Apply to {companySlug ?? 'this company'} — create your candidate account
         </p>
 
         {info && <div className="auth-info">{info}</div>}

@@ -3,6 +3,15 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { companiesApi } from '../../services/api';
 
+const GoogleIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+    <path d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.71-1.57 2.68-3.89 2.68-6.62z" fill="#4285F4" />
+    <path d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.81.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z" fill="#34A853" />
+    <path d="M3.97 10.72A5.4 5.4 0 0 1 3.69 9c0-.6.1-1.18.28-1.72V4.95H.96A9 9 0 0 0 0 9c0 1.45.35 2.83.96 4.05l3.01-2.33z" fill="#FBBC05" />
+    <path d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.59C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z" fill="#EA4335" />
+  </svg>
+);
+
 // Same regex the backend enforces (Pydantic + the inner re-check in
 // routers/companies.py). Duplicated client-side so the form gives
 // immediate feedback rather than waiting on a 400 round-trip.
@@ -31,7 +40,7 @@ function slugProblem(slug: string): string | null {
 
 export function CompanySignup() {
   const navigate = useNavigate();
-  const { session, profile, refreshProfile, can } = useAuth();
+  const { session, profile, refreshProfile, can, signUp, signInWithGoogle } = useAuth();
 
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
@@ -40,6 +49,69 @@ export function CompanySignup() {
   const [address, setAddress] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // Step 1 (signed-out founder) — the admin account that will own the
+  // Company. Kept distinct from the company-details state above; the two
+  // forms never render at the same time, but separate names avoid the
+  // "is this the account email or the company contact email?" trap.
+  const [accountName, setAccountName] = useState('');
+  const [accountEmail, setAccountEmail] = useState('');
+  const [accountPassword, setAccountPassword] = useState('');
+  const [accountError, setAccountError] = useState<string | null>(null);
+  const [accountInfo, setAccountInfo] = useState<string | null>(null);
+  const [accountSubmitting, setAccountSubmitting] = useState(false);
+
+  // Both the email-confirm link and the Google OAuth round-trip return
+  // here via /auth/callback; `next` brings the founder back to this page
+  // (now signed in) to finish at step 2. safeNext on the callback side
+  // rejects anything off-origin.
+  const companySetupRedirect =
+    `${window.location.origin}/auth/callback?next=${encodeURIComponent('/companies/signup')}`;
+
+  const handleAccountSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAccountError(null);
+    setAccountInfo(null);
+
+    if (accountPassword.length < 6) {
+      setAccountError('Password must be at least 6 characters.');
+      return;
+    }
+
+    setAccountSubmitting(true);
+    const { error: signUpError, needsEmailConfirm } = await signUp(
+      accountEmail.trim(),
+      accountPassword,
+      accountName.trim(),
+      { emailRedirectTo: companySetupRedirect },
+    );
+
+    if (signUpError) {
+      setAccountSubmitting(false);
+      setAccountError(signUpError);
+      return;
+    }
+    if (needsEmailConfirm) {
+      setAccountSubmitting(false);
+      setAccountInfo(
+        'Account created. Check your email to confirm, then return here to name your company.',
+      );
+      return;
+    }
+
+    // Immediate-session path (email-confirm disabled). Refresh the profile
+    // so `can('create_company')` is ready, then the component re-renders
+    // straight into step 2 (the session branch below) — no navigation, no
+    // /signup detour.
+    await refreshProfile();
+    setAccountSubmitting(false);
+  };
+
+  const handleAccountGoogle = async () => {
+    setAccountError(null);
+    const { error: oauthError } = await signInWithGoogle(companySetupRedirect);
+    if (oauthError) setAccountError(oauthError);
+  };
 
   const slugError = useMemo(() => slugProblem(slug), [slug]);
   // Cheap email shape check — same shape regex the backend uses. Server is
@@ -83,40 +155,95 @@ export function CompanySignup() {
     }
   };
 
-  // Unauthenticated visitor (Fix 2, 2026-05-29). The discoverability
-  // links on /login + /signup land here; previously ProtectedRoute
-  // bounced them straight back to /login, which the user experienced
-  // as a "page reload." Now we render a brand-styled CTA that points
-  // at the right next step.
-  //
-  // Both CTAs thread `?next=/companies/signup` so the auth flow knows
-  // to bounce the user BACK here after signup/sign-in (2026-05-29
-  // follow-up: previously /signup would land them on /dashboard
-  // because nothing remembered they were mid-company-setup).
+  // Step 1 — signed-out founder (ADR 0009). Company registration is a
+  // dedicated, self-contained flow: the founder creates their admin
+  // account RIGHT HERE rather than detouring through the candidate
+  // `/signup` form. On success the session lands and the component
+  // re-renders into step 2 (the company-details form below). The
+  // "already have one" path still round-trips through /login?next=… so
+  // an existing user is returned here to finish setup.
   if (!session) {
-    const NEXT = encodeURIComponent('/companies/signup');
+    const LOGIN_NEXT = encodeURIComponent('/companies/signup');
     return (
       <div className="page">
         <div className="page-head">
           <div>
             <h1>Set up your company</h1>
             <p className="page-sub">
-              Create your account first — then we'll set up your company
-              on the next step.
+              Step 1 of 2 — create the admin account that will own your
+              company.
             </p>
           </div>
         </div>
         <div className="onboard-wrap">
           <div className="card">
-            <p>
-              Setting up a company starts with a personal account that
-              becomes the company's admin. Create one now, then come
-              back here to name the company and claim your apply link.
+            {accountInfo && <div className="auth-info">{accountInfo}</div>}
+            <form onSubmit={handleAccountSubmit}>
+              <div className="form-group">
+                <label className="form-label" htmlFor="founder-name">Full name</label>
+                <input
+                  id="founder-name"
+                  type="text"
+                  className="form-input"
+                  value={accountName}
+                  onChange={(e) => setAccountName(e.target.value)}
+                  placeholder="Your full name"
+                  autoComplete="name"
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" htmlFor="founder-email">Work email</label>
+                <input
+                  id="founder-email"
+                  type="email"
+                  className="form-input"
+                  value={accountEmail}
+                  onChange={(e) => setAccountEmail(e.target.value)}
+                  placeholder="you@company.com"
+                  autoComplete="email"
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" htmlFor="founder-password">Password</label>
+                <input
+                  id="founder-password"
+                  type="password"
+                  className="form-input"
+                  value={accountPassword}
+                  onChange={(e) => setAccountPassword(e.target.value)}
+                  placeholder="At least 6 characters"
+                  autoComplete="new-password"
+                  required
+                />
+              </div>
+
+              {accountError && <div className="error-message">{accountError}</div>}
+
+              <button
+                type="submit"
+                className="btn btn-primary btn-lg"
+                style={{ width: '100%', marginTop: 'var(--space-sm)' }}
+                disabled={accountSubmitting}
+              >
+                {accountSubmitting ? 'Creating account…' : 'Create account & continue'}
+              </button>
+            </form>
+
+            <div className="auth-divider">or</div>
+
+            <button type="button" className="btn btn-google btn-lg" onClick={handleAccountGoogle}>
+              <GoogleIcon />
+              Continue with Google
+            </button>
+
+            <p className="auth-switch" style={{ marginTop: 'var(--space-md)' }}>
+              Already have an account?{' '}
+              <Link to={`/login?next=${LOGIN_NEXT}`}>Sign in →</Link>
             </p>
-            <div style={{ display: 'flex', gap: 'var(--space-md)', flexWrap: 'wrap', marginTop: 'var(--space-md)' }}>
-              <Link to={`/signup?next=${NEXT}`} className="btn btn-primary">Create account</Link>
-              <Link to={`/login?next=${NEXT}`} className="btn btn-secondary">I already have one</Link>
-            </div>
           </div>
         </div>
       </div>
