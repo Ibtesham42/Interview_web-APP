@@ -23,6 +23,74 @@
 
 ---
 
+## 30/05/2026 14:11
+Type: Feature
+
+Surface integrity-event volume (by event type) in the admin overview
+dashboard. Reliability task from `CURRENT_TASKS.md` "Now" slice — gives
+an operator a one-glance "integrity events by type" breakdown so they
+can triage noise patterns and tune the Phase A/B/C thresholds without
+opening each user. Mirrors the panel already on the recruiter analytics
+screen.
+
+What landed:
+
+Backend (`backend/app/routers/admin.py`):
+- `admin_overview` now returns an `integrity_volume` key
+  (`{items: [{event_type, count}], total}`) alongside `stats` /
+  `by_category` / `users`. Reuses the existing, well-tested
+  `services.recruiter_analytics.integrity_event_volume` helper —
+  tenant-scoped via `tenant_scope(admin)` (None = platform admin sees
+  all tenants; a company_admin sees only their own), one bulk query,
+  and it already swallows a missing migration-002 table cleanly. No new
+  query path, no N+1.
+
+Frontend:
+- `types/index.ts` — `AdminOverview` gains `integrity_volume:
+  IntegrityVolumeResponse` (the type already existed from the recruiter
+  rollout).
+- `components/admin/AdminDashboard.tsx` — new "Integrity events" panel
+  between Categories and Users, rendering the count-sorted bars with the
+  existing `.score-bars` / `.score-bg-integrity` design-system classes
+  and an `eventTypeLabel` helper. Empty state when no events recorded.
+  Defensive `integrity_volume?.items ?? []` so a stale payload can't
+  crash the render.
+
+Tests:
+- `backend/tests/test_admin_overview.py` (new, 4 cases) — guards the
+  response carries `integrity_volume`, platform admin sees all tenants'
+  events (count-sorted desc), and a scoped admin is isolated to their
+  own tenant. Honors the response-payload-whitelist discipline (handler
+  ran the SELECT but the dict drops the field).
+
+Verification:
+- Backend: `python -c "from app.main import app"` clean; pytest
+  277/277 pass (273 prior + 4 new).
+- Frontend: `npx tsc --noEmit` clean.
+- Manual browser walk pending: /admin overview as a platform admin
+  (events across all tenants) and as a company_admin (own tenant only);
+  empty-state when no events.
+
+Affected files:
+- `backend/app/routers/admin.py`
+- `backend/tests/test_admin_overview.py` (new)
+- `frontend/src/types/index.ts`
+- `frontend/src/components/admin/AdminDashboard.tsx`
+- `CURRENT_TASKS.md`, `CHANGE.md`
+
+Architectural impact: None structural. Additive read-only field on an
+existing aggregation endpoint; same bulk-query budget (one extra
+SELECT, bounded, independent of row count — Invariant #5 holds). The
+integrity audit log now has a platform/tenant-level read surface in
+addition to the per-interview counts already on the user-detail view.
+
+Future considerations: a severity dimension (info/warning/critical) or
+a time-window filter would deepen triage, but neither is needed until
+event volume is large enough to warrant slicing. The `integrity_volume`
+field is required in the TS type — if the frontend ever deploys ahead
+of the backend, the optional-chaining guard degrades to an empty panel
+rather than a crash.
+
 ## 29/05/2026 — Candidate signup is invite-only + ADR 0008
 Type: Decision + Refactor
 

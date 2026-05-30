@@ -15,6 +15,11 @@ function fieldLabel(f: string): string {
   return f.split('_').map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w)).join(' ');
 }
 
+function eventTypeLabel(t: string): string {
+  if (!t) return 'Unknown';
+  return t.split('_').map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w)).join(' ');
+}
+
 function formatDate(d?: string | null): string {
   if (!d) return '—';
   return new Date(d).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
@@ -57,7 +62,9 @@ export function AdminDashboard() {
     );
   }
 
-  const { stats, by_category, users } = data;
+  const { stats, by_category, integrity_volume, users } = data;
+  const integrityItems = integrity_volume?.items ?? [];
+  const maxIntegrityCount = Math.max(...integrityItems.map((i) => i.count), 1);
 
   return (
     <div className="page">
@@ -123,6 +130,37 @@ export function AdminDashboard() {
           </div>
         </div>
       )}
+
+      {/* Integrity events by type — operator triage / threshold tuning */}
+      <div className="panel">
+        <div className="panel-head">
+          <h3>Integrity events</h3>
+          <span className="cell-sub">
+            {integrity_volume?.total ?? 0} total · by event type
+          </span>
+        </div>
+        {integrityItems.length === 0 ? (
+          <p className="report-empty">No integrity events recorded.</p>
+        ) : (
+          <div className="score-bars">
+            {integrityItems.map((item) => {
+              const widthPct = (item.count / maxIntegrityCount) * 100;
+              return (
+                <div key={item.event_type} className="score-bar-row">
+                  <span className="score-bar-label">{eventTypeLabel(item.event_type)}</span>
+                  <div className="score-bar-track">
+                    <div
+                      className="score-bar-fill score-bg-integrity"
+                      style={{ width: `${Math.max(widthPct, 2)}%` }}
+                    />
+                  </div>
+                  <span className="score-bar-value">{item.count}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* Users */}
       <div className="panel">

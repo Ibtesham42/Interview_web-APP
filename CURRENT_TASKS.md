@@ -49,9 +49,7 @@ _All items burned down this phase — see "Done" section below._
 
 ### Reliability
 
-| Item | Size | Notes |
-|---|---|---|
-| Surface integrity-event volume in admin dashboard | S | Audit table now has data. A small "integrity events by type" view would let an operator triage noise patterns and tune thresholds (Phase B/C followup). |
+_All items burned down this phase — see "Done" section below._
 
 ### Production hardening
 
@@ -363,6 +361,13 @@ visual report back, or just work from this section.
 ## Done in this phase
 
 (Update as items land. Newest at the top.)
+
+- 2026-05-30 — Shipped the Reliability item: integrity-event volume
+  (by event type) now surfaces in the admin overview dashboard. Backend
+  reuses the tenant-aware `integrity_event_volume` helper; new
+  `integrity_volume` field on `/api/admin/overview`. Frontend renders an
+  "Integrity events" bar panel mirroring the recruiter analytics screen.
+  +4 pytest (277 total); tsc green. See `CHANGE.md` 2026-05-30.
 
 - 2026-05-27 — Scaling-safety audit complete. Read-through of
   `score_interviews_bulk` and every aggregation endpoint

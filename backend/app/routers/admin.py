@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.supabase_client import get_supabase
 from app.auth import get_current_admin, tenant_scope
 from app.services.interview_orchestrator import score_interviews_bulk
+from app.services.recruiter_analytics import integrity_event_volume
 
 router = APIRouter()
 
@@ -109,7 +110,18 @@ async def admin_overview(admin=Depends(get_current_admin)):
         if platform_scores else 0,
     }
 
-    return {"stats": stats, "by_category": by_category, "users": user_list}
+    # Integrity-event volume by type — one bulk query, tenant-scoped (None for
+    # platform admin = cross-tenant). Reuses the recruiter-analytics helper,
+    # which swallows a missing migration-002 table cleanly. Lets an operator
+    # triage noise patterns and tune thresholds straight from the overview.
+    integrity_volume = integrity_event_volume(supabase, company_id=tenant)
+
+    return {
+        "stats": stats,
+        "by_category": by_category,
+        "integrity_volume": integrity_volume,
+        "users": user_list,
+    }
 
 
 @router.get("/users/{user_id}")

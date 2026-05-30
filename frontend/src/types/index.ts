@@ -272,6 +272,7 @@ export interface AdminUser {
 export interface AdminOverview {
   stats: AdminStats;
   by_category: AdminCategory[];
+  integrity_volume: IntegrityVolumeResponse;
   users: AdminUser[];
 }
 
