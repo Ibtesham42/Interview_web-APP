@@ -23,6 +23,33 @@
 
 ---
 
+## 10/06/2026 (g)
+Type: Refactor
+
+Design-system **Phase 3 (part 1) — recruiter candidate-detail screen**. First
+adoption of the Phase 1 primitives on a real recruiter screen
+(`RecruiterCandidateDetail.tsx`). Presentation-only; all decision/notes/email/
+integrity logic unchanged.
+
+- Status indicators unified on `Badge` with semantic variants via new mappers
+  (`statusVariant`/`decisionVariant`/`scoreVariant`/`emailStatusVariant`):
+  header status chip, interview integrity/score/in-progress chips, email
+  delivery status, decision chips — consistent colour meaning across the screen.
+- Panels → `Card` + `CardHeader`/`CardTitle`; stat tiles → `Card` grid;
+  decisions table → `Table` primitives; zero-data states → `EmptyState`.
+- Removed the now-dead `scoreClass` helper. Legacy `.iv-*`/`.recruiter-notes-*`/
+  `.all-notes-*` row classes kept (token-based, theme-aware) — only containers
+  and chips migrated.
+
+Verification: `tsc` clean, vitest 20/20, `npm run build` OK. No backend
+changes. Visual QA is the operator's (open a candidate, both themes).
+
+Affected files: frontend/src/components/recruiter/RecruiterCandidateDetail.tsx
+Architectural impact: establishes the screen-migration pattern (legacy classes
+→ ui/ primitives) for the rest of Phase 3.
+Future considerations: Phase 3 continues — Candidates list/pipeline
+(RecruiterDashboard), Analytics, and the AI-evaluation/Report screens.
+
 ## 10/06/2026 (f)
 Type: Refactor
 

@@ -3,6 +3,20 @@ import { Link, useParams } from 'react-router-dom';
 import { recruiterApi } from '../../services/api';
 import { emailStatusIsPositive, emailStatusLabel } from '../../utils/emailStatus';
 import { Button } from '../Button';
+import {
+  Badge,
+  Card,
+  CardHeader,
+  CardTitle,
+  EmptyState,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeaderCell,
+  TableRow,
+} from '../ui';
+import type { BadgeVariant } from '../ui';
 import { EmailComposerModal } from './EmailComposerModal';
 import type {
   CandidateStatus,
@@ -11,12 +25,6 @@ import type {
   RecruiterCandidateDetail as DetailData,
   RecruiterDecision,
 } from '../../types';
-
-function scoreClass(score: number): string {
-  if (score >= 7) return 'good';
-  if (score >= 5.5) return 'mid';
-  return 'low';
-}
 
 function fieldLabel(f: string | null): string {
   if (!f) return 'General';
@@ -57,6 +65,36 @@ function deriveStatus(decision: RecruiterDecision, hasCompletedInterview: boolea
   if (decision === 'rejected') return 'rejected';
   if (decision === 'hold') return 'on_hold';
   return hasCompletedInterview ? 'interview_completed' : 'invited';
+}
+
+// Map domain states to Badge variants so colour meaning is consistent with
+// the rest of the design system (Phase 3 primitive adoption).
+function statusVariant(s: CandidateStatus): BadgeVariant {
+  if (s === 'shortlisted') return 'success';
+  if (s === 'rejected') return 'danger';
+  if (s === 'on_hold') return 'warning';
+  if (s === 'invited') return 'info';
+  return 'neutral';
+}
+
+function decisionVariant(d: RecruiterDecision): BadgeVariant {
+  if (d === 'shortlisted') return 'success';
+  if (d === 'rejected') return 'danger';
+  if (d === 'hold') return 'warning';
+  return 'neutral';
+}
+
+function scoreVariant(score: number): BadgeVariant {
+  if (score >= 7) return 'success';
+  if (score >= 5.5) return 'warning';
+  return 'danger';
+}
+
+function emailStatusVariant(s: EmailOutboxRow['status']): BadgeVariant {
+  if (s === 'sent' || s === 'delivered') return 'success';
+  if (s === 'failed' || s === 'bounced') return 'danger';
+  if (s === 'suppressed' || s === 'complained') return 'warning';
+  return 'neutral';
 }
 
 export function RecruiterCandidateDetail() {
@@ -242,10 +280,10 @@ export function RecruiterCandidateDetail() {
           <Link to="/recruiter" className="back-link">
             ← Candidates
           </Link>
-          <h1>
-            {candidate.name}
-            <span className={`status-chip status-${status}`}>{STATUS_LABELS[status]}</span>
-          </h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1>{candidate.name}</h1>
+            <Badge variant={statusVariant(status)}>{STATUS_LABELS[status]}</Badge>
+          </div>
           <p className="page-sub">
             {fieldLabel(candidate.field_specialization)}
             {' · '}
@@ -321,33 +359,36 @@ export function RecruiterCandidateDetail() {
         </div>
       )}
 
-      <div className="stat-grid auto">
-        <div className="stat-card">
-          <div className="stat-value">{interviews.length}</div>
-          <div className="stat-label">Interviews</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-value">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Card padding="md">
+          <div className="text-2xl font-semibold text-ink">{interviews.length}</div>
+          <div className="mt-1 text-xs text-ink-subtle">Interviews</div>
+        </Card>
+        <Card padding="md">
+          <div className="text-2xl font-semibold text-ink">
             {interviews.filter((iv) => iv.completed).length}
           </div>
-          <div className="stat-label">Completed</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-value">{integrityTotal}</div>
-          <div className="stat-label">Integrity warnings</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-value">{decisions.length}</div>
-          <div className="stat-label">Recruiter decisions</div>
-        </div>
+          <div className="mt-1 text-xs text-ink-subtle">Completed</div>
+        </Card>
+        <Card padding="md">
+          <div className="text-2xl font-semibold text-ink">{integrityTotal}</div>
+          <div className="mt-1 text-xs text-ink-subtle">Integrity warnings</div>
+        </Card>
+        <Card padding="md">
+          <div className="text-2xl font-semibold text-ink">{decisions.length}</div>
+          <div className="mt-1 text-xs text-ink-subtle">Recruiter decisions</div>
+        </Card>
       </div>
 
-      <div className="panel">
-        <div className="panel-head">
-          <h3>Interview history</h3>
-        </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Interview history</CardTitle>
+        </CardHeader>
         {interviews.length === 0 ? (
-          <p className="report-empty">No interviews yet.</p>
+          <EmptyState
+            title="No interviews yet"
+            description="This candidate hasn't completed an interview."
+          />
         ) : (
           <div className="iv-list">
             {interviews.map((iv) => {
@@ -361,18 +402,18 @@ export function RecruiterCandidateDetail() {
                   </div>
                   <div className="iv-row-meta">
                     {iv.integrity_terminated ? (
-                      <span className="integrity-flag-chip terminated">Terminated</span>
+                      <Badge variant="danger">Terminated</Badge>
                     ) : iv.integrity_warnings > 0 ? (
-                      <span className="integrity-flag-chip">
+                      <Badge variant="warning">
                         {iv.integrity_warnings} warning{iv.integrity_warnings === 1 ? '' : 's'}
-                      </span>
+                      </Badge>
                     ) : null}
                     {iv.completed ? (
-                      <span className={`score-badge score-bg-${scoreClass(iv.score)}`}>
+                      <Badge variant={scoreVariant(iv.score)}>
                         {iv.score.toFixed(1)} · {iv.recommendation}
-                      </span>
+                      </Badge>
                     ) : (
-                      <span className="iv-status-chip">In progress</span>
+                      <Badge variant="neutral">In progress</Badge>
                     )}
                   </div>
                 </>
@@ -389,31 +430,28 @@ export function RecruiterCandidateDetail() {
             })}
           </div>
         )}
-      </div>
+      </Card>
 
-      <div className="panel">
-        <div className="panel-head">
-          <h3>Emails sent ({emails.length})</h3>
-        </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Emails sent ({emails.length})</CardTitle>
+        </CardHeader>
         {emailsLoading ? (
-          <p className="report-empty">Loading messages…</p>
+          <p className="text-sm text-ink-muted">Loading messages…</p>
         ) : emails.length === 0 ? (
-          <p className="report-empty">
-            No emails sent yet. Click <strong>Send email</strong> above to write
-            the first one.
-          </p>
+          <EmptyState
+            title="No emails sent yet"
+            description="Use the Send email button above to contact this candidate."
+          />
         ) : (
           <div className="email-list">
             {emails.map((em) => (
               <div key={em.id} className="email-row">
                 <div className="email-row-head">
                   <span className="email-row-subject">{em.subject}</span>
-                  <span
-                    className={`email-status-chip email-status-${em.status}`}
-                    title={em.error_message || ''}
-                  >
+                  <Badge variant={emailStatusVariant(em.status)} title={em.error_message || ''}>
                     {emailStatusLabel(em.status)}
-                  </span>
+                  </Badge>
                 </div>
                 <div className="email-row-meta">
                   to {em.to_email} · {formatDate(em.sent_at)}
@@ -426,52 +464,53 @@ export function RecruiterCandidateDetail() {
             ))}
           </div>
         )}
-      </div>
+      </Card>
 
-      <div className="panel">
-        <div className="panel-head">
-          <h3>Decisions</h3>
-        </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Decisions</CardTitle>
+        </CardHeader>
         {decisions.length === 0 ? (
-          <p className="report-empty">No recruiter has made a decision yet.</p>
+          <EmptyState
+            title="No decisions yet"
+            description="No recruiter has made a decision on this candidate."
+          />
         ) : (
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Recruiter</th>
-                  <th>Decision</th>
-                  <th>Bookmark</th>
-                  <th>Decided</th>
-                </tr>
-              </thead>
-              <tbody>
-                {decisions.map((d) => (
-                  <tr key={d.recruiter_id} className="iv-row-static">
-                    <td>
-                      {d.recruiter_name}
-                      {d.is_you && <span className="cell-sub"> (you)</span>}
-                    </td>
-                    <td>
-                      <span className={`decision-chip decision-${d.decision}`}>
-                        {decisionLabel(d.decision)}
-                      </span>
-                    </td>
-                    <td>{d.bookmarked ? '★' : <span className="cell-sub">—</span>}</td>
-                    <td className="cell-sub">{formatDate(d.decided_at)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableHeaderCell>Recruiter</TableHeaderCell>
+                <TableHeaderCell>Decision</TableHeaderCell>
+                <TableHeaderCell>Bookmark</TableHeaderCell>
+                <TableHeaderCell>Decided</TableHeaderCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {decisions.map((d) => (
+                <TableRow key={d.recruiter_id}>
+                  <TableCell>
+                    {d.recruiter_name}
+                    {d.is_you && <span className="text-ink-subtle"> (you)</span>}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={decisionVariant(d.decision)}>{decisionLabel(d.decision)}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    {d.bookmarked ? '★' : <span className="text-ink-subtle">—</span>}
+                  </TableCell>
+                  <TableCell className="text-ink-subtle">{formatDate(d.decided_at)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         )}
-      </div>
+      </Card>
 
-      <div className="panel">
-        <div className="panel-head">
-          <h3>Your notes</h3>
-          <span className="cell-sub">Only you can read these</span>
-        </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Your notes</CardTitle>
+          <span className="text-xs text-ink-subtle">Only you can read these</span>
+        </CardHeader>
         <div className="recruiter-notes-editor recruiter-notes-detail">
           <textarea
             className="recruiter-notes-textarea"
@@ -492,14 +531,14 @@ export function RecruiterCandidateDetail() {
             </Button>
           </div>
         </div>
-      </div>
+      </Card>
 
       {all_notes && all_notes.length > 0 && (
-        <div className="panel">
-          <div className="panel-head">
-            <h3>All recruiters' notes</h3>
-            <span className="cell-sub">Admin view</span>
-          </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>All recruiters' notes</CardTitle>
+            <span className="text-xs text-ink-subtle">Admin view</span>
+          </CardHeader>
           <div className="all-notes-list">
             {all_notes.map((entry) => (
               <div key={entry.recruiter_id} className="all-notes-entry">
@@ -515,7 +554,7 @@ export function RecruiterCandidateDetail() {
               </div>
             ))}
           </div>
-        </div>
+        </Card>
       )}
 
       {pendingShortlist && (
