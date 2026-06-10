@@ -322,6 +322,7 @@ def candidate_analytics_summary(
     totals = {
         "invited": invited,
         "registrations": registrations,
+        "interviews_total": len(interviews),
         "interviews_completed": interviews_completed,
         "shortlisted": shortlisted,
         "rejected": rejected,
@@ -469,11 +470,13 @@ def companies_overview(supabase, company_id: Optional[str] = None) -> Dict[str, 
     except Exception:
         invited_by_company = {}
 
+    iv_by_company: Dict[Optional[str], int] = {}
     completed_iv_by_company: Dict[Optional[str], int] = {}
     completed_cand: set = set()
     for iv in interviews:
+        cmp = iv.get("company_id")
+        iv_by_company[cmp] = iv_by_company.get(cmp, 0) + 1
         if iv.get("status") == "completed":
-            cmp = iv.get("company_id")
             completed_iv_by_company[cmp] = completed_iv_by_company.get(cmp, 0) + 1
             if iv.get("candidate_id"):
                 completed_cand.add(iv["candidate_id"])
@@ -498,6 +501,7 @@ def companies_overview(supabase, company_id: Optional[str] = None) -> Dict[str, 
             "slug": comp.get("slug") or "",
             "candidates": counts["candidates"],
             "invited": len(invited_by_company.get(cid, set())),
+            "interviews_total": iv_by_company.get(cid, 0),
             "interviews_completed": completed_iv_by_company.get(cid, 0),
             "shortlisted": counts["shortlisted"],
             "rejected": counts["rejected"],
@@ -510,6 +514,7 @@ def companies_overview(supabase, company_id: Optional[str] = None) -> Dict[str, 
         "total_companies": len(companies),
         "candidates": len(candidates),
         "invited": sum(len(v) for v in invited_by_company.values()),
+        "interviews_total": len(interviews),
         "interviews_completed": sum(1 for iv in interviews if iv.get("status") == "completed"),
         "shortlisted": all_counts["shortlisted"],
         "rejected": all_counts["rejected"],

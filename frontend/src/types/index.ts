@@ -318,6 +318,7 @@ export interface CompanyOverviewRow {
   slug: string;
   candidates: number;
   invited: number;
+  interviews_total: number;
   interviews_completed: number;
   shortlisted: number;
   rejected: number;
@@ -329,12 +330,53 @@ export interface CompaniesOverview {
     total_companies: number;
     candidates: number;
     invited: number;
+    interviews_total: number;
     interviews_completed: number;
     shortlisted: number;
     rejected: number;
     on_hold: number;
   };
   companies: CompanyOverviewRow[];
+}
+
+// GET /api/admin/companies/{id} — read-only company profile + stats +
+// candidate list for Super-Admin review (composed from existing aggregations).
+export interface AdminCompanyDetail {
+  company: {
+    id: string;
+    name: string | null;
+    slug: string | null;
+    email: string | null;
+    phone: string | null;
+    address: string | null;
+    city: string | null;
+    state: string | null;
+    country: string | null;
+    postal_code: string | null;
+    website: string | null;
+    company_size: string | null;
+    contact_person: string | null;
+    registration_date: string | null;
+  };
+  stats: {
+    invited: number;
+    registrations: number;
+    interviews_total: number;
+    interviews_completed: number;
+    shortlisted: number;
+    rejected: number;
+    on_hold: number;
+    completion_rate: number;
+    shortlist_rate: number;
+  };
+  candidates: Array<{
+    candidate_id: string;
+    name: string;
+    email: string | null;
+    status: CandidateStatus;
+    last_interview_at: string | null;
+    best_score: number;
+  }>;
 }
 
 export interface AdminUserInterview {

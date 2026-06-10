@@ -14,7 +14,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from '../ui';
-import type { AdminOverview, CompaniesOverview, CompanyOverviewRow } from '../../types';
+import type { AdminOverview, CompaniesOverview } from '../../types';
 
 function scoreClass(s: number): string {
   if (s >= 7) return 'good';
@@ -39,7 +39,7 @@ function formatDate(d?: string | null): string {
 
 export function AdminDashboard() {
   const navigate = useNavigate();
-  const { company, isPlatformAdmin, setActingAs } = useAuth();
+  const { company, isPlatformAdmin } = useAuth();
   const [data, setData] = useState<AdminOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -59,14 +59,9 @@ export function AdminDashboard() {
     adminApi.companiesOverview().then(setCompanies).catch(() => setCompanies(null));
   }, []);
 
-  // Drill into a company by reusing the existing act-as mechanism: scope to
-  // the company, then the recruiter Candidates view shows its candidates +
-  // interview data. (Effective only for platform admins — the table below is
-  // gated to them.)
-  const openCompany = (row: CompanyOverviewRow) => {
-    setActingAs({ id: row.company_id, slug: row.slug, name: row.name });
-    navigate('/recruiter');
-  };
+  // Drill into a company → read-only platform-admin detail (profile + stats +
+  // candidates), NOT the company-admin invite/shortlist workflow. The act-as
+  // picker in the topbar remains for explicit acting-as when truly needed.
 
   if (loading) {
     return (
@@ -130,6 +125,10 @@ export function AdminDashboard() {
               <div className="mt-1 text-xs text-ink-subtle">Invited</div>
             </Card>
             <Card padding="md">
+              <div className="text-2xl font-semibold text-ink">{companies.totals.interviews_total}</div>
+              <div className="mt-1 text-xs text-ink-subtle">Total interviews</div>
+            </Card>
+            <Card padding="md">
               <div className="text-2xl font-semibold text-ink">{companies.totals.interviews_completed}</div>
               <div className="mt-1 text-xs text-ink-subtle">Completed interviews</div>
             </Card>
@@ -165,6 +164,7 @@ export function AdminDashboard() {
                       <TableHeaderCell>Company</TableHeaderCell>
                       <TableHeaderCell>Candidates</TableHeaderCell>
                       <TableHeaderCell>Invited</TableHeaderCell>
+                      <TableHeaderCell>Interviews</TableHeaderCell>
                       <TableHeaderCell>Completed</TableHeaderCell>
                       <TableHeaderCell>Shortlisted</TableHeaderCell>
                       <TableHeaderCell>Rejected</TableHeaderCell>
@@ -175,7 +175,7 @@ export function AdminDashboard() {
                     {companies.companies.map((c) => (
                       <TableRow
                         key={c.company_id}
-                        onClick={() => openCompany(c)}
+                        onClick={() => navigate(`/admin/companies/${c.company_id}`)}
                         className="cursor-pointer hover:bg-surface-2"
                       >
                         <TableCell>
@@ -184,6 +184,7 @@ export function AdminDashboard() {
                         </TableCell>
                         <TableCell>{c.candidates}</TableCell>
                         <TableCell>{c.invited}</TableCell>
+                        <TableCell>{c.interviews_total}</TableCell>
                         <TableCell>{c.interviews_completed}</TableCell>
                         <TableCell><span className="font-medium text-success">{c.shortlisted}</span></TableCell>
                         <TableCell><span className="font-medium text-danger">{c.rejected}</span></TableCell>
