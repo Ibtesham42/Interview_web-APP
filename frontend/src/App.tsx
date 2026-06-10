@@ -19,6 +19,7 @@ import { CompanySignup } from './components/companies/CompanySignup';
 import { Settings } from './components/companies/Settings';
 import { Apply } from './components/apply/Apply';
 import { ActingAsPicker } from './components/admin/ActingAsPicker';
+import { UiShowcase } from './components/ui/UiShowcase';
 import type { CapabilityName } from './services/capabilities';
 import type { UserRole } from './types';
 
@@ -247,6 +248,10 @@ function App() {
           <Route path="/recruiter" element={protectedShell(<RecruiterDashboard />, { requires: 'manage_candidates' })} />
           <Route path="/recruiter/analytics" element={protectedShell(<RecruiterAnalytics />, { requires: 'manage_candidates' })} />
           <Route path="/recruiter/candidates/:candidateId" element={protectedShell(<RecruiterCandidateDetail />, { requires: 'manage_candidates' })} />
+
+          {/* Dev-only design-system showcase (Phase 1). Gated to DEV so it is
+              never reachable in production. */}
+          {import.meta.env.DEV && <Route path="/__ui" element={<UiShowcase />} />}
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

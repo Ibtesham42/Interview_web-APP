@@ -23,6 +23,37 @@
 
 ---
 
+## 10/06/2026 (e)
+Type: Feature
+
+Design-system **Phase 1 — primitives** (builds on Phase 0; same branch/PR).
+New `src/components/ui/` directory + barrel with token-driven, dual-theme
+Tailwind primitives. No existing screen changed yet — adoption is Phase 3+.
+
+- `Card` (+ `CardHeader`, `CardTitle`) — base surface, replaces `.panel`/
+  `.stat-card` over time.
+- `Badge` — one status-pill primitive (neutral/primary/success/warning/danger/
+  info) for the app's many indicators (email status, decision, role, integrity).
+- `Field` + `Input` + `Textarea` — labelled control rows with hint/error +
+  accessible `aria-describedby`; forwardRef controls.
+- `EmptyState` — consistent zero-data state (title/description/icon/action).
+- `Table` (+ head/body/row/cell) — styled, horizontally scrollable.
+- `Toast` — `ToastProvider` + `useToast` (variants, auto-dismiss, a11y region);
+  mounted at the root in main.tsx. Replaces ad-hoc inline banners over time.
+- `UiShowcase` — DEV-only route `/__ui` (gated by import.meta.env.DEV; not
+  linked, redirects in prod) so every primitive is verifiable in light + dark
+  before screen adoption.
+
+Verification: `tsc` clean, vitest 20/20, `npm run build` OK. No backend
+changes. Visual QA is the operator's (open /__ui, toggle theme).
+
+Affected files: frontend/src/components/ui/{Card,Badge,Field,EmptyState,Table,
+Toast,UiShowcase,index}.{tsx,ts}, src/main.tsx, src/App.tsx
+Architectural impact: establishes the `ui/` primitive layer + a root Toast
+provider; the forward component vocabulary for all subsequent phases.
+Future considerations: Phase 2 shell+sidebar consumes these; Phase 3 recruiter
+screens migrate `.panel`/chips/tables/forms onto them.
+
 ## 10/06/2026 (d)
 Type: Refactor + Decision
 
