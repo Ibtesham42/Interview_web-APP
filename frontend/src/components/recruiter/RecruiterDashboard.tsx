@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { recruiterApi } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../Button';
+import { Badge, Card, EmptyState } from '../ui';
+import type { BadgeVariant } from '../ui';
 import { InviteCandidateModal } from './InviteCandidateModal';
 import type {
   CandidateStatus,
@@ -43,6 +45,13 @@ function decisionLabel(decision: RecruiterDecision): string {
   if (decision === 'rejected') return 'Rejected';
   if (decision === 'hold') return 'On Hold';
   return 'Undecided';
+}
+
+function decisionVariant(decision: RecruiterDecision): BadgeVariant {
+  if (decision === 'shortlisted') return 'success';
+  if (decision === 'rejected') return 'danger';
+  if (decision === 'hold') return 'warning';
+  return 'neutral';
 }
 
 interface PillProps {
@@ -490,19 +499,31 @@ export function RecruiterDashboard() {
       )}
 
       {error ? (
-        <div className="empty-state">
-          <h3>Couldn't load candidates</h3>
-          <p>{error}</p>
-        </div>
+        <Card>
+          <EmptyState title="Couldn't load candidates" description={error} />
+        </Card>
       ) : !loading && data && data.items.length === 0 ? (
-        <div className="empty-state">
-          <h3>No candidates {hasActiveFilters ? 'match these filters' : 'yet'}</h3>
-          {hasActiveFilters ? (
-            <p>Try clearing a filter to widen the search.</p>
-          ) : (
-            <p>Candidates appear here as soon as they sign up.</p>
-          )}
-        </div>
+        <Card>
+          <EmptyState
+            title={hasActiveFilters ? 'No candidates match these filters' : 'No candidates yet'}
+            description={
+              hasActiveFilters
+                ? 'Try clearing a filter to widen the search.'
+                : 'Candidates appear here as soon as they sign up.'
+            }
+            action={
+              hasActiveFilters ? (
+                <Button variant="secondary" size="sm" onClick={handleClearFilters}>
+                  Clear filters
+                </Button>
+              ) : can('invite_candidate') ? (
+                <Button variant="primary" size="sm" onClick={() => setInviteOpen(true)}>
+                  + Invite candidate
+                </Button>
+              ) : undefined
+            }
+          />
+        </Card>
       ) : (
         <div className="panel">
           <div className="table-wrap">
@@ -575,16 +596,16 @@ export function RecruiterDashboard() {
                           <div className="cell-sub">{row.email || '—'}</div>
                         </td>
                         <td>
-                          <span className={`decision-chip decision-${row.decision}`}>
+                          <Badge variant={decisionVariant(row.decision)}>
                             {decisionLabel(row.decision)}
-                          </span>
+                          </Badge>
                         </td>
                         <td>
                           {row.integrity_warnings > 0 ? (
-                            <span className="integrity-flag-chip">
+                            <Badge variant="warning">
                               {row.integrity_warnings} warning
                               {row.integrity_warnings === 1 ? '' : 's'}
-                            </span>
+                            </Badge>
                           ) : (
                             <span className="cell-sub">—</span>
                           )}

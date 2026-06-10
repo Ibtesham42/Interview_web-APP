@@ -23,6 +23,232 @@
 
 ---
 
+## 10/06/2026 (k)
+Type: Refactor
+
+Design-system **Phase 4 (part 1) — candidate Dashboard** (`Dashboard.tsx`).
+Stat tiles → `Card` grid; trend + interview-history panels → `Card`+`CardHeader`;
+score/in-progress chips → `Badge`; error + no-interviews states → `Card`+
+`EmptyState` (the empty state keeps its mic icon + "Start your first interview"
+CTA). Bespoke trend chart + `.iv-*` rows left intact (token-based).
+
+NOTE: `InterviewRoom` is intentionally EXCLUDED from the redesign migration —
+CLAUDE.md mandates the realtime interview/voice/WebSocket pipeline stays stable;
+it's token-based and already theme-aware.
+
+Verification: `tsc` clean, vitest 20/20, `npm run build` OK. No backend changes.
+
+Affected files: frontend/src/components/Dashboard.tsx
+Future considerations: Phase 4 continues — CandidateUpload, Apply, auth screens
+(Login/Signup/CompanySignup). Then Phase 5 (states/responsive + flip to light).
+
+## 10/06/2026 (j)
+Type: Refactor
+
+Design-system **Phase 3 (part 4) — Report / AI-evaluation screen** (`Report.tsx`)
+— completes Phase 3.
+- Panels (Summary, Strengths, Areas to improve, Phase breakdown, Integrity
+  events, Transcript) → `Card` + `CardTitle`.
+- Error state → `Card` + `EmptyState` (keeps the Back-to-Dashboard action).
+- LEFT INTACT: the bespoke score hero, phase cards / metric chips, phase bars,
+  integrity event list, and transcript replay — already designed + token-based.
+
+Phase 3 done: all recruiter + evaluation screens (candidate detail, Candidates
+dashboard, Analytics, Report) now share the primitive vocabulary.
+
+Verification: `tsc` clean, vitest 20/20, `npm run build` OK. No backend changes.
+
+Affected files: frontend/src/components/Report.tsx
+Future considerations: Phase 4 (candidate experience: signup, apply, dashboard,
+interview room, upload). Phase 5 (states/responsive/a11y + flip default to
+light + re-enable Tailwind preflight).
+
+## 10/06/2026 (i)
+Type: Refactor
+
+Design-system **Phase 3 (part 3) — recruiter Analytics** (`RecruiterAnalytics`).
+Same conservative consistency layer:
+- Summary KPI tiles → `Card` grid (shortlisted/rejected keep success/danger ink).
+- Recent-activity status chip → `Badge` (`statusVariant`).
+- Error state → `Card` + `EmptyState`.
+- LEFT INTACT: the bespoke data-driven charts (funnel bars, conversion grid,
+  score/integrity bars) and the panels — token-based, theme-aware; restructuring
+  the charts blind isn't worth the risk.
+
+Verification: `tsc` clean, vitest 20/20, `npm run build` OK. No backend changes.
+
+Affected files: frontend/src/components/recruiter/RecruiterAnalytics.tsx
+Future considerations: Phase 3 remaining — Report / AI-evaluation screen. Then
+Phase 4 (candidate experience) + Phase 5 (states/responsive + flip to light).
+
+## 10/06/2026 (h)
+Type: Refactor
+
+Design-system **Phase 3 (part 2) — recruiter Candidates dashboard**
+(`RecruiterDashboard.tsx`). Consistency-focused, deliberately conservative on
+the flagship screen given no visual verification yet:
+
+- Decision + integrity chips → `Badge` (shared `decisionVariant`); colour
+  meaning now matches the candidate-detail screen.
+- Error + empty states → `Card` + `EmptyState`, with a contextual action
+  (Clear filters when filtered; Invite candidate when empty + permitted).
+- LEFT INTACT (logic + interaction risk, better migrated with visual QA): the
+  sortable results table, the filter bar (search/pills/score-range/date-range),
+  pagination, optimistic decision/bookmark/notes flow. These use token-based
+  legacy classes that already render in both themes.
+
+Verification: `tsc` clean, vitest 20/20, `npm run build` OK. No backend
+changes. All filter/sort/pagination/optimistic logic unchanged.
+
+Affected files: frontend/src/components/recruiter/RecruiterDashboard.tsx
+Architectural impact: none — incremental primitive adoption.
+Future considerations: table → `Table` primitive + filter bar → `Card` are the
+remaining dashboard polish (do with visual verification). Phase 3 still has
+Analytics + Report/AI-evaluation.
+
+## 10/06/2026 (g)
+Type: Refactor
+
+Design-system **Phase 3 (part 1) — recruiter candidate-detail screen**. First
+adoption of the Phase 1 primitives on a real recruiter screen
+(`RecruiterCandidateDetail.tsx`). Presentation-only; all decision/notes/email/
+integrity logic unchanged.
+
+- Status indicators unified on `Badge` with semantic variants via new mappers
+  (`statusVariant`/`decisionVariant`/`scoreVariant`/`emailStatusVariant`):
+  header status chip, interview integrity/score/in-progress chips, email
+  delivery status, decision chips — consistent colour meaning across the screen.
+- Panels → `Card` + `CardHeader`/`CardTitle`; stat tiles → `Card` grid;
+  decisions table → `Table` primitives; zero-data states → `EmptyState`.
+- Removed the now-dead `scoreClass` helper. Legacy `.iv-*`/`.recruiter-notes-*`/
+  `.all-notes-*` row classes kept (token-based, theme-aware) — only containers
+  and chips migrated.
+
+Verification: `tsc` clean, vitest 20/20, `npm run build` OK. No backend
+changes. Visual QA is the operator's (open a candidate, both themes).
+
+Affected files: frontend/src/components/recruiter/RecruiterCandidateDetail.tsx
+Architectural impact: establishes the screen-migration pattern (legacy classes
+→ ui/ primitives) for the rest of Phase 3.
+Future considerations: Phase 3 continues — Candidates list/pipeline
+(RecruiterDashboard), Analytics, and the AI-evaluation/Report screens.
+
+## 10/06/2026 (f)
+Type: Refactor
+
+Design-system **Phase 2 — app shell & navigation**. Replaced the single
+top-bar Header with a recruiter-first **left sidebar + slim topbar**, extracted
+to `src/components/layout/AppShell.tsx` (Tailwind + tokens; renders in light and
+dark). First user-visible redesign surface; wraps every authenticated screen.
+
+- Persistent left sidebar (desktop): brand, capability-gated nav with line
+  icons (Overview / Candidates / Analytics / Settings / Dashboard / New
+  interview), and a footer with user identity + role + tenant + sign-out.
+- Slim sticky topbar: mobile hamburger, act-as picker (platform-admin only —
+  gated, since `ActingAsPicker` hits an admin-only endpoint and doesn't
+  self-gate), theme toggle.
+- Responsive: sidebar collapses to a slide-in drawer (overlay) under `md`.
+- Unauthenticated branch (e.g. /companies/signup pre-login) → minimal brand +
+  Sign-in header, preserving the old degraded behaviour.
+- Brand unified to **"Rehearsify"** (matches backend PLATFORM_FROM_NAME +
+  deployed title; the old header said "Interview Platform").
+- All nav/capability logic preserved verbatim — presentation-only change.
+  Existing `.page` screens drop into the new main area unchanged. Legacy
+  `.header*`/`.main-content`/`.app` CSS left in place (now unused; Phase 5
+  cleanup).
+
+App.tsx: removed inline Header/AppShell, imports the new shell; dropped
+now-unused imports (NavLink/useNavigate/Link/useTheme/ActingAsPicker).
+
+Verification: `tsc` clean, vitest 20/20, `npm run build` OK. Dark stays default
+(unchanged theme); the shell now also renders correctly in light. No backend
+changes. Visual QA is the operator's (sidebar, drawer at <md, both themes).
+
+Affected files: frontend/src/components/layout/AppShell.tsx (new), src/App.tsx
+Architectural impact: introduces the layout/ shell layer; navigation IA moves
+from horizontal to vertical (scales to more sections, clearer hierarchy).
+Future considerations: Phase 3 recruiter screens render inside this shell and
+adopt the Phase 1 primitives.
+
+## 10/06/2026 (e)
+Type: Feature
+
+Design-system **Phase 1 — primitives** (builds on Phase 0; same branch/PR).
+New `src/components/ui/` directory + barrel with token-driven, dual-theme
+Tailwind primitives. No existing screen changed yet — adoption is Phase 3+.
+
+- `Card` (+ `CardHeader`, `CardTitle`) — base surface, replaces `.panel`/
+  `.stat-card` over time.
+- `Badge` — one status-pill primitive (neutral/primary/success/warning/danger/
+  info) for the app's many indicators (email status, decision, role, integrity).
+- `Field` + `Input` + `Textarea` — labelled control rows with hint/error +
+  accessible `aria-describedby`; forwardRef controls.
+- `EmptyState` — consistent zero-data state (title/description/icon/action).
+- `Table` (+ head/body/row/cell) — styled, horizontally scrollable.
+- `Toast` — `ToastProvider` + `useToast` (variants, auto-dismiss, a11y region);
+  mounted at the root in main.tsx. Replaces ad-hoc inline banners over time.
+- `UiShowcase` — DEV-only route `/__ui` (gated by import.meta.env.DEV; not
+  linked, redirects in prod) so every primitive is verifiable in light + dark
+  before screen adoption.
+
+Verification: `tsc` clean, vitest 20/20, `npm run build` OK. No backend
+changes. Visual QA is the operator's (open /__ui, toggle theme).
+
+Affected files: frontend/src/components/ui/{Card,Badge,Field,EmptyState,Table,
+Toast,UiShowcase,index}.{tsx,ts}, src/main.tsx, src/App.tsx
+Architectural impact: establishes the `ui/` primitive layer + a root Toast
+provider; the forward component vocabulary for all subsequent phases.
+Future considerations: Phase 2 shell+sidebar consumes these; Phase 3 recruiter
+screens migrate `.panel`/chips/tables/forms onto them.
+
+## 10/06/2026 (d)
+Type: Refactor + Decision
+
+Design-system overhaul — **Phase 0 (foundation only)**. User chose (a) migrate
+to Tailwind and (b) dual light+dark theme (light as the eventual default). This
+phase lays the foundation without touching component visuals; component
+migration follows in later phased PRs.
+
+Decisions:
+- Tailwind v3 added ALONGSIDE the existing index.css system (the accepted
+  "parallel during migration" path the user green-lit). Preflight is OFF so
+  Tailwind never resets the legacy base while both coexist; re-enable in the
+  final phase.
+- Dual theme via CSS variables: `index.css :root` is now the LIGHT palette
+  (new); `:root.dark` carries the dark palette — byte-for-byte the previous
+  values, so dark mode is unchanged. Added semantic state tokens
+  (success/warning/danger/info × text/surface/border) per theme.
+- **Migration default = dark** (ThemeContext `MIGRATION_DEFAULT` + the
+  index.html anti-FOUC guard + index.html). Keeps un-migrated screens
+  (designed for dark) rendering as before. Flip to light in the final phase
+  (3 spots noted in code). System `prefers-color-scheme` intentionally NOT
+  followed yet.
+
+Added:
+- `tailwind.config.js` (darkMode 'class', content globs, tokens mapped to CSS
+  vars: canvas/surface/primary/ink/success/… + radius/shadow/font), 
+  `postcss.config.js`, `src/styles/tailwind.css` (directives, imported after
+  index.css so utilities win during the bridge).
+- `src/contexts/ThemeContext.tsx` — ThemeProvider (stored choice wins, else
+  dark), `useTheme`. Wrapped in main.tsx. Header gains a ☀/☾ toggle.
+- index.html inline pre-paint theme guard.
+
+Verification: `tsc` clean, vitest 20/20, `npm run build` OK (Tailwind pipeline
+works). Dark mode visually unchanged (same tokens, default dark). Light theme
+is defined but NOT yet applied to legacy components — expected; they get ported
+phase by phase. No backend changes. No browser walk performed here.
+
+Affected files: frontend/package.json (+ lock), tailwind.config.js,
+postcss.config.js, frontend/index.html, src/main.tsx, src/index.css,
+src/styles/tailwind.css, src/contexts/ThemeContext.tsx, src/App.tsx
+Architectural impact: introduces Tailwind as the forward styling system + a
+theme-token layer; legacy CSS remains authoritative until each component is
+migrated.
+Future considerations: Phase 1 primitives (Card/Badge/Field/EmptyState/Toast/
+Table), Phase 2 shell+sidebar nav, Phase 3 recruiter screens, Phase 4
+onboarding+candidate, Phase 5 states/a11y/responsive + flip default to light +
+re-enable preflight.
+
 ## 10/06/2026 (c)
 Type: Fix
 

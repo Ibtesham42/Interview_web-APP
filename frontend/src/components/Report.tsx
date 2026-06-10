@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { reportApi } from '../services/api';
+import { Card, CardTitle, EmptyState } from './ui';
 import type {
   InterviewReport,
   PhaseScores,
@@ -152,11 +153,13 @@ export function Report() {
   if (error || !report) {
     return (
       <div className="page">
-        <div className="empty-state">
-          <h3>Couldn't load this report</h3>
-          <p>{error || 'The report is not available.'}</p>
-          <Link to="/dashboard" className="btn btn-primary">Back to Dashboard</Link>
-        </div>
+        <Card>
+          <EmptyState
+            title="Couldn't load this report"
+            description={error || 'The report is not available.'}
+            action={<Link to="/dashboard" className="btn btn-primary">Back to Dashboard</Link>}
+          />
+        </Card>
       </div>
     );
   }
@@ -187,17 +190,17 @@ export function Report() {
 
       {/* Summary */}
       {report.summary && (
-        <div className="panel">
-          <h3>Summary</h3>
+        <Card>
+          <CardTitle className="mb-3">Summary</CardTitle>
           <p className="report-summary">{report.summary}</p>
-        </div>
+        </Card>
       )}
 
       {/* Strengths & improvements */}
       {(strengths.length > 0 || improvements.length > 0) && (
         <div className="report-cols">
-          <div className="panel">
-            <h3>Strengths</h3>
+          <Card>
+            <CardTitle className="mb-3">Strengths</CardTitle>
             {strengths.length > 0 ? (
               <ul className="report-list good">
                 {strengths.map((s) => <li key={s}>{s}</li>)}
@@ -205,9 +208,9 @@ export function Report() {
             ) : (
               <p className="report-empty">No standout strengths in this interview yet.</p>
             )}
-          </div>
-          <div className="panel">
-            <h3>Areas to improve</h3>
+          </Card>
+          <Card>
+            <CardTitle className="mb-3">Areas to improve</CardTitle>
             {improvements.length > 0 ? (
               <ul className="report-list low">
                 {improvements.map((s) => <li key={s}>{s}</li>)}
@@ -215,24 +218,24 @@ export function Report() {
             ) : (
               <p className="report-empty">No major weak areas — keep it up.</p>
             )}
-          </div>
+          </Card>
         </div>
       )}
 
       {/* Phase breakdown */}
-      <div className="panel">
-        <h3>Phase breakdown</h3>
+      <Card>
+        <CardTitle className="mb-4">Phase breakdown</CardTitle>
         <div className="phase-grid">
           {[2, 3, 4, 5].map((phase) => renderPhase(phase, report.phase_scores[phase]))}
         </div>
-      </div>
+      </Card>
 
       {/* Integrity events (Phase B). Only rendered when the backend provides
           the section — historical reports generated before this field existed
           simply skip it. */}
       {report.integrity_events && (
-        <div className="panel">
-          <h3>Integrity events</h3>
+        <Card>
+          <CardTitle className="mb-3">Integrity events</CardTitle>
           <div className="integrity-report">
             {report.integrity_events.terminated && (
               <div className="integrity-report-terminated">
@@ -245,12 +248,12 @@ export function Report() {
               <IntegrityEventList events={report.integrity_events.events} />
             )}
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Transcript replay */}
       {transcript.length > 0 && (
-        <div className="panel">
+        <Card>
           <button
             className="transcript-toggle"
             onClick={() => setShowTranscript((v) => !v)}
@@ -269,7 +272,7 @@ export function Report() {
               ))}
             </div>
           )}
-        </div>
+        </Card>
       )}
 
       {/* Actions */}
