@@ -399,7 +399,8 @@ class TestCandidateAnalyticsSummaryTotals:
         result = candidate_analytics_summary(_fake_supabase())
         t = result["totals"]
         assert t == {
-            "invited": 0, "registrations": 0, "interviews_completed": 0,
+            "invited": 0, "registrations": 0,
+            "interviews_total": 0, "interviews_completed": 0,
             "shortlisted": 0, "rejected": 0, "on_hold": 0,
             "completion_rate": 0.0, "shortlist_rate": 0.0,
         }
@@ -541,6 +542,7 @@ class TestCompaniesOverview:
         assert t["total_companies"] == 2
         assert t["candidates"] == 4          # includes the unassigned candidate
         assert t["invited"] == 1
+        assert t["interviews_total"] == 3
         assert t["interviews_completed"] == 2
         assert t["shortlisted"] == 1
         assert t["rejected"] == 1
@@ -553,8 +555,10 @@ class TestCompaniesOverview:
         assert [r["company_id"] for r in result["companies"]] == ["c1", "c2"]
         assert rows["c1"]["candidates"] == 2
         assert rows["c1"]["invited"] == 1
+        assert rows["c1"]["interviews_total"] == 2     # a1 completed + a2 in-progress
         assert rows["c1"]["interviews_completed"] == 1
         assert rows["c1"]["shortlisted"] == 1
+        assert rows["c2"]["interviews_total"] == 1
         assert rows["c2"]["candidates"] == 1
         assert rows["c2"]["rejected"] == 1
         assert rows["c2"]["invited"] == 0

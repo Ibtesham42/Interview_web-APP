@@ -11,6 +11,7 @@ import { InterviewRoom } from './components/InterviewRoom';
 import { Report } from './components/Report';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 import { AdminUserDetail } from './components/admin/AdminUserDetail';
+import { AdminCompanyDetail } from './components/admin/AdminCompanyDetail';
 import { RecruiterDashboard } from './components/recruiter/RecruiterDashboard';
 import { RecruiterCandidateDetail } from './components/recruiter/RecruiterCandidateDetail';
 import { RecruiterAnalytics } from './components/recruiter/RecruiterAnalytics';
@@ -122,6 +123,9 @@ function App() {
               ADR 0007. `see_admin_overview` admits TENANT_ADMINS. */}
           <Route path="/admin" element={protectedShell(<AdminDashboard />, { requires: 'see_admin_overview' })} />
           <Route path="/admin/users/:userId" element={protectedShell(<AdminUserDetail />, { requires: 'see_admin_overview' })} />
+          {/* Super-admin read-only company drill-down (review, not the
+              company-admin workflow). */}
+          <Route path="/admin/companies/:companyId" element={protectedShell(<AdminCompanyDetail />, { requires: 'see_admin_overview' })} />
           {/* Company settings — multi-tenant PR 5 + ADR 0007 widening.
               Admits anyone who can manage settings OR invite candidates
               (OR semantics). This lets `recruiter` reach the page and

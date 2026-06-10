@@ -11,7 +11,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.supabase_client import get_supabase
 from app.auth import get_current_admin, tenant_scope
 from app.services.interview_orchestrator import score_interviews_bulk
-from app.services.recruiter_analytics import companies_overview, integrity_event_volume
+from app.services.recruiter_analytics import (
+    candidate_analytics_summary,
+    companies_overview,
+    integrity_event_volume,
+)
 
 router = APIRouter()
 
@@ -135,6 +139,80 @@ async def admin_companies_overview(admin=Depends(get_current_admin)):
     """
     supabase = get_supabase()
     return companies_overview(supabase, company_id=tenant_scope(admin))
+
+
+@router.get("/companies/{company_id}")
+async def admin_company_detail(company_id: UUID, admin=Depends(get_current_admin)):
+    """Read-only company profile + stats + candidate list for Super-Admin
+    review. COMPOSES existing pieces — no new aggregation:
+      - the `companies` row (profile fields),
+      - the founding admin (`created_by`) as the "contact person",
+      - `candidate_analytics_summary(company)` for stats + the candidate list.
+
+    `tenant_scope` keeps access correct: a platform admin can open any company;
+    a `company_admin` only their own (a cross-tenant id 404s without leaking
+    whether it exists).
+    """
+    supabase = get_supabase()
+    tenant = tenant_scope(admin)
+    if tenant is not None and str(tenant) != str(company_id):
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    rows = (
+        supabase.table("companies")
+        .select(
+            "id,slug,name,email,phone,address,city,state,country,postal_code,"
+            "website,company_size,created_by,created_at"
+        )
+        .eq("id", str(company_id))
+        .execute()
+        .data
+        or []
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Company not found")
+    company = rows[0]
+
+    # "Contact person" isn't a stored field — derive it from the founding
+    # company_admin (created_by). Falls back to None if the profile is gone.
+    contact_person = None
+    created_by = company.get("created_by")
+    if created_by:
+        prof = (
+            supabase.table("profiles")
+            .select("full_name,email")
+            .eq("id", created_by)
+            .execute()
+            .data
+            or []
+        )
+        if prof:
+            contact_person = prof[0].get("full_name") or prof[0].get("email")
+
+    summary = candidate_analytics_summary(
+        supabase, company_id=str(company_id), recent_limit=100
+    )
+
+    return {
+        "company": {
+            "id": company["id"],
+            "name": company.get("name"),
+            "slug": company.get("slug"),
+            "email": company.get("email"),
+            "phone": company.get("phone"),
+            "address": company.get("address"),
+            "city": company.get("city"),
+            "state": company.get("state"),
+            "country": company.get("country"),
+            "postal_code": company.get("postal_code"),
+            "website": company.get("website"),
+            "company_size": company.get("company_size"),
+            "contact_person": contact_person,
+            "registration_date": company.get("created_at"),
+        },
+        "stats": summary["totals"],
+        "candidates": summary["recent_activity"],
+    }
 
 
 @router.get("/users/{user_id}")

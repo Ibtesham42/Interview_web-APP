@@ -23,6 +23,54 @@
 
 ---
 
+## 10/06/2026 (n)
+Type: Feature
+
+Super-Admin platform view + read-only company drill-down. Reshapes the
+platform-admin experience so the PRIMARY surface is platform oversight, not the
+company-admin invite/shortlist workflow.
+
+Audit: the prior company-overview (`5212e41`) already gave platform/company
+KPIs + a companies table, but the drill-down dropped the admin into the
+recruiter workflow (act-as → /recruiter), and there was no company profile view
+or "Total Interviews" metric.
+
+Backend (all reuse — no new aggregation/dup queries):
+- `interviews_total` added to `candidate_analytics_summary` + `companies_overview`
+  totals/rows (count over already-fetched interviews).
+- `GET /api/admin/companies/{id}` — COMPOSES the `companies` profile row +
+  `created_by` profile (as "contact person") + `candidate_analytics_summary(id)`
+  (stats + candidate list). `tenant_scope`: platform admin → any; company_admin
+  → own only (cross-tenant → 404).
+
+Frontend:
+- New read-only `AdminCompanyDetail` (`/admin/companies/:id`): company profile
+  (name / contact person / email / phone / address / website / size /
+  registration date), stat cards (candidates / total + completed interviews /
+  shortlisted / rejected / on-hold), and a read-only candidate table
+  (name / status badge / best score / last interview). No invite/shortlist
+  actions — platform oversight only.
+- AdminDashboard: company-table row click now → `/admin/companies/:id` (was
+  act-as → /recruiter); added "Total interviews" KPI card + "Interviews"
+  column. Dropped the unused act-as drill-down here (the topbar picker stays
+  for explicit acting-as).
+
+Access control: Super Admin = platform-wide (any company detail); Company Admin
+= own company only (enforced by `tenant_scope` on the endpoint). Built on the
+Phase-1 primitives → renders light + dark.
+
+Verification: backend pytest 349 (+`interviews_total` assertions). Frontend tsc
++ vitest 20/20 + build green. Live verification pending backend deploy (new
+endpoint).
+
+Affected files: backend/app/services/recruiter_analytics.py,
+backend/app/routers/admin.py, backend/tests/test_recruiter_analytics.py,
+frontend/src/types/index.ts, frontend/src/services/api.ts,
+frontend/src/components/admin/AdminCompanyDetail.tsx (new),
+frontend/src/components/admin/AdminDashboard.tsx, frontend/src/App.tsx
+Architectural impact: None new — composes existing aggregations + a read-only
+detail screen; shifts super-admin drill-down from company-workflow to oversight.
+
 ## 10/06/2026 (m)
 Type: Feature
 

@@ -15,6 +15,7 @@ import type {
   Evaluation,
   DashboardData,
   AdminOverview,
+  AdminCompanyDetail,
   CompaniesOverview,
   AdminUserDetail,
   CompanySignupResponse,
@@ -189,6 +190,8 @@ export const dashboardApi = {
 export const adminApi = {
   overview: () => fetchJson<AdminOverview>('/admin/overview'),
   companiesOverview: () => fetchJson<CompaniesOverview>('/admin/companies-overview'),
+  companyDetail: (companyId: string) =>
+    fetchJson<AdminCompanyDetail>(`/admin/companies/${companyId}`),
   userDetail: (userId: string) => fetchJson<AdminUserDetail>(`/admin/users/${userId}`),
 };
 
