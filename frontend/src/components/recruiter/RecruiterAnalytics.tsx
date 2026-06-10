@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { recruiterApi } from '../../services/api';
+import { Badge, Card, EmptyState } from '../ui';
+import type { BadgeVariant } from '../ui';
 import type {
   CandidateStatus,
   FunnelFieldBreakdown,
@@ -17,6 +19,14 @@ const STATUS_LABELS: Record<CandidateStatus, string> = {
   rejected: 'Rejected',
   on_hold: 'On Hold',
 };
+
+function statusVariant(s: CandidateStatus): BadgeVariant {
+  if (s === 'shortlisted') return 'success';
+  if (s === 'rejected') return 'danger';
+  if (s === 'on_hold') return 'warning';
+  if (s === 'invited') return 'info';
+  return 'neutral';
+}
 
 function formatDate(d: string | null): string {
   if (!d) return '—';
@@ -177,10 +187,12 @@ export function RecruiterAnalytics() {
   if (error || !funnel || !scores || !integrity) {
     return (
       <div className="page">
-        <div className="empty-state">
-          <h3>Couldn't load analytics</h3>
-          <p>{error || 'Try refreshing the page.'}</p>
-        </div>
+        <Card>
+          <EmptyState
+            title="Couldn't load analytics"
+            description={error || 'Try refreshing the page.'}
+          />
+        </Card>
       </div>
     );
   }
@@ -201,39 +213,39 @@ export function RecruiterAnalytics() {
       </div>
 
       {summary && (
-        <div className="stat-grid auto">
-          <div className="stat-card">
-            <div className="stat-value">{summary.totals.invited}</div>
-            <div className="stat-label">Invited</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-value">{summary.totals.registrations}</div>
-            <div className="stat-label">Registrations</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-value">{summary.totals.interviews_completed}</div>
-            <div className="stat-label">Interviews completed</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-value score-good">{summary.totals.shortlisted}</div>
-            <div className="stat-label">Shortlisted</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-value score-low">{summary.totals.rejected}</div>
-            <div className="stat-label">Rejected</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-value">{summary.totals.on_hold}</div>
-            <div className="stat-label">On hold</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-value">{summary.totals.completion_rate}%</div>
-            <div className="stat-label">Completion rate</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-value">{summary.totals.shortlist_rate}%</div>
-            <div className="stat-label">Shortlist rate</div>
-          </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Card padding="md">
+            <div className="text-2xl font-semibold text-ink">{summary.totals.invited}</div>
+            <div className="mt-1 text-xs text-ink-subtle">Invited</div>
+          </Card>
+          <Card padding="md">
+            <div className="text-2xl font-semibold text-ink">{summary.totals.registrations}</div>
+            <div className="mt-1 text-xs text-ink-subtle">Registrations</div>
+          </Card>
+          <Card padding="md">
+            <div className="text-2xl font-semibold text-ink">{summary.totals.interviews_completed}</div>
+            <div className="mt-1 text-xs text-ink-subtle">Interviews completed</div>
+          </Card>
+          <Card padding="md">
+            <div className="text-2xl font-semibold text-success">{summary.totals.shortlisted}</div>
+            <div className="mt-1 text-xs text-ink-subtle">Shortlisted</div>
+          </Card>
+          <Card padding="md">
+            <div className="text-2xl font-semibold text-danger">{summary.totals.rejected}</div>
+            <div className="mt-1 text-xs text-ink-subtle">Rejected</div>
+          </Card>
+          <Card padding="md">
+            <div className="text-2xl font-semibold text-ink">{summary.totals.on_hold}</div>
+            <div className="mt-1 text-xs text-ink-subtle">On hold</div>
+          </Card>
+          <Card padding="md">
+            <div className="text-2xl font-semibold text-ink">{summary.totals.completion_rate}%</div>
+            <div className="mt-1 text-xs text-ink-subtle">Completion rate</div>
+          </Card>
+          <Card padding="md">
+            <div className="text-2xl font-semibold text-ink">{summary.totals.shortlist_rate}%</div>
+            <div className="mt-1 text-xs text-ink-subtle">Shortlist rate</div>
+          </Card>
         </div>
       )}
 
@@ -412,9 +424,9 @@ export function RecruiterAnalytics() {
                       <div className="cell-sub">{row.email || '—'}</div>
                     </td>
                     <td>
-                      <span className={`status-chip status-${row.status}`}>
+                      <Badge variant={statusVariant(row.status)}>
                         {STATUS_LABELS[row.status]}
-                      </span>
+                      </Badge>
                     </td>
                     <td>
                       {row.best_score > 0 ? (

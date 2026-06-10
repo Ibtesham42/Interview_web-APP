@@ -23,6 +23,24 @@
 
 ---
 
+## 10/06/2026 (i)
+Type: Refactor
+
+Design-system **Phase 3 (part 3) — recruiter Analytics** (`RecruiterAnalytics`).
+Same conservative consistency layer:
+- Summary KPI tiles → `Card` grid (shortlisted/rejected keep success/danger ink).
+- Recent-activity status chip → `Badge` (`statusVariant`).
+- Error state → `Card` + `EmptyState`.
+- LEFT INTACT: the bespoke data-driven charts (funnel bars, conversion grid,
+  score/integrity bars) and the panels — token-based, theme-aware; restructuring
+  the charts blind isn't worth the risk.
+
+Verification: `tsc` clean, vitest 20/20, `npm run build` OK. No backend changes.
+
+Affected files: frontend/src/components/recruiter/RecruiterAnalytics.tsx
+Future considerations: Phase 3 remaining — Report / AI-evaluation screen. Then
+Phase 4 (candidate experience) + Phase 5 (states/responsive + flip to light).
+
 ## 10/06/2026 (h)
 Type: Refactor
 
