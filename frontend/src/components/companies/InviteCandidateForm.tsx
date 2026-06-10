@@ -13,6 +13,14 @@ interface InviteCandidateFormProps {
    * of whether onSent is supplied (per grill G5 — uniform behavior
    * across both adapters: embedded card AND modal). */
   onSent?: (row: InviteCandidateResponse) => void;
+  /** Modal adapter only: renders a Cancel button beside Send in the
+   * action row and wires it to dismiss. Omitted in the embedded
+   * Settings card (no modal to cancel). */
+  onCancel?: () => void;
+  /** Optional intro copy rendered above the fields. Passed by the modal
+   * so the explainer scrolls with the form body while the action row
+   * stays pinned. */
+  intro?: string;
 }
 
 /**
@@ -33,7 +41,7 @@ interface InviteCandidateFormProps {
  * the error_message inline. Network/500 throws into the catch and
  * shows the thrown message.
  */
-export function InviteCandidateForm({ onSent }: InviteCandidateFormProps) {
+export function InviteCandidateForm({ onSent, onCancel, intro }: InviteCandidateFormProps) {
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [sending, setSending] = useState(false);
@@ -89,54 +97,69 @@ export function InviteCandidateForm({ onSent }: InviteCandidateFormProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit}>
-      <div className="form-group">
-        <label className="form-label" htmlFor="invite-email">Email</label>
-        <input
-          id="invite-email"
-          type="email"
-          className="form-input"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="candidate@example.com"
-          required
-        />
-      </div>
-      <div className="form-group">
-        <label className="form-label" htmlFor="invite-name">
-          Name <span className="form-optional">(optional)</span>
-        </label>
-        <input
-          id="invite-name"
-          type="text"
-          className="form-input"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Alice Smith"
-          maxLength={120}
-        />
-        <p className="form-hint">
-          Used in the email greeting. Blank is fine — we'll say "Hi
-          there,".
-        </p>
-      </div>
-
-      {message && (
-        <div
-          className={message.kind === 'success' ? 'auth-info' : 'error-message'}
-          role={message.kind === 'error' ? 'alert' : undefined}
-        >
-          {message.text}
+    <form className="invite-form" onSubmit={handleSubmit}>
+      <div className="invite-form-fields">
+        {intro && <p className="page-sub invite-form-intro">{intro}</p>}
+        <div className="form-group">
+          <label className="form-label" htmlFor="invite-email">Email</label>
+          <input
+            id="invite-email"
+            type="email"
+            className="form-input"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="candidate@example.com"
+            required
+          />
         </div>
-      )}
+        <div className="form-group">
+          <label className="form-label" htmlFor="invite-name">
+            Name <span className="form-optional">(optional)</span>
+          </label>
+          <input
+            id="invite-name"
+            type="text"
+            className="form-input"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Alice Smith"
+            maxLength={120}
+          />
+          <p className="form-hint">
+            Used in the email greeting. Blank is fine — we'll say "Hi
+            there,".
+          </p>
+        </div>
 
-      <button
-        type="submit"
-        className="btn btn-primary"
-        disabled={sending || !emailLooksValid}
-      >
-        {sending ? 'Sending…' : 'Send invite'}
-      </button>
+        {message && (
+          <div
+            className={message.kind === 'success' ? 'auth-info' : 'error-message'}
+            role={message.kind === 'error' ? 'alert' : undefined}
+          >
+            {message.text}
+          </div>
+        )}
+      </div>
+
+      <div className="invite-form-actions">
+        {onCancel && (
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={onCancel}
+            disabled={sending}
+          >
+            Cancel
+          </button>
+        )}
+        <button
+          type="submit"
+          className="btn btn-primary"
+          disabled={sending || !emailLooksValid}
+        >
+          {sending ? 'Sending…' : 'Send invite'}
+        </button>
+      </div>
     </form>
   );
 }

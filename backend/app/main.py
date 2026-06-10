@@ -1,3 +1,4 @@
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, Request
@@ -97,7 +98,16 @@ async def root():
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy"}
+    """Liveness probe + build identity. `commit` is Render's auto-injected
+    deployed commit SHA (RENDER_GIT_COMMIT) so an operator can confirm exactly
+    which build is serving — the missing piece for deploy verification. Falls
+    back to 'unknown' off-Render (local/dev). Always 200 (UptimeRobot relies on
+    it)."""
+    return {
+        "status": "healthy",
+        "commit": os.getenv("RENDER_GIT_COMMIT", "unknown")[:12],
+        "environment": settings.environment,
+    }
 
 
 @app.websocket("/ws/interview/{interview_id}")

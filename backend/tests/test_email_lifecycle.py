@@ -281,6 +281,68 @@ class TestSendIdentity:
 
 
 # ---------------------------------------------------------------------------
+# Resend API errors -> friendly, recruiter-safe messages (403 hardening)
+# ---------------------------------------------------------------------------
+
+class TestResendErrorMapping:
+    def _send_with_error(self, monkeypatch, status, message):
+        monkeypatch.setenv("RESEND_API_KEY", "test-key")
+
+        async def boom(api_key, payload, idempotency_key=None):
+            raise email_svc.ResendApiError(status, message)
+
+        monkeypatch.setattr(email_svc, "_post_to_resend", boom)
+        sb = _FakeSupabase()
+        return _run(email_svc.send(
+            sb, company_id="c-1", candidate_id=None, sender_id="r-1",
+            to="someone@example.com", subject="s", body="b",
+        ))
+
+    def test_403_maps_to_domain_guidance(self, monkeypatch):
+        row = self._send_with_error(
+            monkeypatch, 403,
+            "You can only send testing emails to your own email address",
+        )
+        assert row["status"] == "failed"
+        em = row["error_message"]
+        assert "HTTPStatusError" not in em           # raw error never leaks
+        assert "verify your domain" in em.lower()
+        assert "you can only send testing emails" in em.lower()  # Resend detail kept
+
+    def test_401_maps_to_api_key_message(self, monkeypatch):
+        row = self._send_with_error(monkeypatch, 401, "Invalid API key")
+        assert row["status"] == "failed"
+        assert "api key" in row["error_message"].lower()
+
+    def test_422_maps_to_invalid_message(self, monkeypatch):
+        row = self._send_with_error(monkeypatch, 422, "to is required")
+        assert row["status"] == "failed"
+        assert "invalid" in row["error_message"].lower()
+
+    def test_post_parses_resend_error_body(self, monkeypatch):
+        """`_post_to_resend_sync` lifts Resend's JSON `message` into the
+        ResendApiError instead of discarding it via raise_for_status()."""
+        class _Resp:
+            is_error = True
+            status_code = 403
+            text = '{"message":"verify a domain"}'
+            def json(self):
+                return {"statusCode": 403, "message": "verify a domain"}
+
+        class _Client:
+            def __init__(self, *a, **k): pass
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def post(self, *a, **k): return _Resp()
+
+        monkeypatch.setattr(email_svc.httpx, "Client", _Client)
+        with pytest.raises(email_svc.ResendApiError) as ei:
+            email_svc._post_to_resend_sync("k", {"to": ["x@y.com"]}, None)
+        assert ei.value.status_code == 403
+        assert "verify a domain" in ei.value.resend_message
+
+
+# ---------------------------------------------------------------------------
 # Webhook: signature verification
 # ---------------------------------------------------------------------------
 
