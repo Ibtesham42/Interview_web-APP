@@ -23,6 +23,42 @@
 
 ---
 
+## 10/06/2026 (o)
+Type: Fix
+
+Production candidate-interview failure — "We couldn't reach the interview
+server." ROOT CAUSE: the WebSocket client resolved its host from a SEPARATE
+`VITE_WS_URL`; when that env var is unset/wrong in the prod frontend build,
+`normalizeWsHost(undefined)` falls back to `ws://localhost:8000`, which a
+candidate's browser can't reach (and ws:// from an https page is blocked as
+mixed content). REST worked because it uses `VITE_API_URL` (a different var),
+so registration + camera/mic permissions succeeded and only the interview
+socket failed — matching the symptom.
+
+Diagnosis (not guessed): the backend WS is healthy in prod — a real `wss://`
+probe with a valid token + admin-owned interview OPENED and streamed
+`init` → `question` → `audio` frames. Render routes WSS, auth + orchestrator
+work. So the failure is purely the frontend WS URL.
+
+Smallest-safe fix (does NOT touch the WS state machine — CLAUDE.md realtime
+rule): new `resolveWsHost(VITE_WS_URL, VITE_API_URL)` in services/wsHost.ts —
+explicit WS URL wins, else DERIVE the socket host from the REST API origin
+(http(s)→ws(s) via the existing normalizeWsHost), else local-dev default. The
+interview socket now works wherever the REST API does, removing the
+second-env-var footgun. websocket.ts uses it + logs the resolved host once
+(visible misconfig instead of a generic error panel).
+
+Verification: tsc clean; vitest 24/24 (+4: WS_URL wins / derive-from-API /
+blank / localhost-only). Build OK. Backend pinned-correct (probe). NOTE: the
+fix takes effect after the FRONTEND (Vercel) is rebuilt+redeployed; it relies
+on VITE_API_URL being set in the frontend build (it is — prod REST works).
+Setting VITE_WS_URL is no longer required.
+
+Affected files: frontend/src/services/wsHost.ts,
+frontend/src/services/websocket.ts,
+frontend/src/services/__tests__/wsHost.test.ts
+Architectural impact: None — WS URL resolution only; pipeline unchanged.
+
 ## 10/06/2026 (n)
 Type: Feature
 

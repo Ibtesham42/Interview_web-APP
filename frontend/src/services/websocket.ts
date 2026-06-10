@@ -1,10 +1,19 @@
 import type { IntegrityEventType, WebSocketMessage } from '../types';
 import { supabase } from '../utils/supabase/client';
-import { normalizeWsHost } from './wsHost';
+import { resolveWsHost } from './wsHost';
 
 type MessageHandler = (message: WebSocketMessage) => void;
 
-const WS_HOST = normalizeWsHost(import.meta.env.VITE_WS_URL);
+// Explicit VITE_WS_URL, else derive from the REST API origin (VITE_API_URL),
+// else local dev. See resolveWsHost — this is the fix for the prod failure
+// where a missing VITE_WS_URL fell back to ws://localhost:8000.
+const WS_HOST = resolveWsHost(import.meta.env.VITE_WS_URL, import.meta.env.VITE_API_URL);
+// Surface the resolved host once so a misconfig (e.g. a localhost fallback in
+// production) is visible in the console rather than only as a generic
+// "couldn't reach the interview server" panel.
+if (typeof console !== 'undefined') {
+  console.info('[ws] interview socket host:', WS_HOST);
+}
 const MAX_RECONNECT_ATTEMPTS = 3;
 
 class InterviewWebSocket {
