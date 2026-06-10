@@ -23,6 +23,43 @@
 
 ---
 
+## 10/06/2026 (f)
+Type: Refactor
+
+Design-system **Phase 2 — app shell & navigation**. Replaced the single
+top-bar Header with a recruiter-first **left sidebar + slim topbar**, extracted
+to `src/components/layout/AppShell.tsx` (Tailwind + tokens; renders in light and
+dark). First user-visible redesign surface; wraps every authenticated screen.
+
+- Persistent left sidebar (desktop): brand, capability-gated nav with line
+  icons (Overview / Candidates / Analytics / Settings / Dashboard / New
+  interview), and a footer with user identity + role + tenant + sign-out.
+- Slim sticky topbar: mobile hamburger, act-as picker (platform-admin only —
+  gated, since `ActingAsPicker` hits an admin-only endpoint and doesn't
+  self-gate), theme toggle.
+- Responsive: sidebar collapses to a slide-in drawer (overlay) under `md`.
+- Unauthenticated branch (e.g. /companies/signup pre-login) → minimal brand +
+  Sign-in header, preserving the old degraded behaviour.
+- Brand unified to **"Rehearsify"** (matches backend PLATFORM_FROM_NAME +
+  deployed title; the old header said "Interview Platform").
+- All nav/capability logic preserved verbatim — presentation-only change.
+  Existing `.page` screens drop into the new main area unchanged. Legacy
+  `.header*`/`.main-content`/`.app` CSS left in place (now unused; Phase 5
+  cleanup).
+
+App.tsx: removed inline Header/AppShell, imports the new shell; dropped
+now-unused imports (NavLink/useNavigate/Link/useTheme/ActingAsPicker).
+
+Verification: `tsc` clean, vitest 20/20, `npm run build` OK. Dark stays default
+(unchanged theme); the shell now also renders correctly in light. No backend
+changes. Visual QA is the operator's (sidebar, drawer at <md, both themes).
+
+Affected files: frontend/src/components/layout/AppShell.tsx (new), src/App.tsx
+Architectural impact: introduces the layout/ shell layer; navigation IA moves
+from horizontal to vertical (scales to more sections, clearer hierarchy).
+Future considerations: Phase 3 recruiter screens render inside this shell and
+adopt the Phase 1 primitives.
+
 ## 10/06/2026 (e)
 Type: Feature
 

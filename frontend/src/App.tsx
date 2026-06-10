@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, NavLink, useNavigate, Link } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { useTheme } from './contexts/ThemeContext';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { Login } from './components/auth/Login';
 import { Signup } from './components/auth/Signup';
@@ -18,121 +17,10 @@ import { RecruiterAnalytics } from './components/recruiter/RecruiterAnalytics';
 import { CompanySignup } from './components/companies/CompanySignup';
 import { Settings } from './components/companies/Settings';
 import { Apply } from './components/apply/Apply';
-import { ActingAsPicker } from './components/admin/ActingAsPicker';
+import { AppShell } from './components/layout/AppShell';
 import { UiShowcase } from './components/ui/UiShowcase';
 import type { CapabilityName } from './services/capabilities';
 import type { UserRole } from './types';
-
-function Header() {
-  const { user, session, profile, company, signOut, can } = useAuth();
-  const { theme, toggleTheme } = useTheme();
-  const navigate = useNavigate();
-
-  const handleSignOut = async () => {
-    await signOut();
-    navigate('/login', { replace: true });
-  };
-
-  // Routes that AppShell-wrap may render in either an authenticated or
-  // an unauthenticated state (currently only /companies/signup — Fix 2
-  // 2026-05-29). Header degrades to a Sign-in CTA in the unauth case
-  // so we never render a stale Sign-out button for a user with no
-  // session.
-  const isAuthed = Boolean(session);
-  const displayName = profile?.full_name || user?.email || 'Account';
-  const role = (profile?.role as UserRole | undefined) ?? 'user';
-  const navClass = ({ isActive }: { isActive: boolean }) =>
-    `header-link${isActive ? ' active' : ''}`;
-
-  return (
-    <header className="header">
-      <div className="header-left">
-        <div className="header-brand">
-          <div className="header-logo">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <circle cx="9" cy="12" r="6" fill="#4f46e5" />
-              <circle cx="15" cy="12" r="6" fill="#0891b2" opacity="0.85" />
-            </svg>
-          </div>
-          <h1 className="header-title">Interview Platform</h1>
-        </div>
-        <nav className="header-nav">
-          {/* Admin overview — TENANT_ADMINS see this. */}
-          {can('see_admin_overview') && (
-            <NavLink to="/admin" className={navClass}>Admin</NavLink>
-          )}
-          {/* Candidates + Analytics — anyone with hiring capabilities.
-              Surfaces Candidates to `recruiter` (already worked) AND
-              `company_admin` / `admin` (who inherit via HIRING_ROLES). */}
-          {can('manage_candidates') && (
-            <>
-              <NavLink to="/recruiter" className={navClass} end>Candidates</NavLink>
-              <NavLink to="/recruiter/analytics" className={navClass}>Analytics</NavLink>
-            </>
-          )}
-          {/* Settings only visible when the caller can actually manage
-              them — capability requires both role AND tenant. Platform
-              admin (no tenant) sees nothing here. */}
-          {can('manage_company_settings') && (
-            <NavLink to="/admin/settings" className={navClass}>Settings</NavLink>
-          )}
-          {role === 'user' && (
-            <>
-              <NavLink to="/dashboard" className={navClass}>Dashboard</NavLink>
-              <NavLink to="/new" className={navClass}>New Interview</NavLink>
-            </>
-          )}
-        </nav>
-      </div>
-      <div className="header-user">
-        <button
-          type="button"
-          className="icon-btn"
-          onClick={toggleTheme}
-          aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-          title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-        >
-          {theme === 'dark' ? '☀' : '☾'}
-        </button>
-        {isAuthed ? (
-          <>
-            {/* Tenant chip — surfaces which Company the caller is acting on
-                behalf of. Suppressed for platform admins (no tenant) and
-                for B2C users (no tenant). Multi-tenant PR 5. */}
-            {company && (role === 'company_admin' || role === 'recruiter') && (
-              <span className="tenant-chip" title={`Acting on behalf of ${company.name}`}>
-                {company.name}
-              </span>
-            )}
-            {role === 'admin' && (
-              <>
-                <span className="role-badge role-admin">Admin</span>
-                {/* Act-as picker (Candidate C). Platform admin only —
-                    everyone else has exactly one tenant by design. */}
-                <ActingAsPicker />
-              </>
-            )}
-            {role === 'company_admin' && <span className="role-badge role-admin">Company admin</span>}
-            {role === 'recruiter' && <span className="role-badge role-recruiter">Recruiter</span>}
-            <span className="header-user-name">{displayName}</span>
-            <button className="btn btn-secondary" onClick={handleSignOut}>Sign out</button>
-          </>
-        ) : (
-          <Link to="/login" className="btn btn-secondary">Sign in</Link>
-        )}
-      </div>
-    </header>
-  );
-}
-
-function AppShell({ children }: { children: ReactNode }) {
-  return (
-    <div className="app">
-      <Header />
-      <main className="main-content">{children}</main>
-    </div>
-  );
-}
 
 function NewInterview() {
   return (
