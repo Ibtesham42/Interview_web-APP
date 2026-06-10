@@ -23,6 +23,27 @@
 
 ---
 
+## 10/06/2026 (j)
+Type: Refactor
+
+Design-system **Phase 3 (part 4) — Report / AI-evaluation screen** (`Report.tsx`)
+— completes Phase 3.
+- Panels (Summary, Strengths, Areas to improve, Phase breakdown, Integrity
+  events, Transcript) → `Card` + `CardTitle`.
+- Error state → `Card` + `EmptyState` (keeps the Back-to-Dashboard action).
+- LEFT INTACT: the bespoke score hero, phase cards / metric chips, phase bars,
+  integrity event list, and transcript replay — already designed + token-based.
+
+Phase 3 done: all recruiter + evaluation screens (candidate detail, Candidates
+dashboard, Analytics, Report) now share the primitive vocabulary.
+
+Verification: `tsc` clean, vitest 20/20, `npm run build` OK. No backend changes.
+
+Affected files: frontend/src/components/Report.tsx
+Future considerations: Phase 4 (candidate experience: signup, apply, dashboard,
+interview room, upload). Phase 5 (states/responsive/a11y + flip default to
+light + re-enable Tailwind preflight).
+
 ## 10/06/2026 (i)
 Type: Refactor
 
