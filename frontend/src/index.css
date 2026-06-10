@@ -861,14 +861,31 @@ a:hover { color: var(--primary); }
   flex-shrink: 0;
 }
 
-.email-status-sent {
+/* Positive lifecycle: accepted by Resend / confirmed delivered. */
+.email-status-sent,
+.email-status-delivered {
   background: rgba(5, 150, 105, 0.15);
   color: var(--accent-green);
 }
 
-.email-status-failed {
+/* Hard non-delivery: Resend rejected, hard bounce, or service disabled. */
+.email-status-failed,
+.email-status-bounced {
   background: rgba(220, 38, 38, 0.15);
   color: var(--accent-rose);
+}
+
+/* Attention states: spam complaint or recipient suppressed (do-not-email). */
+.email-status-complained,
+.email-status-suppressed {
+  background: rgba(217, 119, 6, 0.15);
+  color: var(--accent-amber);
+}
+
+/* In-flight (reserved for the future bulk-send worker). */
+.email-status-queued {
+  background: rgba(148, 163, 184, 0.15);
+  color: var(--text-tertiary);
 }
 
 /* ========================================

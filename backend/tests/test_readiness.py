@@ -26,6 +26,7 @@ def _settings(**over):
         frontend_origins="https://app.example.com",
         frontend_origin_regex="",
         resend_api_key="re_real_key",
+        resend_webhook_secret="whsec_real_secret",
     )
     base.update(over)
     return SimpleNamespace(**base)
@@ -89,6 +90,20 @@ class TestWarnings:
         fatal, warnings = check_readiness(_settings(resend_api_key=""))
         assert fatal == []
         assert any("RESEND_API_KEY" in m for m in warnings)
+
+    def test_resend_key_without_webhook_secret_warns(self):
+        """Sending works without the webhook secret, but the platform is then
+        blind to bounces/complaints — warn (ADR 0012), don't fail."""
+        fatal, warnings = check_readiness(_settings(resend_webhook_secret=""))
+        assert fatal == []
+        assert any("RESEND_WEBHOOK_SECRET" in m for m in warnings)
+
+    def test_no_webhook_warning_when_resend_unset(self):
+        """The webhook-secret warning is mutually exclusive with the
+        'RESEND_API_KEY missing' warning — you can't be blind to events you
+        were never going to send."""
+        _, warnings = check_readiness(_settings(resend_api_key="", resend_webhook_secret=""))
+        assert not any("RESEND_WEBHOOK_SECRET" in m for m in warnings)
 
 
 class TestAssertReady:

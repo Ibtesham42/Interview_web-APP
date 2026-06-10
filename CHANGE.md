@@ -23,6 +23,129 @@
 
 ---
 
+## 10/06/2026 (b)
+Type: Feature + Fix
+
+Email composer UI brought in line with the ADR 0012 delivery lifecycle.
+CORRECTION: the prior ADR 0012 entry (and a memory note) claimed "no email
+UI in the SPA" — that was wrong, an artefact of a brace-glob grep that
+silently matched nothing. The composer IS built and wired:
+`EmailComposerModal` + `InviteCandidateModal`/`InviteCandidateForm`, mounted
+from `RecruiterCandidateDetail` (Shortlist/Reject auto-open it with the right
+template; "Send email" button; "Emails sent" panel).
+
+The real gap was that widening `email_outbox.status` to the 7-state lifecycle
+(migration 010) left the frontend only knowing `'sent' | 'failed'` — so a
+`delivered` row rendered as "Failed" and a `suppressed` invite rendered as
+"Invite sent". Fixed:
+- types: `EmailStatus` union; `EmailOutboxRow.status` + optional
+  `email_type`/`reply_to`/`last_event_at`; `InviteCandidateResponse.status`
+  widened; new `EmailSendPayload` (adds `idempotency_key`).
+- `utils/emailStatus.ts` (new): shared `emailStatusLabel` +
+  `emailStatusIsPositive` so the lifecycle renders consistently in all three
+  surfaces.
+- `EmailComposerModal`: mints `crypto.randomUUID()` per open and sends it as
+  `idempotency_key` (completes ADR 0012 double-send protection end-to-end);
+  success now == `status==='sent'` (suppressed/failed keep the modal open).
+- `InviteCandidateForm`: only `'sent'` is success (a suppressed invite no
+  longer falsely reports "sent").
+- `RecruiterCandidateDetail` "Emails sent" panel: real status label per row,
+  shows `last_event_at`, error shown for any non-positive status.
+- `index.css`: chip styles for delivered/bounced/complained/suppressed/queued.
+
+Verification: `npx tsc --noEmit` clean, vitest 20/20, `npm run build` OK.
+Browser walk NOT run (no live recruiter session from this env). The send path
+still needs a live recruiter + migration 010 + RESEND_API_KEY to exercise.
+
+Affected files:
+- frontend/src/types/index.ts
+- frontend/src/utils/emailStatus.ts (new)
+- frontend/src/services/api.ts
+- frontend/src/components/recruiter/EmailComposerModal.tsx
+- frontend/src/components/recruiter/RecruiterCandidateDetail.tsx
+- frontend/src/components/companies/InviteCandidateForm.tsx
+- frontend/src/index.css
+Architectural impact: frontend now models the full delivery lifecycle; no new
+screens, additive to the existing composer.
+Future considerations: a delivery-status legend/tooltip; surfacing
+`resend_message_id` for support correlation; per-tenant email-log view.
+
+## 10/06/2026 — ADR 0012
+Type: Feature + Decision
+
+Production-grade multi-tenant email delivery on Resend. EXTENDS the PR-6/7
+email system (email_outbox + services/email.send) — no parallel system, no
+job queue. Closes the observability/reliability/tenant-isolation gaps: a
+`sent` row previously meant only "Resend accepted the POST" with no visibility
+into delivery, bounces, or complaints, no dedupe, and one shared sender
+identity for all tenants.
+
+What landed:
+- Migration 010: widens `email_outbox.status` to the full lifecycle
+  (`queued/sent/delivered/bounced/complained/failed/suppressed`); adds
+  `idempotency_key` (+ partial unique on `(company_id, idempotency_key)`),
+  `email_type`, `reply_to`, `last_event_at`, and an index on
+  `resend_message_id`. New `email_events` (append-only Resend webhook log,
+  unique on `svix_id`) and `email_suppressions` (global do-not-email list,
+  unique on `lower(email)`). Service-role RLS throughout. Idempotent SQL.
+- `services/email.py`: three pre-send guards — idempotency replay,
+  suppression check (records `status='suppressed'`, no network), per-tenant
+  hourly rate limit (`EmailRateLimited` → 429). Tenant-branded From
+  (`"Acme via Rehearsify <noreply@…>"`) + Reply-To = company contact.
+  Idempotency-Key header to Resend. Structured logging. New-table reads fail
+  OPEN (tolerate schema-cache lag / pre-migration); the audit INSERT fails
+  LOUD. New public helpers `is_suppressed` / `record_suppression`.
+- `routers/webhooks.py` (NEW): `POST /api/webhooks/resend`. Verifies the
+  Svix signature with stdlib hmac (no `svix` dep), FAIL-CLOSED (401 bad sig,
+  503 if secret unset). Idempotent on `svix-id`. Correlates by
+  `resend_message_id`, advances status on a monotonic precedence ladder (a
+  late `sent` never clobbers `delivered`; bounce/complaint outrank delivered),
+  and auto-suppresses on hard bounce / complaint.
+- config.py: `platform_from_name`, `resend_webhook_secret`,
+  `email_rate_limit_per_hour` (+ strip-validator coverage). readiness.py:
+  warns when `RESEND_API_KEY` set but `RESEND_WEBHOOK_SECRET` unset.
+  schemas.py: `EmailOutboxRow` gains optional `email_type/reply_to/
+  last_event_at`; `EmailSendRequest` gains optional `idempotency_key`.
+  Routers (recruiter send + companies invite) pass tenant identity +
+  email_type and map `EmailRateLimited`→429.
+
+Decision (ADR 0012):
+- NO job queue. One email per user action; synchronous send is correct at
+  this scale. `queued` status reserved for a future bulk-send worker.
+- ONE verified sender, tenant-branded display name + Reply-To. Per-tenant
+  verified domains deferred (needs a domains table + Resend Domains API +
+  DNS-verify UI).
+- Suppression is GLOBAL by address (shared-reputation protection);
+  provenance recorded, scope not narrowed.
+- Webhook auth = signature, fail-closed. Advisory pre-send guards fail open.
+
+Verification: backend pytest 340/340 (+17: suppression, idempotency, rate
+limit ×2, send identity ×2, Svix signature ×4, status precedence, webhook
+ingestion ×3, readiness ×3). `from app.main import app` imports clean. Could
+NOT run the hosted-DB / live-Resend path from this environment (no browser,
+local DNS still catching up post project-resume).
+
+Known gaps (logged): per-tenant verified domains; tenant-scoped email-log
+endpoint. See RESEND_EMAIL.md. (NOTE: this entry originally claimed "no email
+UI in the SPA" — that was incorrect; the composer exists and was updated for
+this lifecycle in the 10/06/2026 (b) entry above.)
+
+Affected files:
+- backend/app/migrations/010_email_delivery_lifecycle.sql (new)
+- backend/app/services/email.py
+- backend/app/routers/webhooks.py (new)
+- backend/app/routers/recruiter.py, backend/app/routers/companies.py
+- backend/app/config.py, backend/app/readiness.py, backend/app/main.py
+- backend/app/models/schemas.py
+- backend/tests/test_email.py, test_email_lifecycle.py (new), test_readiness.py
+- backend/.env.example, RESEND_EMAIL.md (new)
+Architectural impact: email graduates from fire-and-forget audit log to a
+delivery pipeline with feedback (webhooks), self-protection (suppression +
+rate limit), and exactly-once semantics (idempotency). Additive; the public
+send() signature is backward-compatible (new args optional).
+Future considerations: bulk-send worker (drains `queued`); per-tenant verified
+domains; SPA email composer; delivery dashboard.
+
 ## 30/05/2026 22:17
 Type: Feature
 

@@ -355,7 +355,7 @@ async def invite_candidate(
     # name / slug.
     company_rows = (
         supabase.table("companies")
-        .select("id,slug,name")
+        .select("id,slug,name,email")
         .eq("id", ctx.company_id)
         .execute()
         .data
@@ -388,7 +388,12 @@ async def invite_candidate(
             to=body.to_email.strip(),
             subject=rendered["subject"],
             body=rendered["body"],
+            email_type="invite",
+            from_name=(company.get("name") or "").strip() or None,
+            reply_to=(company.get("email") or "").strip() or None,
         )
+    except email_svc.EmailRateLimited as exc:
+        raise HTTPException(status_code=429, detail=str(exc))
     except email_svc.EmailServiceError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
