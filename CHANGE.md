@@ -23,6 +23,31 @@
 
 ---
 
+## 10/06/2026 (h)
+Type: Refactor
+
+Design-system **Phase 3 (part 2) — recruiter Candidates dashboard**
+(`RecruiterDashboard.tsx`). Consistency-focused, deliberately conservative on
+the flagship screen given no visual verification yet:
+
+- Decision + integrity chips → `Badge` (shared `decisionVariant`); colour
+  meaning now matches the candidate-detail screen.
+- Error + empty states → `Card` + `EmptyState`, with a contextual action
+  (Clear filters when filtered; Invite candidate when empty + permitted).
+- LEFT INTACT (logic + interaction risk, better migrated with visual QA): the
+  sortable results table, the filter bar (search/pills/score-range/date-range),
+  pagination, optimistic decision/bookmark/notes flow. These use token-based
+  legacy classes that already render in both themes.
+
+Verification: `tsc` clean, vitest 20/20, `npm run build` OK. No backend
+changes. All filter/sort/pagination/optimistic logic unchanged.
+
+Affected files: frontend/src/components/recruiter/RecruiterDashboard.tsx
+Architectural impact: none — incremental primitive adoption.
+Future considerations: table → `Table` primitive + filter bar → `Card` are the
+remaining dashboard polish (do with visual verification). Phase 3 still has
+Analytics + Report/AI-evaluation.
+
 ## 10/06/2026 (g)
 Type: Refactor
 
