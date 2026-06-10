@@ -23,6 +23,56 @@
 
 ---
 
+## 10/06/2026 (c)
+Type: Fix
+
+Production blocker: invite/send showed a raw `HTTPStatusError: Client error
+'403 Forbidden' for url 'https://api.resend.com/emails'` to recruiters, and the
+invite modal required scrolling to reach Send.
+
+Root cause of the 403: Resend rejects sends from an unverified/sandbox sender to
+any recipient other than the Resend account owner. `RESEND_API_KEY` is valid
+(the request authenticated — 403, not 401); the sender (`RESEND_FROM_EMAIL`) is
+the sandbox `onboarding@resend.dev` (or an unverified domain). The operational
+fix is to verify a domain in Resend and set `RESEND_FROM_EMAIL` to an address on
+it. Code changes harden how this is surfaced and caught:
+
+Backend:
+- `services/email.py`: `_post_to_resend_sync` now parses Resend's JSON error
+  body (it was discarded by `raise_for_status()`) and raises a typed
+  `ResendApiError(status_code, message)`. `send()` maps it via
+  `_friendly_resend_error` to a clear, recruiter-safe `error_message`
+  (403 → "verify your domain…" + Resend's own detail; 401 → API-key guidance;
+  422/429/other handled). Generic exceptions now yield a friendly
+  "temporary problem, try again" instead of the raw type — no httpx string
+  ever reaches the UI.
+- `readiness.py`: new warning when `RESEND_API_KEY` is set but
+  `RESEND_FROM_EMAIL` is the sandbox sender (the exact 403 trap).
+
+Frontend (invite modal UX):
+- `InviteCandidateForm` restructured into a scrollable `.invite-form-fields`
+  + a pinned `.invite-form-actions` row; gains optional `onCancel` (renders a
+  Cancel button) and `intro` props. Embedded Settings usage unchanged
+  (no modal chrome).
+- `InviteCandidateModal` renders the form as the flex-fill child so the action
+  row is a sticky footer — Send/Cancel always visible, fields scroll if needed,
+  no full-modal scroll. Responsive (max-height 90vh, mobile-safe).
+
+Verification: backend pytest 346 (+6: 403/401/422 mapping, error-body parse,
+sandbox-from warning ×2). Frontend tsc + vitest 20/20 + build green. The raw
+403 is no longer user-facing; the actual delivery fix requires verifying a
+Resend domain (operator action) — then a real send returns `status='sent'`.
+
+Affected files:
+- backend/app/services/email.py, backend/app/readiness.py
+- backend/tests/test_email.py, test_email_lifecycle.py, test_readiness.py
+- frontend/src/components/companies/InviteCandidateForm.tsx
+- frontend/src/components/recruiter/InviteCandidateModal.tsx
+- frontend/src/index.css
+Architectural impact: None — error-handling + UX hardening, additive.
+Future considerations: per-tenant verified domains would remove the shared-
+sender constraint entirely (ADR 0012 deferred item).
+
 ## 10/06/2026 (b)
 Type: Feature + Fix
 

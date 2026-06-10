@@ -76,6 +76,47 @@ class EmailRateLimited(Exception):
         )
 
 
+class ResendApiError(Exception):
+    """Raised by the Resend HTTP wrapper when Resend returns a non-2xx.
+
+    Carries the provider HTTP status + Resend's own human-readable `message`
+    (e.g. the 403 "verify a domain…" guidance) so `send()` can translate it
+    into a recruiter-friendly `error_message` instead of leaking a raw
+    httpx `HTTPStatusError` string to the UI."""
+
+    def __init__(self, status_code: int, message: str):
+        self.status_code = status_code
+        self.resend_message = (message or "").strip()
+        super().__init__(f"Resend {status_code}: {self.resend_message}")
+
+
+def _friendly_resend_error(status_code: int, resend_message: str) -> str:
+    """Map a Resend API failure to a clear, actionable message safe to show a
+    recruiter. Resend's own `message` is appended when present because it is
+    usually the most useful part (esp. the 403 domain-verification guidance)."""
+    msg = (resend_message or "").strip()
+    detail = f" Details: {msg}" if msg else ""
+    low = msg.lower()
+
+    if status_code == 401 or "api key" in low or "api_key" in low:
+        return (
+            "The email service rejected the API key. Check RESEND_API_KEY in the "
+            "server configuration." + detail
+        )
+    if status_code == 403:
+        return (
+            "This email couldn't be sent: the sending address isn't authorised "
+            "for this recipient. Verify your domain in Resend and set the sender "
+            "(RESEND_FROM_EMAIL) to an address on it — the sandbox sender can only "
+            "email your own Resend account address." + detail
+        )
+    if status_code == 422:
+        return "The email was rejected as invalid by the email service." + detail
+    if status_code == 429:
+        return "The email service is rate-limiting right now. Please try again shortly."
+    return f"The email provider could not send this message (error {status_code})." + detail
+
+
 def _is_disabled() -> bool:
     """True when no Resend API key is configured."""
     return not get_settings().resend_api_key.strip()
@@ -260,7 +301,18 @@ def _post_to_resend_sync(
         headers["Idempotency-Key"] = idempotency_key
     with httpx.Client(timeout=_RESEND_TIMEOUT_SECONDS) as client:
         response = client.post(_RESEND_API, headers=headers, json=payload)
-    response.raise_for_status()
+    if response.is_error:
+        # Resend returns a JSON body like
+        #   {"statusCode":403,"name":"...","message":"You can only send..."}
+        # Capture that message — it's what tells the operator how to fix a 403
+        # (verify a domain) — and raise a typed error the caller can translate.
+        detail = ""
+        try:
+            data = response.json()
+            detail = data.get("message") or data.get("error") or ""
+        except Exception:  # noqa: BLE001 — non-JSON error body
+            detail = (response.text or "")[:300]
+        raise ResendApiError(response.status_code, detail)
     return response.json()
 
 
@@ -370,11 +422,24 @@ async def send(
                 "sent: company=%s to=%s type=%s resend_id=%s",
                 company_id, to_addr, email_type, resend_message_id,
             )
-        except Exception as exc:  # noqa: BLE001 — record any Resend failure
+        except ResendApiError as exc:
+            # Resend rejected the send (e.g. 403 unverified domain). Surface a
+            # clear, actionable message — never the raw httpx error.
             status = "failed"
-            error_message = f"{type(exc).__name__}: {exc}"
+            error_message = _friendly_resend_error(exc.status_code, exc.resend_message)
             logger.warning(
-                "send failed: company=%s to=%s err=%s", company_id, to_addr, exc
+                "resend rejected: company=%s to=%s status=%s msg=%s",
+                company_id, to_addr, exc.status_code, exc.resend_message,
+            )
+        except Exception as exc:  # noqa: BLE001 — network/timeout/unexpected
+            status = "failed"
+            error_message = (
+                "The email could not be sent due to a temporary problem reaching "
+                "the email service. Please try again."
+            )
+            logger.warning(
+                "send failed: company=%s to=%s err=%s: %s",
+                company_id, to_addr, type(exc).__name__, exc,
             )
 
     return _insert_outbox(

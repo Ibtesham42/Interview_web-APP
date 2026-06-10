@@ -105,6 +105,17 @@ class TestWarnings:
         _, warnings = check_readiness(_settings(resend_api_key="", resend_webhook_secret=""))
         assert not any("RESEND_WEBHOOK_SECRET" in m for m in warnings)
 
+    def test_sandbox_from_email_warns(self):
+        """The Resend sandbox sender only delivers to the account owner — the
+        common cause of a production 403. Warn when it's still the sender."""
+        fatal, warnings = check_readiness(_settings(resend_from_email="onboarding@resend.dev"))
+        assert fatal == []
+        assert any("sandbox sender" in m for m in warnings)
+
+    def test_real_from_email_no_sandbox_warning(self):
+        _, warnings = check_readiness(_settings(resend_from_email="hiring@acme.com"))
+        assert not any("sandbox sender" in m for m in warnings)
+
 
 class TestAssertReady:
     def test_raises_on_fatal(self):

@@ -33,6 +33,11 @@ _WILDCARD_CORS = r"https://.*\.vercel\.app"
 # Values of FRONTEND_BASE_URL that mean "not a real deployed frontend".
 _LOCAL_FRONTEND = {"", "http://localhost:3000", "http://127.0.0.1:3000"}
 
+# RESEND_FROM_EMAIL values that mean "Resend sandbox sender" — usable for a
+# first smoke test (only delivers to the account owner) but a 403 source for
+# real recipients in production.
+_SANDBOX_FROM = {"onboarding@resend.dev"}
+
 
 def _unset(value) -> bool:
     return not isinstance(value, str) or value.strip() in _PLACEHOLDERS
@@ -100,6 +105,19 @@ def check_readiness(settings) -> Tuple[List[str], List[str]]:
             "email works, but delivery/bounce/complaint events are not ingested "
             "and no suppression list is built. Configure a Resend webhook to "
             "POST /api/webhooks/resend and set RESEND_WEBHOOK_SECRET."
+        )
+
+    # Sandbox sender misconfiguration — the common cause of a Resend 403 in
+    # production: the default sandbox sender only delivers to the Resend
+    # account owner's own address, so inviting any real candidate fails.
+    if not _unset(settings.resend_api_key) and str(
+        getattr(settings, "resend_from_email", "")
+    ).strip().lower() in _SANDBOX_FROM:
+        warnings.append(
+            "RESEND_FROM_EMAIL is the Resend sandbox sender (onboarding@resend.dev): "
+            "Resend will only deliver to your own Resend account address and returns "
+            "403 for any other recipient. Verify a domain at resend.com/domains and "
+            "set RESEND_FROM_EMAIL to an address on it."
         )
 
     if not is_prod and str(settings.frontend_base_url).strip() in _LOCAL_FRONTEND:

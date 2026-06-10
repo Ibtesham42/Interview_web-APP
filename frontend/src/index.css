@@ -807,6 +807,52 @@ a:hover { color: var(--primary); }
   background: var(--bg-primary);
 }
 
+/* Invite form — shared by the embedded Settings card and the modal adapter.
+   Flex column so the action row can pin to the bottom when in a modal. */
+.invite-form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.invite-form-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.invite-form-intro {
+  margin-top: 0;
+}
+
+.invite-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+}
+
+/* Modal adapter: the form fills the remaining modal height; its fields
+   scroll if needed while the action row stays pinned as a sticky footer,
+   so Send/Cancel are always visible (no full-modal scroll to reach them). */
+.invite-modal > .invite-form {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.invite-modal .invite-form-fields {
+  padding: var(--space-lg);
+  overflow-y: auto;
+}
+
+.invite-modal .invite-form-actions {
+  margin-top: 0;
+  padding: var(--space-md) var(--space-lg);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-primary);
+  flex-shrink: 0;
+}
+
 /* Previous-messages panel on the candidate detail page. */
 .email-list {
   display: flex;

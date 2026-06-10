@@ -36,7 +36,7 @@ export function InviteCandidateModal({ onClose, onSent }: InviteCandidateModalPr
   return (
     <div className="email-composer-backdrop" onClick={onClose}>
       <div
-        className="email-composer-modal"
+        className="email-composer-modal invite-modal"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -55,14 +55,13 @@ export function InviteCandidateModal({ onClose, onSent }: InviteCandidateModalPr
           </button>
         </div>
 
-        <div className="email-composer-body">
-          <p className="page-sub" style={{ marginTop: 0 }}>
-            We'll email them a personalized invite with your apply link.
-            Use this when you want to nudge a specific person instead of
-            sharing the public URL broadly.
-          </p>
-          <InviteCandidateForm onSent={onSent} />
-        </div>
+        {/* The form is the flex-fill child: its fields scroll, its action
+            row is the sticky footer (Send/Cancel always visible). */}
+        <InviteCandidateForm
+          intro="We'll email them a personalized invite with your apply link. Use this when you want to nudge a specific person instead of sharing the public URL broadly."
+          onCancel={onClose}
+          onSent={onSent}
+        />
       </div>
     </div>
   );

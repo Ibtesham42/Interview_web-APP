@@ -177,7 +177,10 @@ class TestSend:
         # never silently lost.
         assert row["status"] == "failed"
         assert row["resend_message_id"] is None
-        assert "RuntimeError" in row["error_message"]
+        # The recruiter-facing message is friendly — the raw exception type
+        # never leaks to the UI (ADR 0012 / 403 hardening).
+        assert "RuntimeError" not in row["error_message"]
+        assert "try again" in row["error_message"].lower()
         get_settings.cache_clear()
 
     def test_disabled_mode_when_no_api_key(self, monkeypatch):
