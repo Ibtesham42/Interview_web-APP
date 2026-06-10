@@ -22,6 +22,7 @@ from unittest.mock import MagicMock
 from app.services.recruiter_analytics import (
     FUNNEL_STAGES,
     candidate_analytics_summary,
+    companies_overview,
     hiring_funnel,
     integrity_event_volume,
     scores_by_field,
@@ -57,7 +58,7 @@ class _FakeQueryChain:
 
 def _fake_supabase(*, candidates=None, interviews=None, decisions=None,
                     evaluations=None, integrity=None, email_outbox=None,
-                    integrity_raises=False):
+                    companies=None, integrity_raises=False):
     table_rows = {
         "candidates": candidates or [],
         "interviews": interviews or [],
@@ -65,6 +66,7 @@ def _fake_supabase(*, candidates=None, interviews=None, decisions=None,
         "evaluations": evaluations or [],
         "interview_integrity_events": integrity or [],
         "email_outbox": email_outbox or [],
+        "companies": companies or [],
     }
     supabase = MagicMock()
 
@@ -500,3 +502,65 @@ class TestCandidateAnalyticsSummaryTenantScope:
     def test_platform_admin_sees_all(self):
         result = candidate_analytics_summary(self._two_tenant(), company_id=None)
         assert result["totals"]["registrations"] == 2
+
+
+# ---------------------------------------------------------------------------
+# companies_overview — platform totals + per-company rollup (admin dashboard)
+# ---------------------------------------------------------------------------
+
+class TestCompaniesOverview:
+    def _fixture(self):
+        return _fake_supabase(
+            companies=[
+                {"id": "c1", "slug": "acme", "name": "Acme"},
+                {"id": "c2", "slug": "globex", "name": "Globex"},
+            ],
+            candidates=[
+                {"id": "a1", "company_id": "c1"},
+                {"id": "a2", "company_id": "c1"},
+                {"id": "b1", "company_id": "c2"},
+                {"id": "x1", "company_id": None},  # unassigned / B2C
+            ],
+            interviews=[
+                {"candidate_id": "a1", "status": "completed", "company_id": "c1"},
+                {"candidate_id": "b1", "status": "completed", "company_id": "c2"},
+                {"candidate_id": "a2", "status": "in_progress", "company_id": "c1"},
+            ],
+            decisions=[
+                {"candidate_id": "a1", "decision": "shortlisted", "company_id": "c1"},
+                {"candidate_id": "b1", "decision": "rejected", "company_id": "c2"},
+            ],
+            email_outbox=[
+                {"company_id": "c1", "candidate_id": None, "to_email": "invitee@x.com"},
+            ],
+        )
+
+    def test_platform_totals_cover_all_rows(self):
+        result = companies_overview(self._fixture(), company_id=None)
+        t = result["totals"]
+        assert t["total_companies"] == 2
+        assert t["candidates"] == 4          # includes the unassigned candidate
+        assert t["invited"] == 1
+        assert t["interviews_completed"] == 2
+        assert t["shortlisted"] == 1
+        assert t["rejected"] == 1
+        assert t["on_hold"] == 0
+
+    def test_per_company_rollup_and_sort(self):
+        result = companies_overview(self._fixture(), company_id=None)
+        rows = {r["company_id"]: r for r in result["companies"]}
+        # Sorted by candidate count desc → Acme (2) before Globex (1).
+        assert [r["company_id"] for r in result["companies"]] == ["c1", "c2"]
+        assert rows["c1"]["candidates"] == 2
+        assert rows["c1"]["invited"] == 1
+        assert rows["c1"]["interviews_completed"] == 1
+        assert rows["c1"]["shortlisted"] == 1
+        assert rows["c2"]["candidates"] == 1
+        assert rows["c2"]["rejected"] == 1
+        assert rows["c2"]["invited"] == 0
+
+    def test_tenant_scope_limits_to_one_company(self):
+        result = companies_overview(self._fixture(), company_id="c1")
+        assert result["totals"]["total_companies"] == 1
+        assert result["totals"]["candidates"] == 2
+        assert [r["company_id"] for r in result["companies"]] == ["c1"]

@@ -2,7 +2,19 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { adminApi } from '../../services/api';
-import type { AdminOverview } from '../../types';
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  EmptyState,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeaderCell,
+  TableRow,
+} from '../ui';
+import type { AdminOverview, CompaniesOverview, CompanyOverviewRow } from '../../types';
 
 function scoreClass(s: number): string {
   if (s >= 7) return 'good';
@@ -27,10 +39,13 @@ function formatDate(d?: string | null): string {
 
 export function AdminDashboard() {
   const navigate = useNavigate();
-  const { company, isPlatformAdmin } = useAuth();
+  const { company, isPlatformAdmin, setActingAs } = useAuth();
   const [data, setData] = useState<AdminOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Company-wise rollup (separate, supplemental fetch — a failure here must
+  // not blank the whole overview, so it just hides the section).
+  const [companies, setCompanies] = useState<CompaniesOverview | null>(null);
 
   useEffect(() => {
     adminApi
@@ -39,6 +54,19 @@ export function AdminDashboard() {
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load admin data'))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    adminApi.companiesOverview().then(setCompanies).catch(() => setCompanies(null));
+  }, []);
+
+  // Drill into a company by reusing the existing act-as mechanism: scope to
+  // the company, then the recruiter Candidates view shows its candidates +
+  // interview data. (Effective only for platform admins — the table below is
+  // gated to them.)
+  const openCompany = (row: CompanyOverviewRow) => {
+    setActingAs({ id: row.company_id, slug: row.slug, name: row.name });
+    navigate('/recruiter');
+  };
 
   if (loading) {
     return (
@@ -80,6 +108,95 @@ export function AdminDashboard() {
           </p>
         </div>
       </div>
+
+      {/* Company / candidate KPIs (requirement-driven) + company-wise rollup.
+          Tenant-scoped server-side: platform admin → all companies; company
+          admin → just their own. */}
+      {companies && (
+        <>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            {isPlatformAdmin && (
+              <Card padding="md">
+                <div className="text-2xl font-semibold text-ink">{companies.totals.total_companies}</div>
+                <div className="mt-1 text-xs text-ink-subtle">Companies</div>
+              </Card>
+            )}
+            <Card padding="md">
+              <div className="text-2xl font-semibold text-ink">{companies.totals.candidates}</div>
+              <div className="mt-1 text-xs text-ink-subtle">Candidates</div>
+            </Card>
+            <Card padding="md">
+              <div className="text-2xl font-semibold text-ink">{companies.totals.invited}</div>
+              <div className="mt-1 text-xs text-ink-subtle">Invited</div>
+            </Card>
+            <Card padding="md">
+              <div className="text-2xl font-semibold text-ink">{companies.totals.interviews_completed}</div>
+              <div className="mt-1 text-xs text-ink-subtle">Completed interviews</div>
+            </Card>
+            <Card padding="md">
+              <div className="text-2xl font-semibold text-success">{companies.totals.shortlisted}</div>
+              <div className="mt-1 text-xs text-ink-subtle">Shortlisted</div>
+            </Card>
+            <Card padding="md">
+              <div className="text-2xl font-semibold text-danger">{companies.totals.rejected}</div>
+              <div className="mt-1 text-xs text-ink-subtle">Rejected</div>
+            </Card>
+            <Card padding="md">
+              <div className="text-2xl font-semibold text-warning">{companies.totals.on_hold}</div>
+              <div className="mt-1 text-xs text-ink-subtle">On hold</div>
+            </Card>
+          </div>
+
+          {isPlatformAdmin && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Companies ({companies.totals.total_companies})</CardTitle>
+                <span className="text-xs text-ink-subtle">Click a company to view its candidates</span>
+              </CardHeader>
+              {companies.companies.length === 0 ? (
+                <EmptyState
+                  title="No companies yet"
+                  description="Companies appear here once founders sign up."
+                />
+              ) : (
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableHeaderCell>Company</TableHeaderCell>
+                      <TableHeaderCell>Candidates</TableHeaderCell>
+                      <TableHeaderCell>Invited</TableHeaderCell>
+                      <TableHeaderCell>Completed</TableHeaderCell>
+                      <TableHeaderCell>Shortlisted</TableHeaderCell>
+                      <TableHeaderCell>Rejected</TableHeaderCell>
+                      <TableHeaderCell>On hold</TableHeaderCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {companies.companies.map((c) => (
+                      <TableRow
+                        key={c.company_id}
+                        onClick={() => openCompany(c)}
+                        className="cursor-pointer hover:bg-surface-2"
+                      >
+                        <TableCell>
+                          <div className="font-medium text-ink">{c.name}</div>
+                          <div className="text-xs text-ink-subtle">/{c.slug}</div>
+                        </TableCell>
+                        <TableCell>{c.candidates}</TableCell>
+                        <TableCell>{c.invited}</TableCell>
+                        <TableCell>{c.interviews_completed}</TableCell>
+                        <TableCell><span className="font-medium text-success">{c.shortlisted}</span></TableCell>
+                        <TableCell><span className="font-medium text-danger">{c.rejected}</span></TableCell>
+                        <TableCell><span className="font-medium text-warning">{c.on_hold}</span></TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </Card>
+          )}
+        </>
+      )}
 
       {/* Platform stats */}
       <div className="stat-grid auto">
