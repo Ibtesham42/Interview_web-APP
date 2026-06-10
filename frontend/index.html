@@ -5,16 +5,16 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AI Mock Interview</title>
-    <!-- Set the theme class before paint to avoid a flash. Defaults to dark
-         during the Tailwind migration; honours an explicit stored choice. -->
+    <!-- Set the theme class before paint to avoid a flash. Defaults to light
+         (the product default); honours an explicit stored choice. Keep in sync
+         with MIGRATION_DEFAULT in src/contexts/ThemeContext.tsx. -->
     <script>
       (function () {
         try {
           var t = localStorage.getItem('theme');
-          if (t !== 'light' && t !== 'dark') t = 'dark';
           if (t === 'dark') document.documentElement.classList.add('dark');
         } catch (e) {
-          document.documentElement.classList.add('dark');
+          /* light is the default — no class needed */
         }
       })();
     </script>

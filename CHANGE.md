@@ -23,6 +23,31 @@
 
 ---
 
+## 10/06/2026 (l)
+Type: Decision
+
+Design-system **Phase 5 (prepared) — flip default theme to LIGHT**. Isolated on
+its own branch `design/phase-5-light-default` (off the design branch) so it can
+be toggled/merged independently AFTER the Phases 0–4 work is visually verified.
+Light is the product default; dark stays first-class via the ☀/☾ toggle; an
+explicit stored choice always wins.
+
+- `ThemeContext.MIGRATION_DEFAULT`: 'dark' → 'light'.
+- index.html pre-paint guard: defaults to light (only adds `.dark` for a stored
+  dark choice).
+
+NOT included (deliberately, higher-risk, do with visual QA): re-enabling
+Tailwind preflight, the light-mode audit of bespoke screens (CandidateUpload,
+Apply, auth, InterviewRoom), and the responsive/a11y sweep.
+
+CAUTION: applying this flip makes light the default everywhere at once —
+including bespoke screens not yet audited in light. Verify in `npm run dev`
+before merging.
+
+Verification: `tsc` clean, `npm run build` OK. (vitest unaffected.)
+
+Affected files: frontend/src/contexts/ThemeContext.tsx, frontend/index.html
+
 ## 10/06/2026 (k)
 Type: Refactor
 
