@@ -80,6 +80,10 @@ flow works end-to-end.
   can't complete (Google OAuth is the no-email path).
 - [ ] **`ENVIRONMENT=production`** on Render — arms the readiness gate's
   prod-only fatal rules (`app/readiness.py`).
+  **⚠ CONFIRMED STILL `development` (verified 2026-06-10):** prod `/health`
+  returns `"environment":"development"`, so the prod-only readiness checks are
+  dormant. Set `ENVIRONMENT=production` on Render + redeploy; re-verify via
+  `/health.environment`.
 - [ ] **`FRONTEND_BASE_URL`** = real deployed frontend — invite links embed it.
 - [ ] **CORS** `FRONTEND_ORIGIN_REGEX` anchored to the real prod frontend origin
   (currently may be the wildcard `*.vercel.app`).
@@ -117,13 +121,27 @@ Operator runs each step in a browser; then I confirm the DB trace.
    domain in Resend and set a real sender (Section A). The single thing blocking
    actual email delivery.
 3. **Supabase Auth SMTP** unconfigured (signup confirmation email) — Section B.
-4. **`ENVIRONMENT=production` / `FRONTEND_BASE_URL` / CORS** on Render unverified
-   — Section B. (`/health.environment` now reports the first one once deployed.)
+4. **`ENVIRONMENT` is `development` in prod** — confirmed 2026-06-10 via
+   `/health` (`"environment":"development"`). Set `ENVIRONMENT=production` on
+   Render to arm the readiness gate. (`FRONTEND_BASE_URL` / CORS still to
+   verify — Section B.)
 5. **No real tenant in production** — only the `Default` sentinel company exists;
    Section C-1 has never run in prod.
+6. **Platform-admin `/recruiter/analytics` stalls** (performance) — for a
+   platform admin with no tenant, the cross-company `hiring_funnel` /
+   `scores_by_field` / `candidate_analytics_summary` run `score_interviews_bulk`
+   over ALL interviews and hang (observed 2026-06-10; the page sits on "Loading
+   analytics…"). Tenant-scoped recruiters / company-admins are unaffected (fast,
+   scoped). The admin **company-overview** (shipped, `5212e41`) sidesteps this by
+   doing counts only (no scoring). Fix: apply the same no-/lazy-scoring treatment
+   to the None-tenant analytics path (or bound/paginate it).
 
 Resolved since last revision: ~~Resend env unverified~~ (API key + webhook
 secret now confirmed set); ~~production URL unknown~~ (`interview-web-app.onrender.com`).
+NB: this checklist branch predates the email-fix + design-redesign + admin
+company-overview deploys now on `main` (`5212e41`); items A.1 / D-1 about the
+403 fix being unmerged are now SUPERSEDED (it shipped). Rebasing this doc onto
+`main` is a follow-up.
 
 ## E. How verification is performed
 
