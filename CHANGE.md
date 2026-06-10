@@ -23,6 +23,25 @@
 
 ---
 
+## 10/06/2026 (k)
+Type: Refactor
+
+Design-system **Phase 4 (part 1) — candidate Dashboard** (`Dashboard.tsx`).
+Stat tiles → `Card` grid; trend + interview-history panels → `Card`+`CardHeader`;
+score/in-progress chips → `Badge`; error + no-interviews states → `Card`+
+`EmptyState` (the empty state keeps its mic icon + "Start your first interview"
+CTA). Bespoke trend chart + `.iv-*` rows left intact (token-based).
+
+NOTE: `InterviewRoom` is intentionally EXCLUDED from the redesign migration —
+CLAUDE.md mandates the realtime interview/voice/WebSocket pipeline stays stable;
+it's token-based and already theme-aware.
+
+Verification: `tsc` clean, vitest 20/20, `npm run build` OK. No backend changes.
+
+Affected files: frontend/src/components/Dashboard.tsx
+Future considerations: Phase 4 continues — CandidateUpload, Apply, auth screens
+(Login/Signup/CompanySignup). Then Phase 5 (states/responsive + flip to light).
+
 ## 10/06/2026 (j)
 Type: Refactor
 
