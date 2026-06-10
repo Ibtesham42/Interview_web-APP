@@ -127,14 +127,19 @@ Operator runs each step in a browser; then I confirm the DB trace.
    verify — Section B.)
 5. **No real tenant in production** — only the `Default` sentinel company exists;
    Section C-1 has never run in prod.
-6. **Platform-admin `/recruiter/analytics` stalls** (performance) — for a
-   platform admin with no tenant, the cross-company `hiring_funnel` /
-   `scores_by_field` / `candidate_analytics_summary` run `score_interviews_bulk`
-   over ALL interviews and hang (observed 2026-06-10; the page sits on "Loading
-   analytics…"). Tenant-scoped recruiters / company-admins are unaffected (fast,
-   scoped). The admin **company-overview** (shipped, `5212e41`) sidesteps this by
-   doing counts only (no scoring). Fix: apply the same no-/lazy-scoring treatment
-   to the None-tenant analytics path (or bound/paginate it).
+6. **Platform-admin `/recruiter/analytics` "stall" — NOT a code bug** (revised
+   2026-06-10 after measuring). Direct authed timing of all four endpoints
+   against prod returned **200 in 1.4–3.2s** (funnel 3.2 / scores 2.3 /
+   integrity 1.4 / summary 2.2). The earlier "Loading analytics…" was almost
+   certainly a **Render free-tier cold start** (~50s spin-up on first hit after
+   idle) outlasting the 15s screenshot wait — environmental, not the
+   aggregations. Operational mitigation already exists: the UptimeRobot
+   keep-alive pinging `/health` (keep it active). No code change made.
+   - LATENT at scale (not today): `score_interviews_bulk` uses one
+     `.in_(all_interview_ids)` query; for the None-tenant path this grows
+     unbounded and could hit PostgREST URL-length limits / slow down at large
+     interview counts. Revisit (chunk the `.in_`, or lazy-score) only when
+     interview volume justifies it — premature against current tiny data.
 
 Resolved since last revision: ~~Resend env unverified~~ (API key + webhook
 secret now confirmed set); ~~production URL unknown~~ (`interview-web-app.onrender.com`).
