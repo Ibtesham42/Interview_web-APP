@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { normalizeWsHost } from '../wsHost';
+import { normalizeWsHost, resolveWsHost } from '../wsHost';
 
 describe('normalizeWsHost', () => {
   afterEach(() => {
@@ -87,5 +87,28 @@ describe('normalizeWsHost', () => {
     expect(normalizeWsHost('wss://host.example.com/wss://host.example.com/')).toBe(
       'wss://host.example.com',
     );
+  });
+});
+
+describe('resolveWsHost', () => {
+  it('uses VITE_WS_URL when set (and normalises it)', () => {
+    expect(resolveWsHost('https://ws.example.com', 'https://api.example.com')).toBe(
+      'wss://ws.example.com',
+    );
+  });
+
+  it('derives from VITE_API_URL when VITE_WS_URL is unset — the prod fix', () => {
+    expect(resolveWsHost(undefined, 'https://interview-web-app.onrender.com')).toBe(
+      'wss://interview-web-app.onrender.com',
+    );
+  });
+
+  it('derives from VITE_API_URL when VITE_WS_URL is blank', () => {
+    expect(resolveWsHost('   ', 'https://api.example.com')).toBe('wss://api.example.com');
+  });
+
+  it('falls back to localhost only when neither is set (local dev)', () => {
+    expect(resolveWsHost(undefined, undefined)).toBe('ws://localhost:8000');
+    expect(resolveWsHost('', '')).toBe('ws://localhost:8000');
   });
 });

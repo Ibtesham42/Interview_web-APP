@@ -36,3 +36,26 @@ export function normalizeWsHost(raw: string | undefined): string {
 
   return value;
 }
+
+/**
+ * Resolve the interview WebSocket host.
+ *
+ * Order: explicit `VITE_WS_URL` → else derive from `VITE_API_URL` (the same
+ * backend the REST client already talks to) → else local-dev default.
+ *
+ * The middle step is the production fix: the WS used to depend on its OWN
+ * `VITE_WS_URL`, so if only `VITE_API_URL` was set (REST working) but
+ * `VITE_WS_URL` was forgotten, the socket silently fell back to
+ * `ws://localhost:8000` and every candidate interview failed with
+ * "couldn't reach the interview server". Deriving from the API origin means
+ * the socket works wherever the REST API does. `normalizeWsHost` handles the
+ * http(s)→ws(s) scheme rewrite + paste-time cleanup for both inputs.
+ */
+export function resolveWsHost(
+  wsUrl: string | undefined,
+  apiUrl?: string | undefined,
+): string {
+  if (wsUrl && wsUrl.trim()) return normalizeWsHost(wsUrl);
+  if (apiUrl && apiUrl.trim()) return normalizeWsHost(apiUrl);
+  return 'ws://localhost:8000';
+}
