@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { recruiterApi } from '../../services/api';
+import { emailStatusLabel } from '../../utils/emailStatus';
 import type { EmailDraft, EmailOutboxRow, EmailTemplateKind } from '../../types';
 
 interface EmailComposerModalProps {
@@ -49,6 +50,9 @@ export function EmailComposerModal({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  // One idempotency key per composer open (ADR 0012): a double-click or
+  // retry reuses the prior send instead of emailing the candidate twice.
+  const [idempotencyKey] = useState(() => crypto.randomUUID());
 
   useEffect(() => {
     let cancelled = false;
@@ -94,14 +98,19 @@ export function EmailComposerModal({
         to: draft.to.trim(),
         subject: draft.subject.trim(),
         body: draft.body,
+        idempotency_key: idempotencyKey,
       });
       onSent(row);
-      if (row.status === 'failed') {
-        // The server wrote an audit row but Resend rejected the send
-        // (or the service is disabled). Surface the reason in the
-        // modal so the recruiter knows the candidate did NOT receive
-        // the email. Don't auto-close — the user has to acknowledge.
-        setSendError(row.error_message || 'Email could not be delivered.');
+      if (row.status !== 'sent') {
+        // The server wrote an audit row but the candidate did NOT receive
+        // the email — Resend rejected it, the service is disabled
+        // ('failed'), or the address is on the suppression list
+        // ('suppressed'). Surface the reason and don't auto-close so the
+        // recruiter has to acknowledge it.
+        setSendError(
+          row.error_message ||
+            `Email ${emailStatusLabel(row.status).toLowerCase()} — not delivered.`,
+        );
         setSending(false);
         return;
       }

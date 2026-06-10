@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { recruiterApi } from '../../services/api';
+import { emailStatusIsPositive, emailStatusLabel } from '../../utils/emailStatus';
 import { Button } from '../Button';
 import { EmailComposerModal } from './EmailComposerModal';
 import type {
@@ -411,13 +412,14 @@ export function RecruiterCandidateDetail() {
                     className={`email-status-chip email-status-${em.status}`}
                     title={em.error_message || ''}
                   >
-                    {em.status === 'sent' ? 'Sent' : 'Failed'}
+                    {emailStatusLabel(em.status)}
                   </span>
                 </div>
                 <div className="email-row-meta">
                   to {em.to_email} · {formatDate(em.sent_at)}
+                  {em.last_event_at && ` · updated ${formatDate(em.last_event_at)}`}
                 </div>
-                {em.status === 'failed' && em.error_message && (
+                {!emailStatusIsPositive(em.status) && em.error_message && (
                   <div className="email-row-error">{em.error_message}</div>
                 )}
               </div>

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { companiesApi } from '../../services/api';
+import { emailStatusLabel } from '../../utils/emailStatus';
 import type { InviteCandidateResponse } from '../../types';
 
 interface InviteCandidateFormProps {
@@ -58,13 +59,16 @@ export function InviteCandidateForm({ onSent }: InviteCandidateFormProps) {
         candidate_name: name.trim() || undefined,
       });
       onSent?.(row);
-      if (row.status === 'failed') {
-        // Resend rejected the send (or service disabled). Surface the
-        // reason; keep the form populated so the user can copy the
-        // address or try again.
+      if (row.status !== 'sent') {
+        // Not delivered — Resend rejected it, the service is disabled
+        // ('failed'), or the address is suppressed ('suppressed').
+        // Surface the reason; keep the form populated so the user can
+        // copy the address or try again.
         setMessage({
           kind: 'error',
-          text: row.error_message || 'The invite could not be delivered.',
+          text:
+            row.error_message ||
+            `The invite was ${emailStatusLabel(row.status).toLowerCase()} — not delivered.`,
         });
       } else {
         setMessage({

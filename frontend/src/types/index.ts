@@ -79,7 +79,7 @@ export interface InviteCandidateResponse {
   id: string;
   to_email: string;
   subject: string;
-  status: 'sent' | 'failed';
+  status: EmailStatus;
   error_message?: string | null;
   sent_at: string;
 }
@@ -91,18 +91,41 @@ export interface EmailDraft {
   body: string;
 }
 
+// Body for POST /email/send. `idempotency_key` (ADR 0012) lets a
+// double-click / retry reuse the prior send instead of emailing twice —
+// the composer mints one per open.
+export interface EmailSendPayload extends EmailDraft {
+  idempotency_key?: string;
+}
+
+// The Resend delivery lifecycle (ADR 0012 / migration 010). At send time a
+// row is 'sent' (Resend accepted), 'failed' (rejected / service disabled),
+// or 'suppressed' (recipient on the do-not-email list). Webhooks later
+// advance it to 'delivered', 'bounced', or 'complained'. 'queued' is
+// reserved for a future bulk-send worker.
+export type EmailStatus =
+  | 'queued'
+  | 'sent'
+  | 'delivered'
+  | 'bounced'
+  | 'complained'
+  | 'failed'
+  | 'suppressed';
+
 export interface EmailOutboxRow {
   id: string;
   to_email: string;
   subject: string;
   body: string;
-  // 'sent' = Resend accepted; 'failed' = Resend rejected OR service is
-  // disabled (no RESEND_API_KEY). error_message carries the reason.
-  status: 'sent' | 'failed';
+  status: EmailStatus;
   resend_message_id?: string | null;
   error_message?: string | null;
   sent_at: string;
   sender_id?: string | null;
+  // Delivery lifecycle (ADR 0012). Optional + nullable for older rows.
+  email_type?: string | null;
+  reply_to?: string | null;
+  last_event_at?: string | null;
 }
 
 export interface EmailListResponse {

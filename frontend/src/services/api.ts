@@ -7,6 +7,7 @@ import type {
   EmailDraft,
   EmailListResponse,
   EmailOutboxRow,
+  EmailSendPayload,
   EmailTemplateKind,
   InviteCandidateResponse,
   Interview,
@@ -255,7 +256,7 @@ export const recruiterApi = {
     fetchJson<EmailDraft>(
       `/recruiter/candidates/${candidateId}/email/draft?template=${template}`,
     ),
-  emailSend: (candidateId: string, payload: EmailDraft) =>
+  emailSend: (candidateId: string, payload: EmailSendPayload) =>
     fetchJson<EmailOutboxRow>(
       `/recruiter/candidates/${candidateId}/email/send`,
       { method: 'POST', body: JSON.stringify(payload) },
