@@ -399,3 +399,120 @@ def _within(ts: Optional[str], date_from: Optional[str], date_to: Optional[str])
     if date_to and ts > date_to:
         return False
     return True
+
+
+def _status_counts(
+    cand_ids: List[str],
+    decisions_by_cand: Dict[str, set],
+    completed_cand: set,
+) -> Dict[str, int]:
+    """Bucket a set of candidates into shortlisted / rejected / on_hold by the
+    same effective-status precedence used everywhere else (ADR 0011)."""
+    counts = {"candidates": len(cand_ids), "shortlisted": 0, "rejected": 0, "on_hold": 0}
+    for cid in cand_ids:
+        st = _effective_status(decisions_by_cand.get(cid, set()), cid in completed_cand)
+        if st == "shortlisted":
+            counts["shortlisted"] += 1
+        elif st == "rejected":
+            counts["rejected"] += 1
+        elif st == "on_hold":
+            counts["on_hold"] += 1
+    return counts
+
+
+def companies_overview(supabase, company_id: Optional[str] = None) -> Dict[str, Any]:
+    """Platform / company KPI rollup grouped by company — ONE bulk pass.
+
+    Powers the admin overview's company-wise stats + platform totals. It does
+    NOT call `candidate_analytics_summary` per company (that would be N+1) —
+    it fetches the same tables once and buckets by `company_id` in Python.
+    It deliberately skips `score_interviews_bulk` (these KPIs are counts only),
+    so it stays fast even for a platform admin with no tenant scope (the path
+    that made the score-heavy /recruiter/analytics aggregation slow).
+
+    `company_id`: None = all companies (platform admin); a value = just that
+    company (company_admin via tenant_scope).
+
+    Returns:
+      - `totals`: total_companies, candidates, invited, interviews_completed,
+        shortlisted, rejected, on_hold — computed over ALL rows in scope
+        (so platform totals include candidates not tied to a company).
+      - `companies`: per-company rows (company_id, name, slug + the same six
+        counts), sorted by candidate count desc.
+
+    Bulk-query invariant: 5 SELECTs regardless of row counts, never N+1.
+    """
+    comp_q = supabase.table("companies").select("id,slug,name")
+    cand_q = supabase.table("candidates").select("id,company_id")
+    iv_q = supabase.table("interviews").select("candidate_id,status,company_id")
+    dec_q = supabase.table("recruiter_decisions").select("candidate_id,decision,company_id")
+    if company_id is not None:
+        comp_q = comp_q.eq("id", company_id)
+        cand_q = cand_q.eq("company_id", company_id)
+        iv_q = iv_q.eq("company_id", company_id)
+        dec_q = dec_q.eq("company_id", company_id)
+    companies = comp_q.execute().data or []
+    candidates = cand_q.execute().data or []
+    interviews = iv_q.execute().data or []
+    decisions = dec_q.execute().data or []
+
+    # Invited = distinct recipient emails in email_outbox sent before signup
+    # (candidate_id IS NULL), bucketed by company. Swallow a missing table.
+    invited_by_company: Dict[Optional[str], set] = {}
+    try:
+        out_q = supabase.table("email_outbox").select("company_id,candidate_id,to_email")
+        if company_id is not None:
+            out_q = out_q.eq("company_id", company_id)
+        for o in out_q.execute().data or []:
+            if o.get("candidate_id") is None and o.get("to_email"):
+                invited_by_company.setdefault(o.get("company_id"), set()).add(o["to_email"])
+    except Exception:
+        invited_by_company = {}
+
+    completed_iv_by_company: Dict[Optional[str], int] = {}
+    completed_cand: set = set()
+    for iv in interviews:
+        if iv.get("status") == "completed":
+            cmp = iv.get("company_id")
+            completed_iv_by_company[cmp] = completed_iv_by_company.get(cmp, 0) + 1
+            if iv.get("candidate_id"):
+                completed_cand.add(iv["candidate_id"])
+
+    decisions_by_cand: Dict[str, set] = {}
+    for d in decisions:
+        cid = d.get("candidate_id")
+        if cid:
+            decisions_by_cand.setdefault(cid, set()).add(d.get("decision"))
+
+    cand_by_company: Dict[Optional[str], List[str]] = {}
+    for c in candidates:
+        cand_by_company.setdefault(c.get("company_id"), []).append(c["id"])
+
+    rows: List[Dict[str, Any]] = []
+    for comp in companies:
+        cid = comp["id"]
+        counts = _status_counts(cand_by_company.get(cid, []), decisions_by_cand, completed_cand)
+        rows.append({
+            "company_id": cid,
+            "name": comp.get("name") or "",
+            "slug": comp.get("slug") or "",
+            "candidates": counts["candidates"],
+            "invited": len(invited_by_company.get(cid, set())),
+            "interviews_completed": completed_iv_by_company.get(cid, 0),
+            "shortlisted": counts["shortlisted"],
+            "rejected": counts["rejected"],
+            "on_hold": counts["on_hold"],
+        })
+    rows.sort(key=lambda r: r["candidates"], reverse=True)
+
+    all_counts = _status_counts([c["id"] for c in candidates], decisions_by_cand, completed_cand)
+    totals = {
+        "total_companies": len(companies),
+        "candidates": len(candidates),
+        "invited": sum(len(v) for v in invited_by_company.values()),
+        "interviews_completed": sum(1 for iv in interviews if iv.get("status") == "completed"),
+        "shortlisted": all_counts["shortlisted"],
+        "rejected": all_counts["rejected"],
+        "on_hold": all_counts["on_hold"],
+    }
+    return {"totals": totals, "companies": rows}

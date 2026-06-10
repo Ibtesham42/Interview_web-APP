@@ -23,6 +23,56 @@
 
 ---
 
+## 10/06/2026 (m)
+Type: Feature
+
+Admin company-overview: platform-wide + company-wise KPIs, with click-through
+to a company's data. Reuses existing aggregations/mechanisms — no duplicate
+systems or per-company queries.
+
+Audit outcome: Company-Admin KPIs (req 2) were ALREADY met by
+`candidate_analytics_summary` on /recruiter/analytics (tenant-scoped). The gap
+was platform-admin: total companies, cross-company candidate/decision counts,
+a company-wise breakdown, and a clickable drill-down.
+
+Backend:
+- `recruiter_analytics.companies_overview(company_id=None)` — ONE bulk pass
+  (companies + candidates + interviews + decisions + outbox), grouped by
+  company in Python; reuses `_effective_status`. Does NOT call the per-company
+  summary (would be N+1) and skips `score_interviews_bulk` (counts only) — so
+  it's fast even for the no-tenant platform-admin path that made the
+  score-heavy /recruiter/analytics slow. Returns platform `totals`
+  (total_companies, candidates, invited, interviews_completed, shortlisted,
+  rejected, on_hold) + per-company `companies[]`. Extracted shared
+  `_status_counts` helper.
+- `GET /api/admin/companies-overview` (admin.py) — `get_current_admin` +
+  `tenant_scope`: platform admin → all companies, company_admin → own only.
+
+Frontend (AdminDashboard):
+- New KPI card row (Companies[admin] / Candidates / Invited / Completed /
+  Shortlisted / Rejected / On hold) + a platform-admin Companies table.
+- Clicking a company row reuses the EXISTING act-as drill-down
+  (`setActingAs` → navigate `/recruiter`) to show that company's candidates +
+  interview data — no new drill-down system.
+- Supplemental fetch (failure hides the section, never blanks the page).
+  Built on the Phase-1 primitives (Card/Table) — renders in light + dark.
+
+Reused: candidate_analytics_summary contract + `_effective_status`/
+`_conversion_rate`, act-as picker mechanism, recruiter Candidates/Analytics
+views, companies/candidates/interviews/decisions/outbox tables. No schema
+change, no migration.
+
+Verification: backend pytest 349 (+3: platform totals, per-company rollup+sort,
+tenant scope). Frontend tsc + vitest 20/20 + build green. Live e2e pending
+backend deploy (endpoint is new; frontend degrades gracefully until then).
+
+Affected files: backend/app/services/recruiter_analytics.py,
+backend/app/routers/admin.py, backend/tests/test_recruiter_analytics.py,
+frontend/src/types/index.ts, frontend/src/services/api.ts,
+frontend/src/components/admin/AdminDashboard.tsx
+Architectural impact: None new — an additional bulk aggregation + endpoint +
+dashboard section, all reusing existing scoping + drill-down.
+
 ## 10/06/2026 (l)
 Type: Decision
 

@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.supabase_client import get_supabase
 from app.auth import get_current_admin, tenant_scope
 from app.services.interview_orchestrator import score_interviews_bulk
-from app.services.recruiter_analytics import integrity_event_volume
+from app.services.recruiter_analytics import companies_overview, integrity_event_volume
 
 router = APIRouter()
 
@@ -122,6 +122,19 @@ async def admin_overview(admin=Depends(get_current_admin)):
         "integrity_volume": integrity_volume,
         "users": user_list,
     }
+
+
+@router.get("/companies-overview")
+async def admin_companies_overview(admin=Depends(get_current_admin)):
+    """Company-wise KPI rollup + platform totals (companies / candidates /
+    invited / completed / shortlisted / rejected / on-hold).
+
+    `tenant_scope` keeps it role-correct with zero extra logic: a platform
+    admin (no tenant) sees all companies; a company_admin sees only their own.
+    Reuses the bulk `companies_overview` aggregation — no per-company queries.
+    """
+    supabase = get_supabase()
+    return companies_overview(supabase, company_id=tenant_scope(admin))
 
 
 @router.get("/users/{user_id}")

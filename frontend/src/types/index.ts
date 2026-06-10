@@ -310,6 +310,33 @@ export interface AdminOverview {
   users: AdminUser[];
 }
 
+// GET /api/admin/companies-overview — platform totals + per-company rollup.
+// company_admin gets just their company (tenant-scoped); platform admin all.
+export interface CompanyOverviewRow {
+  company_id: string;
+  name: string;
+  slug: string;
+  candidates: number;
+  invited: number;
+  interviews_completed: number;
+  shortlisted: number;
+  rejected: number;
+  on_hold: number;
+}
+
+export interface CompaniesOverview {
+  totals: {
+    total_companies: number;
+    candidates: number;
+    invited: number;
+    interviews_completed: number;
+    shortlisted: number;
+    rejected: number;
+    on_hold: number;
+  };
+  companies: CompanyOverviewRow[];
+}
+
 export interface AdminUserInterview {
   interview_id: string;
   field: string;
