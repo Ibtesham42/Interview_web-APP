@@ -417,6 +417,10 @@ class EmailSendRequest(BaseModel):
     to: str = Field(..., min_length=3, max_length=320)
     subject: str = Field(..., min_length=1, max_length=200)
     body: str = Field(..., min_length=1, max_length=20_000)
+    # Optional client-generated key (e.g. a UUID minted when the composer
+    # opens) so a double-click / network retry reuses the prior send instead
+    # of emailing the candidate twice (ADR 0012). Omit to disable dedupe.
+    idempotency_key: Optional[str] = Field(None, max_length=128)
 
 
 class EmailOutboxRow(BaseModel):
@@ -433,6 +437,12 @@ class EmailOutboxRow(BaseModel):
     error_message: Optional[str] = None
     sent_at: datetime
     sender_id: Optional[UUID] = None
+    # Delivery lifecycle (ADR 0012 / migration 010). Optional + defaulted so
+    # the field set stays backward-compatible for older outbox rows and the
+    # existing composer UI.
+    email_type: Optional[str] = None
+    reply_to: Optional[str] = None
+    last_event_at: Optional[datetime] = None
 
 
 class EmailListResponse(BaseModel):

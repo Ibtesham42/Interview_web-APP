@@ -15,6 +15,7 @@ from app.routers.profile import router as profile_router
 from app.routers.recruiter import router as recruiter_router
 from app.routers.companies import router as companies_router
 from app.routers.apply import router as apply_router
+from app.routers.webhooks import router as webhooks_router
 from app.routers.interview_session import interview_websocket
 
 settings = get_settings()
@@ -65,6 +66,8 @@ app.include_router(companies_router, prefix="/api/companies", tags=["companies"]
 # apply.py has two routes (apply/{slug} public + auth/claim-company authed)
 # under one router — mounted with the bare /api prefix.
 app.include_router(apply_router, prefix="/api", tags=["apply"])
+# Resend delivery webhooks (signature-authenticated, no JWT). See ADR 0012.
+app.include_router(webhooks_router, prefix="/api/webhooks", tags=["webhooks"])
 
 
 @app.exception_handler(APIError)

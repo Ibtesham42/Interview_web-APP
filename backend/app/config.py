@@ -50,6 +50,24 @@ class Settings(BaseSettings):
     resend_api_key: str = ""
     resend_from_email: str = "onboarding@resend.dev"
 
+    # Friendly platform name used in the From header. Sends go out as
+    #   "<Company> via <platform_from_name> <resend_from_email>"
+    # so a tenant's email is branded without each company needing its own
+    # verified domain (ADR 0012 — per-tenant verified domains deferred).
+    platform_from_name: str = "Rehearsify"
+
+    # Resend webhook signing secret ("whsec_..."). Verifies that inbound
+    # POSTs to /api/webhooks/resend genuinely came from Resend (Svix
+    # signature). Empty => the webhook endpoint refuses all requests
+    # (fail-closed): without delivery webhooks the platform can still SEND
+    # but is blind to bounces/complaints and builds no suppression list.
+    resend_webhook_secret: str = ""
+
+    # Per-tenant outbound-email rate limit (sends per company per rolling
+    # hour). Protects the shared Resend sender reputation from a single
+    # compromised/runaway tenant. 0 disables the check.
+    email_rate_limit_per_hour: int = 100
+
     # The base URL of the deployed frontend. Used by the
     # invite-candidate email (companies router) to build the
     # /apply/{slug} link inside the body. Local dev defaults to
@@ -61,6 +79,7 @@ class Settings(BaseSettings):
     @field_validator(
         "groq_api_key", "openai_api_key", "supabase_url", "supabase_key",
         "resend_api_key", "resend_from_email", "frontend_base_url",
+        "resend_webhook_secret", "platform_from_name",
         mode="before",
     )
     @classmethod

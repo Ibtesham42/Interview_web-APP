@@ -311,24 +311,25 @@ def _load_candidate_for_email(
 
 
 def _load_company_for_template(supabase, company_id) -> dict:
-    """Look up the Company row for template substitution.
+    """Look up the Company row for template substitution + send identity.
 
-    Returns `{name: str}` shape — the templates only consume the name.
+    Returns `{name, email}` — the templates consume the name; `email` is
+    used as the Reply-To so candidate replies reach the company (ADR 0012).
     Falls back to a generic dict if the company_id is somehow missing
-    (B2C candidate viewed by platform admin); the template's own
-    fallback handles the empty name gracefully.
+    (B2C candidate viewed by platform admin); the template's own fallback
+    handles the empty name gracefully.
     """
     if company_id is None:
-        return {"name": ""}
+        return {"name": "", "email": ""}
     rows = (
         supabase.table("companies")
-        .select("id,name")
+        .select("id,name,email")
         .eq("id", company_id)
         .execute()
         .data
         or []
     )
-    return rows[0] if rows else {"name": ""}
+    return rows[0] if rows else {"name": "", "email": ""}
 
 
 @router.get(
@@ -384,6 +385,9 @@ def _outbox_to_row(raw: dict) -> EmailOutboxRow:
         error_message=raw.get("error_message"),
         sent_at=raw["sent_at"],
         sender_id=raw.get("sender_id"),
+        email_type=raw.get("email_type"),
+        reply_to=raw.get("reply_to"),
+        last_event_at=raw.get("last_event_at"),
     )
 
 
@@ -423,6 +427,10 @@ async def email_send(
             detail="Cannot send email to a candidate with no company affiliation",
         )
 
+    # Tenant send identity (ADR 0012): brand the From with the company name
+    # and route replies to the company's contact address.
+    company = _load_company_for_template(supabase, cand_company)
+
     try:
         row = await email_svc.send(
             supabase,
@@ -432,7 +440,13 @@ async def email_send(
             to=body.to.strip(),
             subject=body.subject.strip(),
             body=body.body,
+            email_type="recruiter_outreach",
+            idempotency_key=body.idempotency_key,
+            from_name=(company.get("name") or "").strip() or None,
+            reply_to=(company.get("email") or "").strip() or None,
         )
+    except email_svc.EmailRateLimited as exc:
+        raise HTTPException(status_code=429, detail=str(exc))
     except email_svc.EmailServiceError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 

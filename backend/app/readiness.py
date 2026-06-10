@@ -91,6 +91,16 @@ def check_readiness(settings) -> Tuple[List[str], List[str]]:
             "as 'failed' (the apply link still works if shared manually). Set "
             "RESEND_API_KEY + a verified RESEND_FROM_EMAIL to enable emailed invites."
         )
+    elif _unset(getattr(settings, "resend_webhook_secret", "")):
+        # Sending works without it, but the platform is then blind to
+        # bounces/complaints and builds no suppression list — a deliverability
+        # and reputation risk once real volume flows (ADR 0012).
+        warnings.append(
+            "RESEND_API_KEY is set but RESEND_WEBHOOK_SECRET is not: outbound "
+            "email works, but delivery/bounce/complaint events are not ingested "
+            "and no suppression list is built. Configure a Resend webhook to "
+            "POST /api/webhooks/resend and set RESEND_WEBHOOK_SECRET."
+        )
 
     if not is_prod and str(settings.frontend_base_url).strip() in _LOCAL_FRONTEND:
         warnings.append(

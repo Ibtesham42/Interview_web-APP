@@ -123,7 +123,7 @@ def _run(coro):
 class TestSend:
     def test_sent_when_api_key_present_and_http_ok(self, monkeypatch):
         # Stub the network: pretend Resend accepted the message.
-        async def fake_post(api_key, payload):
+        async def fake_post(api_key, payload, idempotency_key=None):
             assert payload["from"] == "noreply@acme.com"
             assert payload["to"] == ["alice@example.com"]
             return {"id": "re_abc123"}
@@ -153,7 +153,7 @@ class TestSend:
         get_settings.cache_clear()
 
     def test_failed_status_when_resend_raises(self, monkeypatch):
-        async def fake_post(api_key, payload):
+        async def fake_post(api_key, payload, idempotency_key=None):
             raise RuntimeError("connection refused")
 
         from app.config import get_settings
