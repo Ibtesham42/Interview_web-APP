@@ -12,14 +12,16 @@ export type Theme = 'light' | 'dark';
 const STORAGE_KEY = 'theme';
 
 /**
- * Active default while the Tailwind/dual-theme migration is in progress.
- * Dark keeps every not-yet-migrated screen (designed for the dark palette)
- * rendering exactly as before. An explicit user choice still wins. Flip this
- * to 'light' in the final migration phase once all screens are ported — see
- * the `.dark` token block in index.css and the inline guard in index.html
- * (both must flip together).
+ * Default theme when the user has made no explicit choice. Light is the
+ * product default (Phase 5); an explicit stored choice still wins, and dark
+ * remains a first-class theme via the ☀/☾ toggle. Must stay in sync with the
+ * inline pre-paint guard in index.html (both default to light).
+ *
+ * Possible follow-up: honour `prefers-color-scheme` when no choice is stored
+ * (read `window.matchMedia('(prefers-color-scheme: dark)')` in
+ * readInitialTheme). Left out here to keep the flip minimal and predictable.
  */
-const MIGRATION_DEFAULT: Theme = 'dark';
+const MIGRATION_DEFAULT: Theme = 'light';
 
 interface ThemeContextValue {
   theme: Theme;
@@ -37,9 +39,8 @@ function readInitialTheme(): Theme {
   } catch {
     /* localStorage unavailable (private mode) — fall through to default */
   }
-  // NOTE: we intentionally do NOT follow `prefers-color-scheme` yet — a
-  // light-preferring OS would render un-migrated dark screens broken during
-  // the bridge. System preference is honoured once light becomes the default.
+  // No stored choice → product default (light). System `prefers-color-scheme`
+  // is not consulted (see MIGRATION_DEFAULT note for the optional follow-up).
   return MIGRATION_DEFAULT;
 }
 
