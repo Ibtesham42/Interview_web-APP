@@ -23,6 +23,54 @@
 
 ---
 
+## 10/06/2026 (d)
+Type: Refactor + Decision
+
+Design-system overhaul — **Phase 0 (foundation only)**. User chose (a) migrate
+to Tailwind and (b) dual light+dark theme (light as the eventual default). This
+phase lays the foundation without touching component visuals; component
+migration follows in later phased PRs.
+
+Decisions:
+- Tailwind v3 added ALONGSIDE the existing index.css system (the accepted
+  "parallel during migration" path the user green-lit). Preflight is OFF so
+  Tailwind never resets the legacy base while both coexist; re-enable in the
+  final phase.
+- Dual theme via CSS variables: `index.css :root` is now the LIGHT palette
+  (new); `:root.dark` carries the dark palette — byte-for-byte the previous
+  values, so dark mode is unchanged. Added semantic state tokens
+  (success/warning/danger/info × text/surface/border) per theme.
+- **Migration default = dark** (ThemeContext `MIGRATION_DEFAULT` + the
+  index.html anti-FOUC guard + index.html). Keeps un-migrated screens
+  (designed for dark) rendering as before. Flip to light in the final phase
+  (3 spots noted in code). System `prefers-color-scheme` intentionally NOT
+  followed yet.
+
+Added:
+- `tailwind.config.js` (darkMode 'class', content globs, tokens mapped to CSS
+  vars: canvas/surface/primary/ink/success/… + radius/shadow/font), 
+  `postcss.config.js`, `src/styles/tailwind.css` (directives, imported after
+  index.css so utilities win during the bridge).
+- `src/contexts/ThemeContext.tsx` — ThemeProvider (stored choice wins, else
+  dark), `useTheme`. Wrapped in main.tsx. Header gains a ☀/☾ toggle.
+- index.html inline pre-paint theme guard.
+
+Verification: `tsc` clean, vitest 20/20, `npm run build` OK (Tailwind pipeline
+works). Dark mode visually unchanged (same tokens, default dark). Light theme
+is defined but NOT yet applied to legacy components — expected; they get ported
+phase by phase. No backend changes. No browser walk performed here.
+
+Affected files: frontend/package.json (+ lock), tailwind.config.js,
+postcss.config.js, frontend/index.html, src/main.tsx, src/index.css,
+src/styles/tailwind.css, src/contexts/ThemeContext.tsx, src/App.tsx
+Architectural impact: introduces Tailwind as the forward styling system + a
+theme-token layer; legacy CSS remains authoritative until each component is
+migrated.
+Future considerations: Phase 1 primitives (Card/Badge/Field/EmptyState/Toast/
+Table), Phase 2 shell+sidebar nav, Phase 3 recruiter screens, Phase 4
+onboarding+candidate, Phase 5 states/a11y/responsive + flip default to light +
+re-enable preflight.
+
 ## 10/06/2026 (c)
 Type: Fix
 

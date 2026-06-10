@@ -1,0 +1,6 @@
+/* Tailwind entry. Imported AFTER index.css (see main.tsx) so utility classes
+   win over the legacy semantic classes during the migration bridge. Preflight
+   is disabled in tailwind.config.js to protect the existing base styles. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

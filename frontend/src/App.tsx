@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, NavLink, useNavigate, Link } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { useTheme } from './contexts/ThemeContext';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { Login } from './components/auth/Login';
 import { Signup } from './components/auth/Signup';
@@ -23,6 +24,7 @@ import type { UserRole } from './types';
 
 function Header() {
   const { user, session, profile, company, signOut, can } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
 
   const handleSignOut = async () => {
@@ -82,6 +84,15 @@ function Header() {
         </nav>
       </div>
       <div className="header-user">
+        <button
+          type="button"
+          className="icon-btn"
+          onClick={toggleTheme}
+          aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+          title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+        >
+          {theme === 'dark' ? '☀' : '☾'}
+        </button>
         {isAuthed ? (
           <>
             {/* Tenant chip — surfaces which Company the caller is acting on
