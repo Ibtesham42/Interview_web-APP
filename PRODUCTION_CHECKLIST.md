@@ -7,9 +7,10 @@ ADR 0012 Resend email pipeline. Tracks what is **verified**, what is
 Legend: `[x]` done/verified · `[ ]` not done · `[~]` code-ready, needs live
 verification.
 
-Last updated: **2026-06-10**. Verification method: read-only probes against the
-hosted Supabase DB (service key + `curl --resolve`); interactive flows must be
-run in a browser by an operator, then confirmed via the DB trace listed here.
+Last updated: **2026-06-10** (post 403 investigation). Verification method:
+read-only probes against the hosted Supabase DB (service key + `curl --resolve`)
++ unauthenticated probes of the deployed backend; interactive flows must be run
+in a browser by an operator, then confirmed via the DB trace listed here.
 
 ---
 
@@ -18,17 +19,19 @@ run in a browser by an operator, then confirmed via the DB trace listed here.
 | Signal | Value |
 |---|---|
 | Backend (`interview-web-app.onrender.com`) | **Up** — `/health` 200, auth gating 401, webhook 401 fail-closed |
+| Deployed commit | `origin/main` = **`b10530d`** (ADR 0012 only). **The 403 fix is NOT deployed** — it's on branch `fix/resend-403-invite-modal` (`52a3ff7`), unmerged. |
+| `RESEND_API_KEY` | **Set + valid** — proven by the production 403 (the request *authenticated* at Resend; a bad key is 401). |
+| `RESEND_FROM_EMAIL` | **Sandbox / unverified** — the cause of the 403: Resend only delivers from it to the account owner. **Verify a domain + set a real sender.** |
 | `RESEND_WEBHOOK_SECRET` | **Set** (webhook returns 401, not 503) |
 | Migration 010 | **Applied** (`email_events`, `email_suppressions`, new `email_outbox` columns all present) |
-| `email_outbox` | 2 rows, both `failed` / "RESEND_API_KEY missing" (2026-05-29/30) — **no send since deploy** |
-| `email_events` | 0 — **no webhook events yet** |
-| `email_suppressions` | 0 |
+| `email_outbox` | 2 old `failed` rows; first real send returned **403** (sandbox sender) — no `sent` row yet |
+| `email_events` / `email_suppressions` | 0 / 0 |
 | `companies` | 1 (`Default` backfill sentinel) — **no real self-serve signup yet** |
-| candidates / interviews | 36 / 20 (newest interview 2026-05-30) — **idle since deploy** |
 
-**Headline:** the release is deployed and the schema is migrated, but the
-production system has had **zero activity since deploy**, so the email + flow
-paths are unexercised. One real invite (Section C, step 2) unblocks most checks.
+**Headline:** schema is migrated, `RESEND_API_KEY` + `RESEND_WEBHOOK_SECRET` are
+set, but **(a)** the 403 fix isn't merged/deployed and **(b)** `RESEND_FROM_EMAIL`
+is the sandbox sender, so real invites 403. Both must close before the email
+flow works end-to-end.
 
 ---
 
@@ -37,13 +40,15 @@ paths are unexercised. One real invite (Section C, step 2) unblocks most checks.
 - [x] **Migration 010 applied** — verified: `email_outbox.idempotency_key/
   email_type/reply_to/last_event_at` present; `email_events` + `email_suppressions`
   tables exist.
-- [~] **`RESEND_API_KEY` set on Render** — *unverified.* No send has occurred, so
-  the only proof (a `status='sent'` row with `resend_message_id`) doesn't exist
-  yet. **Verify:** run an invite (Section C-2) → expect `email_outbox.status='sent'`
-  + non-null `resend_message_id`.
-- [~] **`RESEND_FROM_EMAIL` = verified domain sender** — *unverified.* Confirm the
-  domain is verified in the Resend dashboard; the sandbox `onboarding@resend.dev`
-  is fine for testing but not for real candidate mail.
+- [x] **`RESEND_API_KEY` set + valid** — **verified 2026-06-10** indirectly: the
+  first production invite reached Resend and got a **403** (authenticated), not a
+  401. The key works.
+- [ ] **`RESEND_FROM_EMAIL` = verified domain sender** — **THE 403 CAUSE.** It is
+  currently the Resend sandbox sender (`onboarding@resend.dev`) or an unverified
+  domain, which only delivers to the Resend account owner's address. **Fix:**
+  verify a domain at resend.com/domains, set `RESEND_FROM_EMAIL` to an address on
+  it on Render, redeploy. (Interim smoke test: invite the Resend-account-owner's
+  own email — sandbox allows that and returns `sent`.)
 - [x] **`RESEND_WEBHOOK_SECRET` set** — **verified 2026-06-10**: unsigned
   `POST https://interview-web-app.onrender.com/api/webhooks/resend` returns
   **401 "Invalid signature"** (not 503), proving the secret is set and
@@ -55,6 +60,18 @@ paths are unexercised. One real invite (Section C, step 2) unblocks most checks.
   defaults `Rehearsify` / `100`).
 - [x] Suppression on hard bounce / complaint — code + unit tests in place;
   exercised once a real bounce/complaint webhook lands.
+
+## A.1 In-flight fixes — branch `fix/resend-403-invite-modal` (`52a3ff7`, NOT merged)
+
+- [ ] **Merge + deploy this branch.** Until then production serves `b10530d`
+  (raw 403 string to users, old invite modal).
+- [x] Friendly Resend error messages (403/401/422/429) replace the raw
+  `HTTPStatusError` — backend code + tests done.
+- [x] Readiness warning when `RESEND_FROM_EMAIL` is the sandbox sender — done.
+- [x] Invite modal: sticky footer, max-height, Send/Cancel always visible — done.
+- [x] `/health` now reports `commit` (Render `RENDER_GIT_COMMIT`) + `environment`
+  — enables deploy verification. **After deploy, `/health.commit` must read
+  `52a3ff7`.**
 
 ## B. Platform configuration (carried over from earlier checkpoints)
 
@@ -93,15 +110,20 @@ Operator runs each step in a browser; then I confirm the DB trace.
 
 ## D. Remaining blockers (prioritized)
 
-1. **Resend env unverified** — top blocker. No send has happened; can't confirm
-   `RESEND_API_KEY`/`FROM`/`WEBHOOK_SECRET` are live. → run Section C-2.
-2. **Production URLs unknown to the verifier** — need the real **frontend** and
-   **backend** URLs to test the webhook endpoint and hand over exact links.
-   (Repo has no hardcoded prod URL; it's the `VITE_API_URL` env var.)
-3. **No real tenant in production** — only the `Default` sentinel company exists;
+1. **403 fix not merged/deployed** — branch `fix/resend-403-invite-modal`
+   (`52a3ff7`) is unmerged; prod serves `b10530d`. Merge PR → redeploy →
+   confirm `/health.commit == 52a3ff7`.
+2. **`RESEND_FROM_EMAIL` is the sandbox sender → real invites 403** — verify a
+   domain in Resend and set a real sender (Section A). The single thing blocking
+   actual email delivery.
+3. **Supabase Auth SMTP** unconfigured (signup confirmation email) — Section B.
+4. **`ENVIRONMENT=production` / `FRONTEND_BASE_URL` / CORS** on Render unverified
+   — Section B. (`/health.environment` now reports the first one once deployed.)
+5. **No real tenant in production** — only the `Default` sentinel company exists;
    Section C-1 has never run in prod.
-4. **Platform config (Section B)** — SMTP / `ENVIRONMENT` / `FRONTEND_BASE_URL` /
-   CORS unverified.
+
+Resolved since last revision: ~~Resend env unverified~~ (API key + webhook
+secret now confirmed set); ~~production URL unknown~~ (`interview-web-app.onrender.com`).
 
 ## E. How verification is performed
 
@@ -115,11 +137,15 @@ curl --resolve <host>:443:<ip> \
   "https://<host>/rest/v1/email_outbox?select=status,email_type,resend_message_id,sent_at&order=sent_at.desc"
 ```
 
-Webhook endpoint test (no auth — signature-gated):
+Deployed-build + webhook checks (no auth):
 
 ```
-curl -i -X POST <backend>/api/webhooks/resend -d '{}'      # expect 503 (no/!secret)
-# with a deliberately wrong svix-signature header           # expect 401
+curl -s https://interview-web-app.onrender.com/health
+# -> {"status":"healthy","commit":"<sha>","environment":"<env>"}
+# after deploy, commit must read 52a3ff7 (until then it is 'unknown' on the old build)
+
+curl -i -X POST https://interview-web-app.onrender.com/api/webhooks/resend -d '{}'
+# -> 401 "Invalid signature" (secret set; 503 would mean secret missing)
 ```
 
 ---
