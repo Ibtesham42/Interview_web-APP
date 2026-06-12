@@ -313,17 +313,18 @@ def _load_candidate_for_email(
 def _load_company_for_template(supabase, company_id) -> dict:
     """Look up the Company row for template substitution + send identity.
 
-    Returns `{name, email}` — the templates consume the name; `email` is
-    used as the Reply-To so candidate replies reach the company (ADR 0012).
-    Falls back to a generic dict if the company_id is somehow missing
-    (B2C candidate viewed by platform admin); the template's own fallback
-    handles the empty name gracefully.
+    Returns name + contact fields — the templates consume the name and
+    render the contact footer (phone/address, 2026-06-12 deliverability
+    pass); `email` doubles as the Reply-To so candidate replies reach the
+    company (ADR 0012). Falls back to a generic dict if the company_id is
+    somehow missing (B2C candidate viewed by platform admin); the
+    template's own fallback handles the empty name gracefully.
     """
     if company_id is None:
         return {"name": "", "email": ""}
     rows = (
         supabase.table("companies")
-        .select("id,name,email")
+        .select("id,name,email,phone,address")
         .eq("id", company_id)
         .execute()
         .data

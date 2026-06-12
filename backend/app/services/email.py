@@ -45,6 +45,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 from app.config import get_settings
+from app.services.email_templates import render_email_html
 
 logger = logging.getLogger("app.email")
 
@@ -408,11 +409,17 @@ async def send(
         error_message = "Email service not configured (RESEND_API_KEY missing)"
     else:
         try:
+            # Multipart text+HTML (2026-06-12): the HTML part is derived
+            # from the SAME final body the sender approved (escape-first,
+            # links clickable, neutral styling) so the two parts can never
+            # disagree — a mismatch between text and HTML parts is itself
+            # a spam signal.
             payload: Dict[str, Any] = {
                 "from": _build_from(from_name),
                 "to": [to_addr],
                 "subject": subject,
                 "text": body,
+                "html": render_email_html(body),
             }
             if reply_to_clean:
                 payload["reply_to"] = reply_to_clean

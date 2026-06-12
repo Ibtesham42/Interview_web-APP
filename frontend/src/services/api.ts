@@ -330,13 +330,26 @@ export const companiesApi = {
 
   // Send a pre-application invitation email to a candidate. Backend
   // constructs the apply URL from FRONTEND_BASE_URL + the caller's
-  // company slug — frontend just supplies the recipient + optional
-  // name. Used by the "Invite a candidate" card on /admin/settings.
-  invite: (data: { to_email: string; candidate_name?: string }) =>
+  // company slug. `subject`/`body` carry the sender's edited copy from
+  // the composer (2026-06-12); omitted fields fall back to the default
+  // template server-side, so the one-click path still works.
+  invite: (data: {
+    to_email: string;
+    candidate_name?: string;
+    subject?: string;
+    body?: string;
+  }) =>
     fetchJson<InviteCandidateResponse>('/companies/invite', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  // Template-rendered invite draft for the editable-invite composer —
+  // mirrors recruiterApi.emailDraft.
+  inviteDraft: (toEmail: string, candidateName: string) =>
+    fetchJson<EmailDraft>(
+      `/companies/invite/draft?to_email=${encodeURIComponent(toEmail)}&candidate_name=${encodeURIComponent(candidateName)}`,
+    ),
 };
 
 // Apply API — multi-tenant rollout PR 4. Public landing route + post-signup

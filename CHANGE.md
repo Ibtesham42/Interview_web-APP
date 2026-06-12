@@ -23,6 +23,75 @@
 
 ---
 
+## 12/06/2026 (d)
+Type: Feature
+
+Email composer improvements: edit + preview + save-draft everywhere, editable
+invites, deliverability-focused templates, multipart text+HTML sends.
+
+AUDIT FIRST (per direction): the recruiter composer already had fully
+editable to/subject/body, idempotent send, outbox audit + failure surfacing —
+REUSED, not rebuilt. Genuinely missing: Preview mode, draft persistence,
+an HTML part (text-only sends), editable invite emails (sent fire-and-forget
+from the form), and templates lacking reply info + contact footer.
+
+Backend:
+- Templates rewritten for deliverability: professional wording, no all-caps/
+  emojis/urgency punctuation, company name + purpose up front, a "reply to
+  this email" line (Reply-To is already the company address), and a contact
+  footer (email | phone / address — only fields on file) built INTO the body
+  so senders see and can edit exactly what ships.
+- New `render_email_html` (email_templates.py): escape-first plain-text→HTML
+  (hostile content never becomes markup), URLs become styled anchors (the
+  apply link is clickable), paragraphs/<br/>, minimal neutral inline-styled
+  shell — no images/tables/tracking. `email.send` now ships multipart
+  text+HTML derived from the SAME body, so the parts can't disagree (a spam
+  signal). Single change inside send() — all callers inherit it.
+- Editable invites: `GET /api/companies/invite/draft` (template-rendered
+  draft, same auth as /invite) + optional `subject`/`body` overrides on
+  `POST /companies/invite` with field-by-field template fallback — the
+  one-click invite path is byte-identical. Company selects now include
+  phone/address for the footer (companies + recruiter loaders).
+
+Frontend:
+- New shared `EmailEditor` (components/email/): subject+body fields with an
+  Edit ↔ Preview toggle. Preview mirrors the backend HTML derivation via a
+  SEGMENT structure (utils/emailPreview.ts) rendered as React elements —
+  never an HTML string. Used by BOTH the recruiter composer and the invite
+  form (one editor, no duplicate email UIs).
+- EmailComposerModal: Save Draft (localStorage via utils/emailDrafts.ts,
+  keyed candidate+template — no server draft store exists; drafts are
+  per-browser), restore-on-reopen banner with discard-to-template, draft
+  cleared on successful send. Cancel/Save draft/Send footer.
+- InviteCandidateForm: "Review & edit the email before sending" expander —
+  fetches the server draft, full edit + preview, sends overrides; untouched
+  composer keeps the exact default-template behavior.
+- CSS: editor tabs, mail-client-style preview pane, link-btn; composer
+  becomes a full-height sheet under 480px (mobile-friendly).
+
+Verification: backend pytest 408 (+22: tests/test_email_composer.py —
+deliverability rules on all 3 templates, HTML escaping/linkify, multipart
+payload, invite draft + override paths; 1 existing assertion updated for the
+new rejection subject casing). Frontend tsc clean, vitest 38 (+11: preview
+segmentation, draft storage), build OK.
+
+Affected files: backend/app/services/{email_templates,email}.py,
+backend/app/routers/{companies,recruiter}.py, backend/app/models/schemas.py,
+backend/tests/{test_email_composer.py,test_email_endpoints.py},
+frontend/src/components/email/EmailEditor.tsx,
+frontend/src/components/recruiter/EmailComposerModal.tsx,
+frontend/src/components/companies/InviteCandidateForm.tsx,
+frontend/src/utils/{emailPreview,emailDrafts}.ts + __tests__,
+frontend/src/services/api.ts, frontend/src/index.css
+Architectural impact: none structural — same send pipeline, same outbox,
+same idempotency/suppression/rate-limit guards; HTML is derived at the one
+choke point. Drafts are deliberately client-side (grill E3 posture kept).
+Future considerations: per-company template overrides (the long-planned
+`company_email_templates`) now slot cleanly behind the draft endpoints;
+server-side drafts if multi-device editing is ever needed. Actual DELIVERY
+still gated on RESEND_API_KEY (PRODUCTION_CHECKLIST blocker #1) — these
+changes improve what ships once that key is set.
+
 ## 12/06/2026 (c)
 Type: Fix + Verification
 
