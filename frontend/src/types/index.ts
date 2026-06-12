@@ -96,6 +96,21 @@ export interface CandidateInvitationList {
   items: CandidateInvitation[];
 }
 
+// Proctoring snapshots (migration 012) — webcam frames captured during
+// the interview, periodic plus one per integrity warning.
+export type SnapshotKind = 'periodic' | 'integrity';
+
+export interface InterviewSnapshot {
+  id: string;
+  kind: SnapshotKind;
+  created_at: string;
+  image_base64: string;
+}
+
+export interface SnapshotList {
+  items: InterviewSnapshot[];
+}
+
 // POST /api/companies/invite — admin sends an apply-link invite to a
 // candidate who hasn't signed up yet. Outbox row returned so the UI
 // can show instant sent/failed feedback.
@@ -287,6 +302,9 @@ export interface DashboardInterview {
   score: number;
   recommendation: string;
   questions: number;
+  // Which company this interview was for (invitation flow). null/absent =
+  // personal practice interview.
+  company_name?: string | null;
 }
 
 export interface DashboardTrendPoint {

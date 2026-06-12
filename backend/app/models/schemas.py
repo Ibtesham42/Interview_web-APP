@@ -403,6 +403,29 @@ class ClaimCompanyRequest(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Proctoring snapshots (migration 012)
+# ---------------------------------------------------------------------------
+
+class SnapshotCreate(BaseModel):
+    """POST /api/interviews/{id}/snapshots body. The client downsizes the
+    webcam frame (~320px JPEG) before encoding; the max_length is a hard
+    backstop (~330 KB base64 ≈ 240 KB binary) against oversized uploads."""
+    image_base64: str = Field(..., min_length=100, max_length=330_000)
+    kind: str = Field("periodic", pattern=r"^(periodic|integrity)$")
+
+
+class SnapshotRow(BaseModel):
+    id: UUID
+    kind: str
+    created_at: datetime
+    image_base64: str
+
+
+class SnapshotListResponse(BaseModel):
+    items: List[SnapshotRow]
+
+
+# ---------------------------------------------------------------------------
 # Candidate invitations (migration 011 — invitation-to-interview flow)
 # ---------------------------------------------------------------------------
 

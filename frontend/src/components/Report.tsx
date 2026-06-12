@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { reportApi } from '../services/api';
+import { interviewApi, reportApi } from '../services/api';
 import { Card, CardTitle, EmptyState } from './ui';
 import type {
   InterviewReport,
+  InterviewSnapshot,
   PhaseScores,
   Phase2Score,
   Phase4Score,
@@ -129,6 +130,8 @@ export function Report() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showTranscript, setShowTranscript] = useState(false);
+  const [snapshots, setSnapshots] = useState<InterviewSnapshot[]>([]);
+  const [showSnapshots, setShowSnapshots] = useState(false);
 
   useEffect(() => {
     if (!interviewId) return;
@@ -137,6 +140,16 @@ export function Report() {
       .then(setReport)
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load report'))
       .finally(() => setLoading(false));
+  }, [interviewId]);
+
+  // Proctoring snapshots (migration 012). Non-blocking: any failure
+  // (older interview, table not migrated) just hides the section.
+  useEffect(() => {
+    if (!interviewId) return;
+    interviewApi
+      .listSnapshots(interviewId)
+      .then(({ items }) => setSnapshots(items))
+      .catch(() => setSnapshots([]));
   }, [interviewId]);
 
   if (loading) {
@@ -248,6 +261,43 @@ export function Report() {
               <IntegrityEventList events={report.integrity_events.events} />
             )}
           </div>
+        </Card>
+      )}
+
+      {/* Proctoring snapshots (migration 012) — webcam frames captured
+          during the interview, periodic plus one per integrity warning.
+          Collapsed by default; only rendered when frames exist. */}
+      {snapshots.length > 0 && (
+        <Card>
+          <button
+            className="transcript-toggle"
+            onClick={() => setShowSnapshots((v) => !v)}
+            aria-expanded={showSnapshots}
+          >
+            <span>Monitoring snapshots ({snapshots.length})</span>
+            <span className="transcript-chevron">{showSnapshots ? '−' : '+'}</span>
+          </button>
+          {showSnapshots && (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4" style={{ marginTop: 'var(--space-md)' }}>
+              {snapshots.map((snap) => (
+                <figure key={snap.id} style={{ margin: 0 }}>
+                  <img
+                    src={`data:image/jpeg;base64,${snap.image_base64}`}
+                    alt={`Webcam snapshot at ${formatEventTime(snap.created_at)}${snap.kind === 'integrity' ? ' (integrity warning)' : ''}`}
+                    loading="lazy"
+                    className="rounded-md border"
+                    style={{ width: '100%', display: 'block' }}
+                  />
+                  <figcaption className="mt-1 flex items-center justify-between text-xs text-ink-subtle">
+                    <span>{formatEventTime(snap.created_at)}</span>
+                    {snap.kind === 'integrity' && (
+                      <span className="integrity-report-severity warning">warning</span>
+                    )}
+                  </figcaption>
+                </figure>
+              ))}
+            </div>
+          )}
         </Card>
       )}
 
