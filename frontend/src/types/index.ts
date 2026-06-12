@@ -70,6 +70,30 @@ export interface ClaimCompanyResponse {
   claimed: boolean;
   company_id: string;
   reason?: string;
+  // 'invitation' when the claim was recorded as accepted-invitation
+  // membership (candidate already had a primary company) rather than a
+  // profile company_id stamp. See migration 011.
+  via?: string;
+}
+
+// One invitation as the candidate sees it (GET /api/invitations/mine).
+// pending and accepted both allow starting an interview for that company;
+// declined grants nothing until the company re-invites.
+export type InvitationStatus = 'pending' | 'accepted' | 'declined';
+
+export interface CandidateInvitation {
+  id: string;
+  company_id: string;
+  company_name: string;
+  company_slug: string;
+  status: InvitationStatus;
+  candidate_name?: string | null;
+  created_at?: string | null;
+  accepted_at?: string | null;
+}
+
+export interface CandidateInvitationList {
+  items: CandidateInvitation[];
 }
 
 // POST /api/companies/invite — admin sends an apply-link invite to a

@@ -113,10 +113,16 @@ export function Apply() {
   }
 
   // Already-signed-in branch — show a single-step claim CTA so the
-  // candidate doesn't repeat signup.
+  // candidate doesn't repeat signup. A candidate who already belongs to
+  // another company can still accept: the backend records it as an
+  // accepted invitation (migration 011) without moving their primary
+  // company — one candidate, invitations from many companies.
   if (session) {
-    const alreadyHere =
-      profile?.role !== 'user' || (profile?.company_id ?? null) !== null;
+    const isHiringAccount = Boolean(profile && profile.role !== 'user');
+    const hasOtherCompany =
+      profile?.role === 'user' &&
+      (profile?.company_id ?? null) !== null &&
+      profile?.company_id !== landing.company_id;
     return (
       <div className="auth-page">
         <div className="auth-card">
@@ -130,24 +136,25 @@ export function Apply() {
           </div>
           <h1 className="auth-title">Apply to {landing.company_name}</h1>
           <p className="auth-subtitle">
-            {alreadyHere
-              ? 'You are already signed in. Claim this invite if you want to apply with the account you are using.'
-              : `Signed in as ${profile?.email ?? 'your account'}.`}
+            Signed in as {profile?.email ?? 'your account'}.
+            {hasOtherCompany
+              ? ` Accepting adds ${landing.company_name} to your invitations — your existing account and interview history stay where they are.`
+              : ''}
           </p>
-          {alreadyHere && profile?.company_id ? (
+          {isHiringAccount ? (
             <div className="error-message">
-              Your account already belongs to another company. Sign out and apply
-              with a different email.
+              This account manages a company and cannot apply as a candidate. Sign in
+              with a personal account to accept this invitation.
             </div>
           ) : null}
           <button
             type="button"
             className="btn btn-primary btn-lg"
             onClick={handleClaim}
-            disabled={claiming || Boolean(profile?.company_id)}
+            disabled={claiming || isHiringAccount}
             style={{ width: '100%' }}
           >
-            {claiming ? 'Claiming…' : `Claim this invite`}
+            {claiming ? 'Accepting…' : 'Accept invitation'}
           </button>
           <p className="auth-switch" style={{ marginTop: 'var(--space-md)' }}>
             Wrong account? <Link to="/login">Sign in with a different one</Link>

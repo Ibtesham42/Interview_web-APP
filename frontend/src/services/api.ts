@@ -1,7 +1,9 @@
 import type {
   ApplyLanding,
   Candidate,
+  CandidateInvitationList,
   ClaimCompanyResponse,
+  InvitationStatus,
   Company,
   CompanyOption,
   EmailDraft,
@@ -118,7 +120,15 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
 
 // Candidate APIs
 export const candidateApi = {
-  create: (data: { name: string; email?: string; field_specialization?: string }) =>
+  // company_id (invitation flow): which company this candidate profile is
+  // for. Must be the caller's company or an inviting one — the backend
+  // validates and 403s otherwise. Omitted = primary company.
+  create: (data: {
+    name: string;
+    email?: string;
+    field_specialization?: string;
+    company_id?: string;
+  }) =>
     fetchJson<Candidate>('/candidates/', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -149,7 +159,9 @@ export const candidateApi = {
 
 // Interview APIs
 export const interviewApi = {
-  create: (data: { candidate_id: string; job_description?: string }) =>
+  // company_id mirrors candidateApi.create — which company the interview
+  // is for (invitation flow). Omitted = inherit from the candidate row.
+  create: (data: { candidate_id: string; job_description?: string; company_id?: string }) =>
     fetchJson<Interview>('/interviews/', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -325,4 +337,20 @@ export const applyApi = {
       method: 'POST',
       body: JSON.stringify({ slug }),
     }),
+};
+
+// Candidate-facing invitation ledger (migration 011). `mine` drives the
+// dashboard Invitations panel and the interview-setup company badge.
+export const invitationsApi = {
+  mine: () => fetchJson<CandidateInvitationList>('/invitations/mine'),
+  accept: (id: string) =>
+    fetchJson<{ id: string; status: InvitationStatus }>(
+      `/invitations/${encodeURIComponent(id)}/accept`,
+      { method: 'POST' },
+    ),
+  decline: (id: string) =>
+    fetchJson<{ id: string; status: InvitationStatus }>(
+      `/invitations/${encodeURIComponent(id)}/decline`,
+      { method: 'POST' },
+    ),
 };

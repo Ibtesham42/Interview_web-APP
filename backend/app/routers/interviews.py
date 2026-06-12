@@ -4,12 +4,16 @@ The WebSocket handler (`routers/interview_session.py`) is the authoritative
 runtime for an interview; these endpoints are CRUD/read helpers used by
 the frontend's interview-room and dashboard screens.
 
-Tenant note (multi-tenant PR 2): every read enforces ownership AND tenant
-scope. Ownership is the primary gate (a user only sees their own
-interviews); the tenant filter is defense-in-depth so a stale or
-manually-edited `company_id` cannot leak data across tenants. Platform
-admins (`role='admin'`, NULL `company_id`) bypass both checks and can
-read any interview — used by the admin user-detail page.
+Tenant note (updated 2026-06-12, invitation flow / migration 011): reads
+are OWNERSHIP-scoped — a user sees exactly their own interviews. The old
+additional `company_id == profile.company_id` narrowing is gone: a
+candidate's interviews may legitimately span multiple companies (one
+invitation per company), and the narrowing was also hiding every row the
+pre-fix create path left with a NULL stamp. Writes now stamp `company_id`
+at insert (see `create_interview`) — that stamp is what tenant-scopes the
+RECRUITER/admin views, which still filter by it. Platform admins
+(`role='admin'`, NULL `company_id`) can read any interview — used by the
+admin user-detail page.
 
 Pre-PR-2 audit: GET endpoints below were UNAUTHENTICATED (no `Depends`).
 That gap is closed in PR 2 — every read now requires a Supabase Bearer
@@ -28,7 +32,9 @@ from app.models.schemas import (
     EvaluationResponse,
 )
 from app.supabase_client import get_supabase
-from app.auth import get_current_user, get_tenant_context, tenant_scope
+from app.auth import get_current_user, get_tenant_context
+from app.routers.candidates import resolve_target_company
+from app.services.invitations import mark_accepted
 
 router = APIRouter()
 
@@ -37,9 +43,11 @@ def _require_owned_interview(supabase, interview_id: UUID, ctx) -> dict:
     """Fetch an interview the caller is allowed to read.
 
     Allowed = the caller owns it (`user_id` matches) OR the caller is a
-    platform admin. If the caller is tenant-scoped, the interview's
-    `company_id` must also match — a cross-tenant id falls through to 404,
-    indistinguishable from 'missing'.
+    platform admin. Ownership is the gate — a candidate's interviews may
+    span multiple companies (invitation flow, migration 011), so the old
+    `company_id == profile.company_id` defense-in-depth check is gone:
+    it 404'd a candidate's own company-B interview, and ownership already
+    prevents any cross-user read.
 
     Returns the interview row. Raises HTTP 404 on any failure so the API
     never leaks the existence of interviews the caller cannot see.
@@ -59,18 +67,38 @@ def _require_owned_interview(supabase, interview_id: UUID, ctx) -> dict:
     if ctx.is_platform_admin:
         return interview
 
-    # Non-admin: must own + match tenant.
     if interview.get("user_id") != ctx.id:
-        raise HTTPException(status_code=404, detail="Interview not found")
-    tenant = tenant_scope(ctx)
-    if tenant is not None and interview.get("company_id") != tenant:
         raise HTTPException(status_code=404, detail="Interview not found")
     return interview
 
 
 @router.post("/", response_model=InterviewResponse)
-async def create_interview(interview: InterviewCreate, user=Depends(get_current_user)):
+async def create_interview(
+    interview: InterviewCreate,
+    user=Depends(get_current_user),
+    ctx=Depends(get_tenant_context),
+):
     supabase = get_supabase()
+
+    # Resolve which company this interview is for. Explicit company_id
+    # (invitation flow) is validated against the caller's memberships;
+    # otherwise inherit the candidate row's company so the pair can't
+    # drift apart; otherwise the caller's primary company. The stamp is
+    # what the WebSocket tenant gate and every recruiter view key on —
+    # leaving it NULL is the bug that produced "Cannot connect to
+    # interview" for every tenant candidate.
+    company_id = resolve_target_company(supabase, ctx, user, interview.company_id)
+    if interview.company_id is None:
+        cand_rows = (
+            supabase.table("candidates")
+            .select("company_id,user_id")
+            .eq("id", str(interview.candidate_id))
+            .execute()
+            .data
+            or []
+        )
+        if cand_rows and cand_rows[0].get("company_id"):
+            company_id = cand_rows[0]["company_id"]
 
     result = supabase.table("interviews").insert({
         "candidate_id": str(interview.candidate_id),
@@ -79,10 +107,20 @@ async def create_interview(interview: InterviewCreate, user=Depends(get_current_
         "current_phase": 1,
         "conversation_history": [],
         "user_id": user.id,
+        "company_id": company_id,
     }).execute()
 
     if not result.data:
         raise HTTPException(status_code=500, detail="Failed to create interview")
+
+    # Starting an interview for an inviting company accepts the invitation.
+    if company_id and not ctx.is_platform_admin:
+        mark_accepted(
+            supabase,
+            company_id=company_id,
+            email=getattr(user, "email", "") or "",
+            user_id=user.id,
+        )
 
     return result.data[0]
 
@@ -90,17 +128,18 @@ async def create_interview(interview: InterviewCreate, user=Depends(get_current_
 @router.get("/", response_model=List[InterviewResponse])
 async def list_interviews(user=Depends(get_tenant_context)):
     supabase = get_supabase()
-    tenant = tenant_scope(user)
 
-    q = (
+    # Ownership-scoped only. The previous extra `company_id == profile
+    # company` narrowing hid a candidate's own interviews whenever the two
+    # stamps diverged (every un-stamped pre-fix row) and would hide all
+    # second-company interviews in the multi-company invitation flow.
+    result = (
         supabase.table("interviews")
         .select("*")
         .eq("user_id", user.id)
         .order("created_at", desc=True)
+        .execute()
     )
-    if tenant is not None:
-        q = q.eq("company_id", tenant)
-    result = q.execute()
     return result.data
 
 

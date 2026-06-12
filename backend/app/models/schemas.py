@@ -11,7 +11,10 @@ class CandidateBase(BaseModel):
 
 
 class CandidateCreate(CandidateBase):
-    pass
+    # Which company this candidate profile is for (invitation flow). Must be
+    # a company the caller belongs to or was invited by — validated server-
+    # side. Omitted = the caller's primary company (profiles.company_id).
+    company_id: Optional[UUID] = None
 
 
 class CandidateResponse(CandidateBase):
@@ -38,7 +41,10 @@ class InterviewBase(BaseModel):
 
 
 class InterviewCreate(InterviewBase):
-    pass
+    # Which company the interview is for (invitation flow). Validated against
+    # the caller's allowed companies (profile company + invitations). Omitted
+    # = the candidate row's company, falling back to the caller's primary.
+    company_id: Optional[UUID] = None
 
 
 class MessageContent(BaseModel):
@@ -394,6 +400,31 @@ class ClaimCompanyRequest(BaseModel):
     already belongs to a different tenant — never silently overwrites.
     """
     slug: str = Field(..., min_length=3, max_length=40, pattern=r"^[a-z][a-z0-9-]*$")
+
+
+# ---------------------------------------------------------------------------
+# Candidate invitations (migration 011 — invitation-to-interview flow)
+# ---------------------------------------------------------------------------
+
+class CandidateInvitationRow(BaseModel):
+    """One invitation as the *candidate* sees it (GET /api/invitations/mine).
+
+    Joined with the company so the dashboard can render "Acme invited
+    you" without a second request. `status` is pending | accepted |
+    declined; pending and accepted both allow starting an interview for
+    that company (acting on an invite accepts it implicitly)."""
+    id: UUID
+    company_id: UUID
+    company_name: str
+    company_slug: str
+    status: str
+    candidate_name: Optional[str] = None
+    created_at: Optional[datetime] = None
+    accepted_at: Optional[datetime] = None
+
+
+class CandidateInvitationListResponse(BaseModel):
+    items: List[CandidateInvitationRow]
 
 
 # ---------------------------------------------------------------------------

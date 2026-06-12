@@ -4,17 +4,17 @@ Returns a signed-in user's interview history with computed scores plus
 aggregate stats and a score trend. Interview scores come from a single bulk
 evaluation query (see `score_interviews_bulk`), not per-interview reports.
 
-Tenant note (multi-tenant PR 2): the dashboard is already self-scoped via
-`user_id` — a candidate only sees their own interviews. The added
-`company_id` filter is defense-in-depth: if a profile's `company_id` is
-ever changed manually, the dashboard refuses to display interviews from
-the prior tenant. Platform admins (NULL `company_id`) skip the filter via
-the `tenant_scope` helper.
+Tenant note (updated 2026-06-12, invitation flow / migration 011): the
+dashboard is self-scoped via `user_id` — a candidate sees their own
+interviews and nothing else. The old extra `company_id` narrowing is
+gone: a candidate's interviews may span multiple companies (one
+invitation per company), and the narrowing also hid every pre-fix row
+whose `company_id` stamp was NULL.
 """
 from fastapi import APIRouter, Depends
 
 from app.supabase_client import get_supabase
-from app.auth import get_tenant_context, tenant_scope
+from app.auth import get_tenant_context
 from app.services.interview_orchestrator import score_interviews_bulk, recommendation_for
 
 router = APIRouter()
@@ -23,17 +23,16 @@ router = APIRouter()
 @router.get("/")
 async def get_dashboard(user=Depends(get_tenant_context)):
     supabase = get_supabase()
-    tenant = tenant_scope(user)
 
-    iv_q = (
+    interviews = (
         supabase.table("interviews")
         .select("*")
         .eq("user_id", user.id)
         .order("created_at", desc=True)
+        .execute()
+        .data
+        or []
     )
-    if tenant is not None:
-        iv_q = iv_q.eq("company_id", tenant)
-    interviews = iv_q.execute().data or []
 
     candidate_ids = list({iv["candidate_id"] for iv in interviews if iv.get("candidate_id")})
     candidates: dict = {}

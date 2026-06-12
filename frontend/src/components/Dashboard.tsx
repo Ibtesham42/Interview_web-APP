@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { dashboardApi } from '../services/api';
+import { dashboardApi, invitationsApi } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Badge, Card, CardHeader, CardTitle, EmptyState } from './ui';
 import type { BadgeVariant } from './ui';
-import type { DashboardData } from '../types';
+import type { CandidateInvitation, DashboardData } from '../types';
 
 const FIELD_LABELS: Record<string, string> = {
   ml: 'Machine Learning',
@@ -49,6 +49,8 @@ export function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [invitations, setInvitations] = useState<CandidateInvitation[]>([]);
+  const [decliningId, setDecliningId] = useState<string | null>(null);
 
   useEffect(() => {
     dashboardApi
@@ -57,6 +59,28 @@ export function Dashboard() {
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load dashboard'))
       .finally(() => setLoading(false));
   }, []);
+
+  // Company invitations addressed to this candidate (migration 011).
+  // Non-blocking: a failure (e.g. backend not yet migrated) just hides
+  // the panel — the rest of the dashboard is unaffected.
+  useEffect(() => {
+    invitationsApi
+      .mine()
+      .then(({ items }) => setInvitations(items.filter((i) => i.status !== 'declined')))
+      .catch(() => setInvitations([]));
+  }, []);
+
+  const handleDecline = async (invitation: CandidateInvitation) => {
+    setDecliningId(invitation.id);
+    try {
+      await invitationsApi.decline(invitation.id);
+      setInvitations((prev) => prev.filter((i) => i.id !== invitation.id));
+    } catch {
+      // Leave the card in place; the candidate can retry.
+    } finally {
+      setDecliningId(null);
+    }
+  };
 
   const rawName = profile?.full_name || user?.email || '';
   const firstName = rawName.split('@')[0].split(' ')[0] || 'there';
@@ -97,6 +121,54 @@ export function Dashboard() {
         </div>
         <Link to="/new" className="btn btn-primary btn-lg">New Interview</Link>
       </div>
+
+      {invitations.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Company invitations</CardTitle>
+          </CardHeader>
+          <p className="page-sub" style={{ marginBottom: 'var(--space-md)' }}>
+            Companies that invited you to interview. Each interview is shared only with
+            the company it's for.
+          </p>
+          <ul className="grid gap-3" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            {invitations.map((inv) => (
+              <li
+                key={inv.id}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3"
+              >
+                <div>
+                  <div className="font-medium text-ink">{inv.company_name}</div>
+                  <div className="mt-1 flex items-center gap-2 text-xs text-ink-subtle">
+                    <Badge variant={inv.status === 'accepted' ? 'success' : 'info'}>
+                      {inv.status === 'accepted' ? 'Accepted' : 'Invited'}
+                    </Badge>
+                    {inv.created_at && <span>Invited {formatDate(inv.created_at)}</span>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Link
+                    to={`/new?company=${encodeURIComponent(inv.company_id)}`}
+                    className="btn btn-primary btn-sm"
+                  >
+                    Start interview
+                  </Link>
+                  {inv.status === 'pending' && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => handleDecline(inv)}
+                      disabled={decliningId === inv.id}
+                    >
+                      {decliningId === inv.id ? 'Declining…' : 'Decline'}
+                    </button>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       {!hasInterviews ? (
         <Card>
