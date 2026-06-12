@@ -47,6 +47,22 @@ async def get_dashboard(user=Depends(get_tenant_context)):
         )
         candidates = {c["id"]: c for c in rows}
 
+    # Company names so a multi-company candidate can tell which company
+    # each interview was for (NULL company = personal practice). One bulk
+    # query over the distinct ids.
+    company_ids = list({iv["company_id"] for iv in interviews if iv.get("company_id")})
+    company_names: dict = {}
+    if company_ids:
+        rows = (
+            supabase.table("companies")
+            .select("id,name")
+            .in_("id", company_ids)
+            .execute()
+            .data
+            or []
+        )
+        company_names = {c["id"]: c.get("name") or "" for c in rows}
+
     iv_scores = score_interviews_bulk(supabase, [iv["id"] for iv in interviews])
 
     items = []
@@ -64,6 +80,7 @@ async def get_dashboard(user=Depends(get_tenant_context)):
             "score": scored["score"],
             "recommendation": recommendation_for(scored["score"]) if completed else "",
             "questions": scored["questions"],
+            "company_name": company_names.get(iv.get("company_id")) or None,
         })
 
     completed = [i for i in items if i["completed"]]

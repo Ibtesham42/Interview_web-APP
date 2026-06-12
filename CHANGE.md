@@ -23,6 +23,73 @@
 
 ---
 
+## 12/06/2026 (b)
+Type: Feature + Fix
+
+Super-admin activation, proctoring snapshots + audible escalation, and
+multi-company workflow validation fixes.
+
+SUPER ADMIN (live-DB operation, no code change needed): the account
+ibteshamakhtar1@gmail.com already had role='admin' but carried
+company_id=Default — which silently scoped every "platform-wide" admin view
+to the Default tenant (tenant_scope only returns the cross-tenant view for
+an admin with company_id IS NULL, ADR 0005 C3). Set company_id=NULL, set the
+requested password via the auth admin API, verified sign-in. The existing
+super-admin surface (AdminDashboard companies overview + totals,
+AdminCompanyDetail drill-down, AdminUserDetail, recruiter endpoints
+unscoped, report access) now genuinely spans all companies.
+
+PROCTORING (review found face/multi-face/camera/tab monitors + weighted
+warning termination already implemented; what was missing):
+- Migration 012: `interview_snapshots` table (small ~320px JPEG frames,
+  base64 in Postgres, RLS service-role-only).
+- `POST /api/interviews/{id}/snapshots` (owner-only write, tenant stamp
+  inherited from the interview, 503 if table missing) and GET (gated
+  EXACTLY like the report: owner / same-tenant hiring roles / platform
+  admin; missing table degrades to empty).
+- `useSnapshotCapture` hook: one frame/minute while the interview is live
+  (first at 5s) + `captureNow('integrity')` wired to each integrity_warning
+  frame so reviewers see the moment that triggered a warning. Fire-and-
+  forget posture — a lost frame never disturbs the turn flow.
+- `utils/proctorAlerts.ts` (WebAudio, no asset): short double chirp +
+  vibrate(200) on each integrity warning; loud ~2.4s two-tone siren +
+  long vibration pattern fired exactly once when the threshold terminates
+  the interview (guarded ref across the warning frame and the
+  interview_ended frame).
+- Report page: collapsible "Monitoring snapshots" gallery (periodic +
+  integrity-tagged frames with timestamps); integrity events/score detail
+  sections already existed.
+
+MULTI-COMPANY VALIDATION FIXES (review of the 12/06 invitation work):
+- Report access gate admitted only the literal 'recruiter' role —
+  company_admin opening a report from their own recruiter dashboard got
+  403 despite inheriting recruiter capabilities (B1 matrix). Now uses
+  capabilities.HIRING_ROLES. Snapshots GET inherits the same fix.
+- Candidate dashboard interview rows now carry `company_name` (bulk
+  companies query in dashboard.py + Badge in Dashboard.tsx) so a candidate
+  interviewing for several companies can tell results apart.
+
+Verification: backend pytest 386 passed (+11: test_snapshots.py, company_admin
+report-gate cases); frontend tsc clean, vitest 24/24, build OK; super-admin
+profile + password verified by live sign-in. NOT committed yet.
+
+Affected files: backend/app/migrations/012_interview_snapshots.sql,
+backend/app/models/schemas.py, backend/app/routers/{interviews,reports,
+dashboard}.py, backend/tests/{test_snapshots,test_tenant_scoping}.py,
+frontend/src/hooks/useSnapshotCapture.ts, frontend/src/utils/proctorAlerts.ts,
+frontend/src/components/{InterviewRoom,Report,Dashboard}.tsx,
+frontend/src/services/api.ts, frontend/src/types/index.ts
+Architectural impact: snapshots are a new service-role-only evidence table
+keyed to interviews; read authorization is intentionally identical to report
+authorization (single mental model: snapshots are part of the report).
+Future considerations: MIGRATION 012 must be applied after 011 (until then:
+POST snapshots → 503 swallowed by the client; GET → empty; everything else
+unaffected). Snapshot volume is bounded (~1 frame/min) but storage should
+move to Supabase Storage if interviews get long or capture gets denser. Face
+*identity* verification (matching against a reference photo) is out of scope —
+presence/multi-face detection is what runs. iOS Safari ignores
+navigator.vibrate (audio alarm still fires).
+
 ## 12/06/2026
 Type: Fix + Feature
 

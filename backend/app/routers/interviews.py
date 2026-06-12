@@ -30,6 +30,9 @@ from app.models.schemas import (
     InterviewResponse,
     InterviewStateResponse,
     EvaluationResponse,
+    SnapshotCreate,
+    SnapshotListResponse,
+    SnapshotRow,
 )
 from app.supabase_client import get_supabase
 from app.auth import get_current_user, get_tenant_context
@@ -192,6 +195,75 @@ async def get_interview_evaluations(interview_id: UUID, user=Depends(get_tenant_
         .execute()
     )
     return result.data
+
+
+# ---------------------------------------------------------------------------
+# Proctoring snapshots (migration 012)
+# ---------------------------------------------------------------------------
+
+@router.post("/{interview_id}/snapshots", status_code=201)
+async def add_snapshot(
+    interview_id: UUID,
+    snapshot: SnapshotCreate,
+    user=Depends(get_tenant_context),
+):
+    """Store one webcam snapshot for a live interview.
+
+    Owner-only — the candidate's browser is the only writer; the tenant
+    stamp is inherited from the interview so company reviewers can read
+    it later. Best thought of as an audit append: the client fires and
+    forgets (a lost frame must never disturb the interview turn flow),
+    so the only hard failures are auth (404) and a missing table (503,
+    migration 012 not applied yet).
+    """
+    supabase = get_supabase()
+    interview = _require_owned_interview(supabase, interview_id, user)
+    try:
+        supabase.table("interview_snapshots").insert({
+            "interview_id": str(interview_id),
+            "user_id": user.id,
+            "company_id": interview.get("company_id"),
+            "kind": snapshot.kind,
+            "image_base64": snapshot.image_base64,
+        }).execute()
+    except Exception as e:
+        print(f"[snapshots] insert failed (migration 012 applied?): {e}")
+        raise HTTPException(
+            status_code=503,
+            detail="Snapshot storage is not available.",
+        )
+    return {"stored": True}
+
+
+@router.get("/{interview_id}/snapshots", response_model=SnapshotListResponse)
+async def list_snapshots(interview_id: UUID, user=Depends(get_tenant_context)):
+    """Proctoring snapshots for one interview, oldest first.
+
+    Read access mirrors the report gate exactly (owner, hiring roles of
+    the interview's tenant, platform admin) — snapshots are evidence
+    attached to the report, so they must never be readable more widely
+    than the report itself.
+    """
+    from app.routers.reports import _authorize_report_access
+
+    _authorize_report_access(interview_id, user)
+    supabase = get_supabase()
+    try:
+        rows = (
+            supabase.table("interview_snapshots")
+            .select("id,kind,created_at,image_base64")
+            .eq("interview_id", str(interview_id))
+            .order("created_at")
+            .execute()
+            .data
+            or []
+        )
+    except Exception as e:
+        # Missing table (migration 012 not applied) degrades to "no
+        # snapshots" — the report page simply omits the section.
+        print(f"[snapshots] list failed (migration 012 applied?): {e}")
+        rows = []
+    return SnapshotListResponse(items=[SnapshotRow(**r) for r in rows])
 
 
 # ---------------------------------------------------------------------------

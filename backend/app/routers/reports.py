@@ -22,9 +22,12 @@ def _authorize_report_access(interview_id: UUID, ctx) -> None:
     - Owner path: caller is the user who created the interview.
     - Platform admin path: `role='admin'` (NULL `company_id`) reads any
       report (grill C3).
-    - Tenant-scoped recruiter / company-admin path: caller has the
-      `recruiter` (or future `company_admin`) role AND the interview's
-      `company_id` matches the caller's. A recruiter of tenant A cannot
+    - Tenant-scoped hiring path: caller has a HIRING_ROLES role
+      (`recruiter` or `company_admin`) AND the interview's `company_id`
+      matches the caller's. (Was literal `recruiter` only — that 403'd a
+      company_admin opening a report from their own recruiter dashboard,
+      where they otherwise have full recruiter capabilities per the B1
+      access matrix. Fixed 2026-06-12.) A hiring user of tenant A cannot
       read reports from tenant B — surfaced as 404, indistinguishable
       from 'missing'.
     """
@@ -52,10 +55,12 @@ def _authorize_report_access(interview_id: UUID, ctx) -> None:
     if ctx.is_platform_admin:
         return
 
-    # Recruiter path — role gate + tenant-match. Same 404 on tenant
+    # Hiring path — role gate + tenant-match. Same 404 on tenant
     # mismatch as on role mismatch so the API never tells a recruiter
     # whether the interview exists in some other tenant.
-    if ctx.role != "recruiter":
+    from app.capabilities import HIRING_ROLES
+
+    if ctx.role not in HIRING_ROLES:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
     if tenant_scope(ctx) is not None and interview_company != tenant_scope(ctx):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")

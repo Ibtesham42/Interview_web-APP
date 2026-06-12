@@ -4,6 +4,8 @@ import type {
   CandidateInvitationList,
   ClaimCompanyResponse,
   InvitationStatus,
+  SnapshotKind,
+  SnapshotList,
   Company,
   CompanyOption,
   EmailDraft,
@@ -182,6 +184,18 @@ export const interviewApi = {
 
   getEvaluations: (id: string) =>
     fetchJson<Evaluation[]>(`/interviews/${id}/evaluations`),
+
+  // Proctoring snapshots (migration 012). addSnapshot is fire-and-forget
+  // from the interview room; listSnapshots feeds the report's monitoring
+  // section (owner / same-tenant hiring roles / platform admin).
+  addSnapshot: (id: string, imageBase64: string, kind: SnapshotKind) =>
+    fetchJson<{ stored: boolean }>(`/interviews/${id}/snapshots`, {
+      method: 'POST',
+      body: JSON.stringify({ image_base64: imageBase64, kind }),
+    }),
+
+  listSnapshots: (id: string) =>
+    fetchJson<SnapshotList>(`/interviews/${id}/snapshots`),
 };
 
 // Report APIs

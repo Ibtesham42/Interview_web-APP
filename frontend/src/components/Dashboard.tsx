@@ -249,7 +249,14 @@ export function Dashboard() {
                 const inner = (
                   <>
                     <div className="iv-row-main">
-                      <div className="iv-row-title">{fieldLabel(iv.field)} Interview</div>
+                      <div className="iv-row-title">
+                        {fieldLabel(iv.field)} Interview
+                        {/* Which company this interview was for — essential
+                            once one candidate interviews for several. */}
+                        {iv.company_name && (
+                          <Badge variant="primary" className="ml-2">{iv.company_name}</Badge>
+                        )}
+                      </div>
                       <div className="iv-row-sub">
                         {iv.candidate_name} · {formatDate(iv.created_at)}
                         {iv.completed && ` · ${iv.questions} questions`}

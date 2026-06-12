@@ -390,6 +390,22 @@ class TestAuthorizeReportAccess:
         ctx = _ctx(user_id="rec", role="recruiter", company_id=A)
         _authorize_report_access("iv-1", ctx)  # no raise
 
+    def test_company_admin_same_tenant_passes(self, monkeypatch):
+        """company_admin inherits recruiter capabilities (B1 access
+        matrix) — the gate previously admitted only the literal
+        'recruiter' role and 403'd a company_admin opening a report
+        from their own recruiter dashboard. Fixed 2026-06-12."""
+        self._patch_supabase(monkeypatch, [self._row()])
+        ctx = _ctx(user_id="ca", role="company_admin", company_id=A)
+        _authorize_report_access("iv-1", ctx)  # no raise
+
+    def test_company_admin_cross_tenant_is_404(self, monkeypatch):
+        self._patch_supabase(monkeypatch, [self._row()])
+        ctx = _ctx(user_id="ca", role="company_admin", company_id=B)
+        with pytest.raises(HTTPException) as exc:
+            _authorize_report_access("iv-1", ctx)
+        assert exc.value.status_code == 404
+
     def test_recruiter_cross_tenant_is_404_not_403(self, monkeypatch):
         """A recruiter of B asking for an interview from A gets 404, same
         shape as 'this interview does not exist'. Never 403 — that would

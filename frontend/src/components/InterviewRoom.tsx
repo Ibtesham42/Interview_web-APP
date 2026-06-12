@@ -1,10 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { interviewWs } from '../services/websocket';
+import { interviewApi } from '../services/api';
 import { useAudioRecorder } from '../hooks/useAudioRecorder';
 import { useIntegrityMonitor } from '../hooks/useIntegrityMonitor';
 import { useCameraPresenceMonitor } from '../hooks/useCameraPresenceMonitor';
 import { useFaceMonitor } from '../hooks/useFaceMonitor';
+import { useSnapshotCapture } from '../hooks/useSnapshotCapture';
+import { playTerminationAlarm, playWarningChirp } from '../utils/proctorAlerts';
 import { CameraPreflight } from './integrity/CameraPreflight';
 import { CameraThumbnail } from './integrity/CameraThumbnail';
 import { IntegrityWarning } from './integrity/IntegrityWarning';
@@ -212,6 +215,36 @@ export function InterviewRoom() {
     onEvent: handleIntegrityEvent,
   });
 
+  // Proctoring snapshots (migration 012) — one frame per minute while the
+  // interview is live, plus one at each integrity warning. Fire-and-forget:
+  // a failed upload (offline blip, table not migrated) never disturbs the
+  // turn flow.
+  const handleSnapshot = useCallback(
+    (imageBase64: string, kind: 'periodic' | 'integrity') => {
+      if (!interviewId) return;
+      interviewApi.addSnapshot(interviewId, imageBase64, kind).catch(() => {});
+    },
+    [interviewId],
+  );
+  const { captureNow } = useSnapshotCapture({
+    stream: cameraStream,
+    enabled: integrityEnabled,
+    onCapture: handleSnapshot,
+  });
+  // Stable ref so the WS-handler effect below doesn't re-subscribe every
+  // time captureNow's identity changes.
+  const captureNowRef = useRef(captureNow);
+  captureNowRef.current = captureNow;
+  // The termination alarm must fire exactly once, whichever frame arrives
+  // first (the final integrity_warning with terminate=true, or the
+  // interview_ended with reason=integrity_terminated).
+  const alarmFiredRef = useRef(false);
+  const soundTerminationAlarm = useCallback(() => {
+    if (alarmFiredRef.current) return;
+    alarmFiredRef.current = true;
+    playTerminationAlarm();
+  }, []);
+
   // WebSocket handlers — the WebSocket is the single source of truth for state.
   useEffect(() => {
     const onInit = (msg: WebSocketMessage) => {
@@ -301,6 +334,7 @@ export function InterviewRoom() {
       // Integrity-terminated interviews stay on this screen so the candidate
       // sees the reason explicitly; the partial report is still reachable.
       if (msg.reason === 'integrity_terminated') {
+        soundTerminationAlarm();
         setIntegrityTerminated(true);
         return;
       }
@@ -317,6 +351,16 @@ export function InterviewRoom() {
         eventType: msg.event_type,
         severity: msg.severity,
       });
+      // Attach a frame to the moment that triggered the warning so a
+      // reviewer can see exactly what the camera saw.
+      captureNowRef.current('integrity');
+      // Audible + haptic escalation: chirp per warning; loud siren +
+      // vibration once the threshold terminates the interview.
+      if (msg.terminate || msg.count >= msg.max) {
+        soundTerminationAlarm();
+      } else {
+        playWarningChirp();
+      }
     };
 
     // The socket dropped after the interview was already running. The
@@ -354,7 +398,7 @@ export function InterviewRoom() {
       interviewWs.off('disconnected', onDisconnected);
       interviewWs.off('integrity_warning', onIntegrityWarning);
     };
-  }, [interviewId, navigate]);
+  }, [interviewId, navigate, soundTerminationAlarm]);
 
   // Recording is only permitted when it is genuinely the user's turn.
   const handleRecord = useCallback(async () => {
