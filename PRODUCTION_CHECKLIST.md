@@ -11,7 +11,7 @@
 | Layer | Where | State |
 |---|---|---|
 | Frontend | Vercel — `interview-web-app-lyart.vercel.app` | ✅ serving current bundle (feature markers verified) |
-| Backend | Render — `interview-web-app.onrender.com` | ✅ `/health` commit matches `origin/main` |
+| Backend | Render — `interview-web-app.onrender.com` | ✅ current — NOTE: Render skips deploys for commits with no `backend/` changes, so `/health`'s `commit` can lag `origin/main` while the backend code is identical; compare `git diff <health-commit>..HEAD -- backend` before calling it stale |
 | Database | Supabase — project `gnylvnobdfzfynhwefrb` | ✅ migrations 001–012 applied |
 | Keep-alive | UptimeRobot, 5-min `/health` monitor | ✅ active (warm responses ~600 ms) |
 
