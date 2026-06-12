@@ -12,8 +12,10 @@ Two endpoints with very different auth postures:
 - `POST /api/auth/claim-company` is **authenticated**. Called by the
   frontend after a candidate completes /signup from an apply link.
   Stamps `company_id` on the caller's profile when they currently have
-  `company_id IS NULL`. Refuses to overwrite an existing tenant —
-  never silently steals a candidate into a different company.
+  `company_id IS NULL`. Never overwrites an existing tenant — a
+  candidate who already belongs to a company instead gets an ACCEPTED
+  row in the `candidate_invitations` ledger (migration 011), which is
+  how one candidate holds membership in multiple companies.
 
 Why two endpoints, not one combined: the public landing page reads
 company info BEFORE the user creates an account; the claim happens
@@ -23,6 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.auth import get_current_user
 from app.models.schemas import ApplyLandingResponse, ClaimCompanyRequest
+from app.services.invitations import ensure_accepted_membership
 from app.supabase_client import get_supabase
 
 router = APIRouter()
@@ -97,19 +100,23 @@ async def claim_company(body: ClaimCompanyRequest, user=Depends(get_current_user
     - If the caller's profile already has `company_id` matching the
       slug, the call is a no-op success — safe to retry from the
       frontend without checking first.
-    - If the caller already has a DIFFERENT `company_id`, return 403.
-      We never silently move a candidate between tenants — that would
-      be a real-world data integrity issue (someone applies to A, then
-      a malicious B link they accept claims them as a B applicant).
+    - If the caller (a candidate, `role='user'`) already belongs to a
+      DIFFERENT company, the claim is recorded as an ACCEPTED
+      INVITATION in the `candidate_invitations` ledger (migration 011)
+      instead of being rejected. `profiles.company_id` is never
+      overwritten — it stays the candidate's first/primary tenant —
+      but the candidate can now also interview for the new company.
+      This is what lets one candidate hold invitations from multiple
+      companies without conflict.
     - If the slug doesn't resolve to a company, return 404 — same
       response shape as the public GET, so a stale invite-link can be
       surfaced consistently in the UI.
 
     The endpoint never widens role — a `recruiter` claiming a company
     via an apply link does NOT become a `company_admin`. Apply links
-    are for candidates only. (A `recruiter` who clicks an apply link
-    by mistake will hit the company_id-mismatch 403 if they already
-    have a tenant.)
+    are for candidates only: a tenant-scoped hiring role (`recruiter` /
+    `company_admin`) clicking another company's apply link still gets
+    the 403 (their account belongs to the tenant they work for).
     """
     supabase = get_supabase()
 
@@ -124,26 +131,45 @@ async def claim_company(body: ClaimCompanyRequest, user=Depends(get_current_user
     # and this call.)
     profile_rows = (
         supabase.table("profiles")
-        .select("company_id")
+        .select("company_id,role")
         .eq("id", user.id)
         .execute()
         .data
         or []
     )
     current = profile_rows[0].get("company_id") if profile_rows else None
+    role = (profile_rows[0].get("role") if profile_rows else None) or "user"
+    email = getattr(user, "email", "") or ""
 
     if current is None:
-        # Fresh claim — stamp the company.
+        # Fresh claim — stamp the company as the candidate's primary
+        # tenant, and mirror it into the invitation ledger so "my
+        # invitations" reflects the membership.
         supabase.table("profiles").update({"company_id": target_company_id}).eq("id", user.id).execute()
+        ensure_accepted_membership(
+            supabase, company_id=target_company_id, email=email, user_id=user.id
+        )
         return {"claimed": True, "company_id": target_company_id}
 
     if current == target_company_id:
         # No-op — already a member. Surface 200 so the frontend can
         # retry without needing a pre-check.
+        ensure_accepted_membership(
+            supabase, company_id=target_company_id, email=email, user_id=user.id
+        )
         return {"claimed": False, "company_id": target_company_id, "reason": "already_member"}
 
-    # Different tenant — never silently overwrite.
+    if role == "user":
+        # Candidate with an existing primary tenant claiming a second
+        # company: membership via the invitation ledger. The primary
+        # company_id is intentionally untouched.
+        ensure_accepted_membership(
+            supabase, company_id=target_company_id, email=email, user_id=user.id
+        )
+        return {"claimed": True, "company_id": target_company_id, "via": "invitation"}
+
+    # Hiring roles never hop tenants via an apply link.
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
-        detail="Account already belongs to another company. Sign out and apply with a different email.",
+        detail="This account manages a different company and cannot apply as a candidate.",
     )

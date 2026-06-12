@@ -23,6 +23,91 @@
 
 ---
 
+## 12/06/2026
+Type: Fix + Feature
+
+Invitation-to-interview flow fixed + multi-company invitations + second root
+cause of "Cannot connect to interview".
+
+ROOT CAUSE 1 (connect failure — confirmed against the live DB): the create
+paths (`POST /api/interviews/`, `POST /api/candidates/`) never stamped
+`company_id`, while migration 004 backfilled EVERY candidate profile with one
+(Default or claimed). The WS gate required strict equality
+(`interview.company_id == profile.company_id`), so `NULL != <uuid>` closed the
+handshake with 4403 for every interview created after 2026-05-27 → the
+"Unable to connect / couldn't reach the interview server" panel. (The 10/06 WS
+host fix addressed a different cause and was verified with an admin-owned
+interview — admins bypass the tenant gate, which masked this one.) The same
+NULL stamp also hid those interviews from the candidate dashboard's tenant
+filter and from recruiter views entirely.
+
+ROOT CAUSE 2 (invitations): an "invitation" was only an email with an apply
+link. For an already-signed-up candidate, `claim-company` 403'd whenever
+`profiles.company_id` was set (i.e. everyone post-backfill) — Login.tsx
+swallowed the error and Apply.tsx disabled the button — so an invited existing
+candidate could never join the inviting company. Multi-company was
+structurally impossible (single `company_id` column).
+
+FIX:
+- Migration 011: new `candidate_invitations` ledger (one row per company ×
+  candidate-email; pending/accepted/declined; unique constraint makes
+  re-invites no-ops; RLS service-role-only like email_outbox). Backfills
+  pending invitations from already-sent invite emails (guarded on the 010
+  column existing) and repairs NULL `company_id` stamps on
+  candidates/interviews/evaluations from the owner's profile.
+- `POST /companies/invite` records the invitation in the ledger BEFORE the
+  email attempt, so membership never depends on email delivery.
+- `claim-company`: candidates (`role='user'`) with a DIFFERENT existing
+  company now get an ACCEPTED invitation (multi-company membership) instead of
+  403; `profiles.company_id` is never overwritten (stays the primary tenant).
+  Hiring roles still 403. Fresh/no-op claims mirror into the ledger.
+- New candidate-facing router `/api/invitations` (mine / accept / decline).
+- Create paths stamp `company_id`: explicit `company_id` in the body
+  (validated against profile company + inviting companies via
+  `resolve_target_company`, 403 otherwise), else candidate row's company, else
+  profile company. Starting an interview for an inviting company implicitly
+  accepts the invitation. WS evaluation inserts now stamp `company_id` too.
+- WS tenant gate relaxed for owners: NULL stamp (B2C/legacy rows) and any
+  inviting company are allowed; cross-tenant strangers still 4403. Candidate
+  self-reads (`list_interviews`, dashboard, `_require_owned_interview`) are
+  ownership-scoped — the old extra tenant narrowing hid the candidate's own
+  multi-company/unstamped interviews and added no security (user_id was
+  already filtered). Recruiter/admin views still filter by the (now actually
+  written) `company_id` stamp.
+- Frontend: Dashboard "Company invitations" panel (start interview / decline);
+  `/new?company={id}` carries the inviting company through setup (banner +
+  passed to both create calls); Apply.tsx signed-in branch now lets a
+  candidate with an existing company accept ("Accept invitation") instead of
+  blocking.
+
+Verification: backend pytest 375 passed (+28: new test_invitations.py, updated
+test_apply.py / test_tenant_scoping.py to the new contract); app boots via
+TestClient (readiness lifespan), /api/invitations/mine registered + 401s
+unauthenticated; frontend tsc clean, vitest 24/24, build OK. Live-DB read
+probe confirmed the NULL-stamp diagnosis (3 NULL interviews post-05-28; 9
+candidate profiles with company_id).
+
+Affected files: backend/app/migrations/011_candidate_invitations.sql,
+backend/app/services/invitations.py, backend/app/routers/{invitations,apply,
+companies,candidates,interviews,dashboard,interview_session}.py,
+backend/app/models/schemas.py, backend/app/main.py,
+backend/tests/{test_invitations,test_apply,test_tenant_scoping}.py,
+frontend/src/types/index.ts, frontend/src/services/api.ts,
+frontend/src/components/{Dashboard,CandidateUpload}.tsx,
+frontend/src/components/apply/Apply.tsx
+Architectural impact: tenancy for candidates is now interview-scoped, not
+profile-scoped — a candidate's allowed companies = profiles.company_id ∪
+candidate_invitations (non-declined). profiles.company_id is unchanged in
+meaning for recruiters/company_admins. Ownership (user_id) is the single gate
+for candidate self-reads.
+Future considerations: MIGRATION 011 MUST BE APPLIED in the Supabase SQL
+editor (after 010) — until then the ledger helpers degrade gracefully (logged
+no-ops) and the connect fix still works, but multi-company claims succeed
+without granting membership. Candidate-side UI shows invitations only on the
+dashboard; a dedicated invitations page + company picker on /new (when
+arriving without ?company=) are possible follow-ups. create_interview still
+doesn't verify candidate ownership (pre-existing; unchanged).
+
 ## 10/06/2026 (o)
 Type: Fix
 

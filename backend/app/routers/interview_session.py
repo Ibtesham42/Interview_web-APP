@@ -237,14 +237,26 @@ async def interview_websocket(websocket: WebSocket, interview_id: str):
         await websocket.close(code=4403)  # not the caller's interview
         return
 
-    # Tenant match — platform admins skip (grill C3). Both sides being
-    # NULL counts as a match (B2C caller + B2C candidate). Anything else
-    # is a cross-tenant attempt and is rejected with the same code as
-    # ownership mismatch — no existence leak across tenants.
+    # Tenant match — platform admins skip (grill C3). Ownership above is
+    # the real gate; this is defense-in-depth for the interview's tenant
+    # stamp. Allowed stamps for the owner:
+    #   - NULL        — B2C practice interview, or a row created before
+    #                   2026-06-12 when the create path forgot the stamp
+    #                   (the strict equality here was the root cause of
+    #                   "Cannot connect to interview": NULL never equals
+    #                   the caller's backfilled company_id);
+    #   - the caller's primary company (profiles.company_id);
+    #   - any company that invited the caller (candidate_invitations,
+    #     migration 011 — one candidate, multiple companies).
     if not is_platform_admin:
-        if interview.get("company_id") != caller_company_id:
-            await websocket.close(code=4403)
-            return
+        interview_company = interview.get("company_id")
+        if interview_company is not None and interview_company != caller_company_id:
+            from app.services.invitations import invited_company_ids
+
+            invited = invited_company_ids(supabase, getattr(user, "email", "") or "")
+            if interview_company not in invited:
+                await websocket.close(code=4403)
+                return
 
     # --- Accept and run the interview (existing flow below, unchanged) ---
     await manager.connect(interview_id, websocket)
@@ -316,6 +328,7 @@ async def interview_websocket(websocket: WebSocket, interview_id: str):
                             )
                             save_evaluation(supabase, {
                                 "interview_id": interview_id,
+                                "company_id": interview.get("company_id"),
                                 "phase": orchestrator.current_phase,
                                 "depth_score": eval_result.get("depth", eval_result.get("correctness", eval_result.get("vision", 0))),
                                 "accuracy_score": eval_result.get("correctness", eval_result.get("completeness", 0)),
@@ -349,6 +362,9 @@ async def interview_websocket(websocket: WebSocket, interview_id: str):
                 # Note: clarity_score column may not exist in older schemas
                 eval_data = {
                     "interview_id": interview_id,
+                    # Tenant stamp inherited from the interview so recruiter
+                    # aggregations can filter evaluations by company.
+                    "company_id": interview.get("company_id"),
                     "phase": orchestrator.current_phase,
                     "depth_score": evaluation.get("depth", evaluation.get("correctness", evaluation.get("vision", evaluation.get("relevance", 0)))),
                     "accuracy_score": evaluation.get("correctness", evaluation.get("completeness", evaluation.get("specificity", 0))),

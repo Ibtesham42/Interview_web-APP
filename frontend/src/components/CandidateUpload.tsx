@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { candidateApi, interviewApi } from '../services/api';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { candidateApi, interviewApi, invitationsApi } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useTilt } from '../hooks/useTilt';
 import type { Candidate } from '../types';
@@ -50,8 +50,34 @@ export function CandidateUpload() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user, profile } = useAuth();
   const tilt = useTilt(4);
+
+  // Invitation flow: /new?company={id} marks this interview as being for a
+  // specific inviting company. The name is resolved from the candidate's
+  // own invitation list (never trusted from the URL); the id is passed
+  // through to the create calls, where the backend re-validates membership.
+  const invitedCompanyId = searchParams.get('company');
+  const [invitedCompanyName, setInvitedCompanyName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!invitedCompanyId) return;
+    let cancelled = false;
+    invitationsApi
+      .mine()
+      .then(({ items }) => {
+        if (cancelled) return;
+        const match = items.find((i) => i.company_id === invitedCompanyId);
+        if (match) setInvitedCompanyName(match.company_name);
+      })
+      .catch(() => {
+        // Banner stays generic; the backend still validates the id.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [invitedCompanyId]);
 
   // Pre-fill the candidate's identity from the signed-in account.
   useEffect(() => {
@@ -101,6 +127,7 @@ export function CandidateUpload() {
         name: name.trim(),
         email: email.trim() || undefined,
         field_specialization: field,
+        company_id: invitedCompanyId || undefined,
       });
       setCandidate(newCandidate);
 
@@ -121,6 +148,7 @@ export function CandidateUpload() {
       const interview = await interviewApi.create({
         candidate_id: candidate.id,
         job_description: getFieldLabel(field),
+        company_id: invitedCompanyId || undefined,
       });
       navigate(`/interview/${interview.id}`);
     } catch (err) {
@@ -137,6 +165,13 @@ export function CandidateUpload() {
         <p className="onboard-sub">
           Upload your resume and we'll tailor every question to your experience.
         </p>
+        {invitedCompanyId && (
+          <p className="onboard-sub" role="status">
+            This interview is for{' '}
+            <strong>{invitedCompanyName ?? 'the company that invited you'}</strong> — your
+            results will be shared with their hiring team.
+          </p>
+        )}
       </div>
 
       {!resumeParsed && (
@@ -257,7 +292,10 @@ export function CandidateUpload() {
             </svg>
           </div>
           <h3>You're all set{name ? `, ${name.split(' ')[0]}` : ''}</h3>
-          <p>Resume analyzed · {getFieldLabel(field)} interview</p>
+          <p>
+            Resume analyzed · {getFieldLabel(field)} interview
+            {invitedCompanyName ? ` · for ${invitedCompanyName}` : ''}
+          </p>
           {error && <div className="error-message">{error}</div>}
           <button
             className="btn btn-primary btn-lg"

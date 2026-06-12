@@ -10,9 +10,39 @@ from app.models.schemas import (
 )
 from app.supabase_client import get_supabase
 from app.services.resume_parser import ResumeParser, PDFExtractor
-from app.auth import get_current_user
+from app.services.invitations import allowed_company_ids, mark_accepted
+from app.auth import get_current_user, get_tenant_context
 
 router = APIRouter()
+
+
+def resolve_target_company(
+    supabase, ctx, user, requested_company_id
+) -> "str | None":
+    """Which company a new candidate/interview row should be stamped with.
+
+    Explicit `company_id` in the request body wins (the invitation flow —
+    the candidate chose which inviting company to interview for) but must
+    be one the caller belongs to or was invited by; anything else is 403.
+    Omitted = the caller's primary company (NULL for B2C users). Platform
+    admins may stamp any company.
+    """
+    if requested_company_id is None:
+        return ctx.company_id
+    requested = str(requested_company_id)
+    if ctx.is_platform_admin or requested == (ctx.company_id or ""):
+        return requested
+    allowed = allowed_company_ids(
+        supabase,
+        email=getattr(user, "email", "") or "",
+        profile_company_id=ctx.company_id,
+    )
+    if requested not in allowed:
+        raise HTTPException(
+            status_code=403,
+            detail="You don't have an invitation from this company.",
+        )
+    return requested
 
 
 def _require_owned_candidate(supabase, candidate_id: UUID, user_id: str) -> dict:
@@ -55,17 +85,38 @@ async def parse_resume_only(file: UploadFile = File(...), user=Depends(get_curre
 
 
 @router.post("/", response_model=CandidateResponse)
-async def create_candidate(candidate: CandidateCreate, user=Depends(get_current_user)):
+async def create_candidate(
+    candidate: CandidateCreate,
+    user=Depends(get_current_user),
+    ctx=Depends(get_tenant_context),
+):
     supabase = get_supabase()
+    # Tenant stamp at insert time. This was missing before 2026-06-12: rows
+    # landed with company_id NULL, which failed the WebSocket tenant gate
+    # ("Cannot connect to interview") and hid invited candidates from the
+    # inviting company's recruiter views.
+    company_id = resolve_target_company(supabase, ctx, user, candidate.company_id)
+
     result = supabase.table("candidates").insert({
         "name": candidate.name,
         "email": candidate.email,
         "field_specialization": candidate.field_specialization or "ml",
         "user_id": user.id,
+        "company_id": company_id,
     }).execute()
 
     if not result.data:
         raise HTTPException(status_code=500, detail="Failed to create candidate")
+
+    # Acting on an invitation accepts it — the candidate is now visibly in
+    # this company's pipeline. Best-effort ledger write.
+    if company_id and not ctx.is_platform_admin:
+        mark_accepted(
+            supabase,
+            company_id=company_id,
+            email=getattr(user, "email", "") or "",
+            user_id=user.id,
+        )
 
     return result.data[0]
 

@@ -298,10 +298,12 @@ def _interview_supabase(rows):
 
 
 class TestRequireOwnedInterview:
-    """`_require_owned_interview` returns the row when (owner matches +
-    tenant matches) OR caller is a platform admin. Otherwise it raises
-    a 404 — never a 403 — so the API doesn't tell the caller whether the
-    interview exists elsewhere."""
+    """`_require_owned_interview` returns the row when the owner matches
+    OR the caller is a platform admin. Otherwise it raises a 404 — never
+    a 403 — so the API doesn't tell the caller whether the interview
+    exists elsewhere. (Tenant equality is intentionally NOT required:
+    a candidate's interviews may span companies — invitation flow,
+    migration 011.)"""
 
     def _row(self, **overrides):
         base = {
@@ -317,15 +319,15 @@ class TestRequireOwnedInterview:
         result = _require_owned_interview(supabase, "iv-1", ctx)
         assert result["id"] == "iv-1"
 
-    def test_owner_in_different_tenant_rejected_as_404(self):
-        """Tenant takes precedence even when the owner matches — a user
-        whose company_id has been moved cannot read their own old
-        interviews from a prior tenant."""
+    def test_owner_in_different_tenant_still_reads_own_interview(self):
+        """Ownership is the gate (invitation flow, migration 011): a
+        candidate may interview for several companies, so their primary
+        company_id differing from the interview's stamp must not hide
+        their own interview from them."""
         supabase = _interview_supabase([self._row()])
         ctx = _ctx(user_id="u-1", company_id=B)
-        with pytest.raises(HTTPException) as exc:
-            _require_owned_interview(supabase, "iv-1", ctx)
-        assert exc.value.status_code == 404
+        result = _require_owned_interview(supabase, "iv-1", ctx)
+        assert result["id"] == "iv-1"
 
     def test_non_owner_in_same_tenant_rejected_as_404(self):
         """Recruiter of the same tenant can NOT read a candidate's

@@ -35,6 +35,7 @@ from app.models.schemas import (
 )
 from app.services import email as email_svc
 from app.services.email_templates import default_invite_template
+from app.services.invitations import upsert_invitation
 from app.supabase_client import get_supabase
 
 router = APIRouter()
@@ -377,6 +378,20 @@ async def invite_candidate(
         company=company,
         candidate_name=(body.candidate_name or ""),
         apply_url=apply_url,
+    )
+
+    # Record the invitation in the ledger BEFORE attempting the email —
+    # the candidate's right to interview for this company must not depend
+    # on email delivery (RESEND not configured, bounce, etc.). Re-invites
+    # of the same address are a no-op upsert. Best-effort by design: a
+    # missing ledger table (migration 011 not applied) is logged inside
+    # the helper and never blocks the invite email.
+    upsert_invitation(
+        supabase,
+        company_id=ctx.company_id,
+        email=body.to_email,
+        candidate_name=body.candidate_name,
+        invited_by=ctx.id,
     )
 
     try:
