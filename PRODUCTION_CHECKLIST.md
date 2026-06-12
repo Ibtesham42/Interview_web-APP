@@ -20,7 +20,7 @@
 ### 1. Candidate interview startup ("couldn't reach the interview server")
 - [x] Root causes identified and fixed: ① `VITE_WS_URL` localhost fallback (fixed 10/06, `wsHost.ts`); ② NULL `company_id` stamps vs the WS tenant gate (fixed 12/06, migration 011 + create-path stamping)
 - [x] Real `wss://` handshake as a tenant candidate: ACCEPTED, `init → question → audio` streamed (socket open ≈ 4.7 s warm)
-- [x] Residual cold-start window hardened (12/06, pending deploy): connect budget 3 attempts/~7 s → 6 attempts/8 s-capped backoff (rides out a Render free-tier wake) + "Try again" button on the error panel
+- [x] Residual cold-start window hardened (12/06, DEPLOYED — verified in the live Vercel bundle): connect budget 3 attempts/~7 s → 6 attempts/8 s-capped backoff (rides out a Render free-tier wake) + "Try again" button on the error panel
 
 ### 2. Company onboarding
 - [x] `/companies/signup` → 201, company row created
@@ -56,7 +56,7 @@
 
 1. **`RESEND_API_KEY` + verified `RESEND_FROM_EMAIL` unset on Render** — the only functional gap found: no invite/shortlist/reject email leaves the platform. Set both in the Render dashboard, then register the Resend webhook (see RESEND_EMAIL.md). The outbox/UI already handle the rest.
 2. **`ENVIRONMENT=production` unset on Render** — readiness gate runs in relaxed dev mode, so a future misconfig (e.g. localhost `FRONTEND_BASE_URL`) would not block boot. One env var.
-3. **Cold-start hardening not yet deployed** — committed work on `main` needs a push to take effect (frontend-only).
+3. ~~Cold-start hardening not yet deployed~~ — RESOLVED 12/06: pushed in `d459566`, new bundle verified live on Vercel.
 4. Hygiene: root `secrets.md` is gitignored and was **never committed** (verified against all refs), but live keys belong in `.env`/a password manager, not a loose repo-root file one `git add -f` from a public repo. Move + delete.
 
 ## Known accepted limitations
