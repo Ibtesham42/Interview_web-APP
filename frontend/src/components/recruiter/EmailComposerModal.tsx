@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react';
 import { recruiterApi } from '../../services/api';
 import { emailStatusLabel } from '../../utils/emailStatus';
+import {
+  clearEmailDraft,
+  loadEmailDraft,
+  saveEmailDraft,
+} from '../../utils/emailDrafts';
+import { EmailEditor } from '../email/EmailEditor';
 import type { EmailDraft, EmailOutboxRow, EmailTemplateKind } from '../../types';
 
 interface EmailComposerModalProps {
@@ -25,9 +31,12 @@ interface EmailComposerModalProps {
  * lets the recruiter edit `to` / subject / body, then POSTs to
  * `/email/send`.
  *
- * Per grill E3, drafts are client-side only — closing the modal
- * discards any edits. The same modal mounts fresh each open, so the
- * server template is the source of truth on every Send.
+ * Drafts (2026-06-12): still client-side only per grill E3 — but edits
+ * can now be explicitly kept via Save Draft (localStorage, keyed by
+ * candidate + template). A saved draft is restored on the next open
+ * with a visible banner + a "discard" action that reloads the server
+ * template; a successful send clears it. Closing without saving still
+ * discards, unchanged.
  *
  * Failure handling:
  *   - Draft fetch error → in-modal error banner; Send disabled.
@@ -46,6 +55,11 @@ export function EmailComposerModal({
   onClose,
 }: EmailComposerModalProps) {
   const [draft, setDraft] = useState<EmailDraft | null>(null);
+  // The server-rendered template, kept so "discard saved draft" can
+  // reset without a refetch.
+  const [templateDraft, setTemplateDraft] = useState<EmailDraft | null>(null);
+  const [restoredFromSave, setRestoredFromSave] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -54,13 +68,25 @@ export function EmailComposerModal({
   // retry reuses the prior send instead of emailing the candidate twice.
   const [idempotencyKey] = useState(() => crypto.randomUUID());
 
+  const draftStorageKey = `recruiter:${candidateId}:${template}`;
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     recruiterApi
       .emailDraft(candidateId, template)
       .then((d) => {
-        if (!cancelled) setDraft(d);
+        if (cancelled) return;
+        setTemplateDraft(d);
+        // A previously saved draft wins over the fresh template — the
+        // recruiter explicitly chose to keep those edits.
+        const saved = loadEmailDraft(draftStorageKey);
+        if (saved) {
+          setDraft({ to: saved.to ?? d.to, subject: saved.subject, body: saved.body });
+          setRestoredFromSave(true);
+        } else {
+          setDraft(d);
+        }
       })
       .catch((err) => {
         if (!cancelled) {
@@ -73,7 +99,22 @@ export function EmailComposerModal({
     return () => {
       cancelled = true;
     };
+    // draftStorageKey is derived from candidateId + template (both deps).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candidateId, template]);
+
+  const handleSaveDraft = () => {
+    if (!draft) return;
+    const record = saveEmailDraft(draftStorageKey, draft);
+    setDraftSavedAt(record ? record.savedAt : null);
+  };
+
+  const handleDiscardSaved = () => {
+    clearEmailDraft(draftStorageKey);
+    setRestoredFromSave(false);
+    setDraftSavedAt(null);
+    if (templateDraft) setDraft(templateDraft);
+  };
 
   // Close on Escape — standard modal-dismiss UX. Click-outside also
   // closes (handled in the backdrop's onClick below).
@@ -114,6 +155,7 @@ export function EmailComposerModal({
         setSending(false);
         return;
       }
+      clearEmailDraft(draftStorageKey);
       onClose();
     } catch (err) {
       setSendError(err instanceof Error ? err.message : 'Send failed');
@@ -154,53 +196,27 @@ export function EmailComposerModal({
           </div>
         ) : draft ? (
           <div className="email-composer-body">
-            <div className="form-group">
-              <label className="form-label" htmlFor="email-to">To</label>
-              <input
-                id="email-to"
-                type="email"
-                className="form-input"
-                value={draft.to}
-                onChange={(e) => setDraft({ ...draft, to: e.target.value })}
-                placeholder="candidate@example.com"
-                required
-              />
-              {!draft.to && (
-                <p className="form-hint">
-                  No email on file for this candidate — add one to send.
-                </p>
-              )}
-            </div>
+            {restoredFromSave && (
+              <div className="auth-info email-draft-banner">
+                Restored your saved draft.{' '}
+                <button type="button" className="link-btn" onClick={handleDiscardSaved}>
+                  Discard and reload the template
+                </button>
+              </div>
+            )}
 
-            <div className="form-group">
-              <label className="form-label" htmlFor="email-subject">Subject</label>
-              <input
-                id="email-subject"
-                type="text"
-                className="form-input"
-                value={draft.subject}
-                onChange={(e) => setDraft({ ...draft, subject: e.target.value })}
-                maxLength={200}
-                required
-              />
-            </div>
+            <EmailEditor draft={draft} onChange={setDraft} />
 
-            <div className="form-group">
-              <label className="form-label" htmlFor="email-body">Message</label>
-              <textarea
-                id="email-body"
-                className="form-input email-composer-textarea"
-                value={draft.body}
-                onChange={(e) => setDraft({ ...draft, body: e.target.value })}
-                rows={10}
-                required
-              />
-              <p className="form-hint">
-                Plain text. Line breaks are preserved. Edit as much as you
-                like before sending — the template is just a starting point.
+            {draftSavedAt && (
+              <p className="form-hint" role="status">
+                Draft saved{' '}
+                {new Date(draftSavedAt).toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+                . It will be restored next time you open this composer.
               </p>
-            </div>
-
+            )}
             {sendError && <div className="error-message">{sendError}</div>}
           </div>
         ) : null}
@@ -213,6 +229,14 @@ export function EmailComposerModal({
             disabled={sending}
           >
             Cancel
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={handleSaveDraft}
+            disabled={!draft || sending || loading}
+          >
+            Save draft
           </button>
           <button
             type="button"

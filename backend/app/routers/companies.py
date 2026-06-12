@@ -22,7 +22,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.auth import get_current_user, get_tenant_context
 from app.config import get_settings
@@ -30,6 +30,7 @@ from app.models.schemas import (
     CompanyCreate,
     CompanyResponse,
     CompanySignupResponse,
+    EmailDraftResponse,
     InviteCandidateRequest,
     InviteCandidateResponse,
 )
@@ -309,6 +310,67 @@ async def create_company(body: CompanyCreate, ctx=Depends(get_tenant_context)):
     )
 
 
+def _load_invite_company(supabase, company_id) -> tuple:
+    """Company row (incl. contact fields for the template footer) + the
+    apply URL. Shared by the invite draft + send endpoints so the email
+    the sender previews is rendered from exactly the same inputs as the
+    one that ships."""
+    company_rows = (
+        supabase.table("companies")
+        .select("id,slug,name,email,phone,address")
+        .eq("id", company_id)
+        .execute()
+        .data
+        or []
+    )
+    if not company_rows:
+        # Orphaned profile pointing at a deleted Company — surface a
+        # clear 404 rather than a misleading 500 inside Resend.
+        raise HTTPException(status_code=404, detail="Company not found")
+    company = company_rows[0]
+
+    # The frontend's /apply page lives at this URL — see config.py.
+    # Production env MUST set FRONTEND_BASE_URL explicitly; the local
+    # dev default would send broken links to real candidates.
+    base = get_settings().frontend_base_url.rstrip("/")
+    return company, f"{base}/apply/{company['slug']}"
+
+
+@router.get("/invite/draft", response_model=EmailDraftResponse)
+async def invite_draft(
+    to_email: str = Query("", max_length=320),
+    candidate_name: str = Query("", max_length=120),
+    ctx=Depends(get_tenant_context),
+):
+    """Template-rendered invite draft for the editable-invite composer.
+
+    Mirrors GET /recruiter/candidates/{id}/email/draft: the frontend
+    fetches this, lets the sender edit subject/body (with preview), and
+    POSTs the result back to /invite. Same auth posture as /invite —
+    caller must belong to a Company.
+    """
+    if not ctx.company_id:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Only company members can send invitations. "
+                "Create a company at /companies/signup first."
+            ),
+        )
+    supabase = get_supabase()
+    company, apply_url = _load_invite_company(supabase, ctx.company_id)
+    rendered = default_invite_template(
+        company=company,
+        candidate_name=candidate_name,
+        apply_url=apply_url,
+    )
+    return EmailDraftResponse(
+        to=to_email.strip(),
+        subject=rendered["subject"],
+        body=rendered["body"],
+    )
+
+
 @router.post(
     "/invite",
     response_model=InviteCandidateResponse,
@@ -354,31 +416,18 @@ async def invite_candidate(
     # + the right apply slug. This is one extra SELECT per invite; the
     # caller's TenantContext gives us company_id but not the human
     # name / slug.
-    company_rows = (
-        supabase.table("companies")
-        .select("id,slug,name,email")
-        .eq("id", ctx.company_id)
-        .execute()
-        .data
-        or []
-    )
-    if not company_rows:
-        # Orphaned profile pointing at a deleted Company — surface a
-        # clear 404 rather than a misleading 500 inside Resend.
-        raise HTTPException(status_code=404, detail="Company not found")
-    company = company_rows[0]
-
-    # The frontend's /apply page lives at this URL — see config.py.
-    # Production env MUST set FRONTEND_BASE_URL explicitly; the local
-    # dev default would send broken links to real candidates.
-    base = get_settings().frontend_base_url.rstrip("/")
-    apply_url = f"{base}/apply/{company['slug']}"
+    company, apply_url = _load_invite_company(supabase, ctx.company_id)
 
     rendered = default_invite_template(
         company=company,
         candidate_name=(body.candidate_name or ""),
         apply_url=apply_url,
     )
+    # Editable-invite flow (2026-06-12): the sender's edited subject/body
+    # win over the default template field-by-field. Absent fields keep the
+    # template, so the original one-click invite path is byte-identical.
+    subject = (body.subject or "").strip() or rendered["subject"]
+    email_body = body.body if (body.body or "").strip() else rendered["body"]
 
     # Record the invitation in the ledger BEFORE attempting the email —
     # the candidate's right to interview for this company must not depend
@@ -401,8 +450,8 @@ async def invite_candidate(
             candidate_id=None,  # candidate hasn't signed up yet
             sender_id=ctx.id,
             to=body.to_email.strip(),
-            subject=rendered["subject"],
-            body=rendered["body"],
+            subject=subject,
+            body=email_body,
             email_type="invite",
             from_name=(company.get("name") or "").strip() or None,
             reply_to=(company.get("email") or "").strip() or None,

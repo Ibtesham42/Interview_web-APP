@@ -346,10 +346,19 @@ class InviteCandidateRequest(BaseModel):
     """POST /api/companies/invite body. The candidate hasn't signed up
     yet, so we only know their email + the name the admin typed. Sent
     by company_admin from /admin/settings; the platform emails the
-    candidate an apply-link invitation via Resend."""
+    candidate an apply-link invitation via Resend.
+
+    `subject`/`body` (2026-06-12, editable-invite flow): the sender's
+    edited copy from the composer. Either may be omitted — the default
+    template fills whichever is missing, so the original one-click
+    invite keeps working unchanged. The sender's text is authoritative
+    when present (user-input rule); note the body THEY edited contains
+    the apply link, so the server never re-injects it."""
     to_email: str = Field(..., min_length=5, max_length=320,
                           pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
     candidate_name: Optional[str] = Field(None, max_length=120)
+    subject: Optional[str] = Field(None, min_length=1, max_length=200)
+    body: Optional[str] = Field(None, min_length=1, max_length=20_000)
 
 
 class InviteCandidateResponse(BaseModel):

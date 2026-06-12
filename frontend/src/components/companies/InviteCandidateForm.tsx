@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { companiesApi } from '../../services/api';
 import { emailStatusLabel } from '../../utils/emailStatus';
-import type { InviteCandidateResponse } from '../../types';
+import { EmailEditor } from '../email/EmailEditor';
+import type { EmailDraft, InviteCandidateResponse } from '../../types';
 
 interface InviteCandidateFormProps {
   /** Fired after the request completes — including the audit-row-with-
@@ -48,10 +49,32 @@ export function InviteCandidateForm({ onSent, onCancel, intro }: InviteCandidate
   const [message, setMessage] = useState<
     { kind: 'success' | 'error'; text: string } | null
   >(null);
+  // Editable-invite composer (2026-06-12): opened on demand, pre-filled
+  // from the server template. `draft === null` = the sender never opened
+  // it → the original one-click path sends the default template.
+  const [draft, setDraft] = useState<EmailDraft | null>(null);
+  const [draftLoading, setDraftLoading] = useState(false);
 
   // Cheap shape check — mirrors the backend Pydantic regex. The server
   // is still authoritative; this just avoids submitting obvious garbage.
   const emailLooksValid = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
+
+  const handleOpenComposer = async () => {
+    if (draft || draftLoading) return;
+    setMessage(null);
+    setDraftLoading(true);
+    try {
+      const rendered = await companiesApi.inviteDraft(email.trim(), name.trim());
+      setDraft(rendered);
+    } catch (err) {
+      setMessage({
+        kind: 'error',
+        text: err instanceof Error ? err.message : 'Could not load the email draft',
+      });
+    } finally {
+      setDraftLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,6 +88,9 @@ export function InviteCandidateForm({ onSent, onCancel, intro }: InviteCandidate
       const row = await companiesApi.invite({
         to_email: email.trim(),
         candidate_name: name.trim() || undefined,
+        // Edited copy wins; never-opened composer keeps the server default.
+        subject: draft?.subject.trim() || undefined,
+        body: draft?.body.trim() ? draft.body : undefined,
       });
       onSent?.(row);
       if (row.status !== 'sent') {
@@ -85,6 +111,7 @@ export function InviteCandidateForm({ onSent, onCancel, intro }: InviteCandidate
         });
         setEmail('');
         setName('');
+        setDraft(null);
       }
     } catch (err) {
       setMessage({
@@ -130,6 +157,26 @@ export function InviteCandidateForm({ onSent, onCancel, intro }: InviteCandidate
             there,".
           </p>
         </div>
+
+        {/* Editable-invite composer: collapsed by default (the default
+            template is sane), expanded on demand for edit + preview. */}
+        {draft ? (
+          <EmailEditor draft={draft} onChange={setDraft} showTo={false} />
+        ) : (
+          <button
+            type="button"
+            className="link-btn invite-edit-toggle"
+            onClick={handleOpenComposer}
+            disabled={draftLoading || !emailLooksValid}
+            title={
+              emailLooksValid
+                ? 'Review and edit the invitation email before sending'
+                : 'Enter a valid email first'
+            }
+          >
+            {draftLoading ? 'Loading draft…' : 'Review & edit the email before sending'}
+          </button>
+        )}
 
         {message && (
           <div

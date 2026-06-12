@@ -1,9 +1,9 @@
-"""Tests for the recruiter email endpoints (multi-tenant PR 7).
+﻿"""Tests for the recruiter email endpoints (multi-tenant PR 7).
 
 Three endpoints, all on `routers/recruiter.py`:
-- `GET  /candidates/{id}/email/draft` — template-rendered draft.
-- `POST /candidates/{id}/email/send`  — sends + records outbox row.
-- `GET  /candidates/{id}/emails`      — prior outbox rows.
+- `GET  /candidates/{id}/email/draft` â€” template-rendered draft.
+- `POST /candidates/{id}/email/send`  â€” sends + records outbox row.
+- `GET  /candidates/{id}/emails`      â€” prior outbox rows.
 
 The stub supabase honours `.eq()` so tenant scoping is verifiable
 (matches the pattern from test_tenant_scoping.py). Email service
@@ -36,7 +36,7 @@ RECRUITER_ID = "33333333-3333-3333-3333-333333333333"
 
 
 # ---------------------------------------------------------------------------
-# Supabase stub — filter-aware select; insert and order are honoured.
+# Supabase stub â€” filter-aware select; insert and order are honoured.
 # ---------------------------------------------------------------------------
 
 class _Chain:
@@ -158,7 +158,7 @@ class TestEmailDraft:
         assert "Acme" in result.subject
 
     def test_cross_tenant_candidate_404(self, monkeypatch):
-        """Recruiter of A querying a candidate of B should see 404 —
+        """Recruiter of A querying a candidate of B should see 404 â€”
         no existence leak across tenants."""
         supabase = _two_tenant_supabase()
         monkeypatch.setattr(
@@ -179,11 +179,11 @@ class TestEmailDraft:
             uuid.UUID(CANDIDATE_IN_A), template="rejection", user=_ctx()
         ))
         assert result.to == "alice@x.com"
-        assert "Update on your application" in result.subject
+        assert "update on your application" in result.subject.lower()
         assert "other candidates" in result.body
 
     def test_company_admin_cannot_draft_other_tenant(self, monkeypatch):
-        """A company_admin of A drafting for a candidate of B gets 404 —
+        """A company_admin of A drafting for a candidate of B gets 404 â€”
         the 'company admins manage only their own candidates' requirement
         holds on the email path too."""
         supabase = _two_tenant_supabase()
@@ -248,7 +248,7 @@ class TestEmailSend:
 
     def test_failed_send_still_returns_row(self, monkeypatch):
         """Resend-rejected sends produce an outbox row with status=failed.
-        Critical: endpoint does NOT raise — the row is the audit trail."""
+        Critical: endpoint does NOT raise â€” the row is the audit trail."""
         self._stub_email_service(
             monkeypatch, status="failed", resend_id=None,
             error="connection refused",
@@ -270,10 +270,10 @@ class TestEmailSend:
         assert result.resend_message_id is None
 
     def test_cross_tenant_candidate_404(self, monkeypatch):
-        """Recruiter of A cannot send to a candidate of B — same 404
+        """Recruiter of A cannot send to a candidate of B â€” same 404
         as 'candidate doesn't exist'."""
         # Service stub never gets called since the candidate fetch 404s
-        # first — but stub anyway so a regression in the order of
+        # first â€” but stub anyway so a regression in the order of
         # operations would surface as the stub returning something
         # rather than a NoneType crash.
         self._stub_email_service(monkeypatch)

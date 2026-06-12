@@ -880,10 +880,133 @@ a:hover { color: var(--primary); }
 .email-composer-foot {
   display: flex;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: var(--space-sm);
   padding: var(--space-md) var(--space-lg);
   border-top: 1px solid var(--border-subtle);
   background: var(--bg-primary);
+}
+
+/* Editable-email editor (shared by the recruiter composer + invite form,
+   2026-06-12). Edit/Preview tabs + a mail-client-style preview pane. */
+.email-editor-tabs {
+  display: flex;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-md);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.email-editor-tab {
+  appearance: none;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: var(--space-xs) var(--space-sm);
+  min-height: 44px;
+  font: inherit;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.email-editor-tab.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--color-primary, #4f46e5);
+}
+
+.email-editor-tab:focus-visible {
+  outline: 3px solid var(--border-focus);
+  outline-offset: -3px;
+}
+
+.email-preview {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.email-preview-envelope {
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-primary);
+  display: grid;
+  gap: 4px;
+  font-size: 0.875rem;
+}
+
+.email-preview-row {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: baseline;
+}
+
+.email-preview-label {
+  color: var(--text-secondary);
+  min-width: 4rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.email-preview-body {
+  padding: var(--space-md);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  max-height: 22rem;
+  overflow-y: auto;
+}
+
+.email-preview-body p {
+  margin: 0 0 1em;
+}
+
+.email-preview-body a {
+  word-break: break-all;
+}
+
+.email-draft-banner {
+  margin-bottom: var(--space-md);
+}
+
+.link-btn {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--color-primary, #4f46e5);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.link-btn:disabled {
+  color: var(--text-secondary);
+  cursor: not-allowed;
+  text-decoration: none;
+}
+
+.invite-edit-toggle {
+  display: inline-block;
+  margin-bottom: var(--space-md);
+  min-height: 44px;
+  text-align: left;
+}
+
+/* Small screens: the composer becomes a full-height sheet so the body
+   editor + preview stay usable with a phone keyboard up. */
+@media (max-width: 480px) {
+  .email-composer-backdrop {
+    padding: 0;
+    align-items: stretch;
+  }
+
+  .email-composer-modal {
+    max-width: none;
+    max-height: 100dvh;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+  }
 }
 
 /* Invite form — shared by the embedded Settings card and the modal adapter.
