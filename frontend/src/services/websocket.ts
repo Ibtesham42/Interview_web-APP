@@ -1,6 +1,6 @@
 import type { IntegrityEventType, WebSocketMessage } from '../types';
 import { supabase } from '../utils/supabase/client';
-import { resolveWsHost } from './wsHost';
+import { coldStartDelayMs, resolveWsHost } from './wsHost';
 
 type MessageHandler = (message: WebSocketMessage) => void;
 
@@ -14,7 +14,15 @@ const WS_HOST = resolveWsHost(import.meta.env.VITE_WS_URL, import.meta.env.VITE_
 if (typeof console !== 'undefined') {
   console.info('[ws] interview socket host:', WS_HOST);
 }
-const MAX_RECONNECT_ATTEMPTS = 3;
+// Cold-start retry budget. Render's free tier spins the backend down when
+// the keep-alive misses (and every deploy restarts it); a wake takes 30–60s.
+// The old 3-attempt budget (~7s of backoff) gave up long before the server
+// was up, so a candidate on a cold backend saw "couldn't reach the interview
+// server" even though everything was healthy. Six total attempts with the
+// backoff capped at 8s (1+2+4+8+8 ≈ 23s of waiting, plus each attempt's own
+// connect time) rides out a wake. Applies ONLY before the socket first opens
+// — a drop after open stays terminal (ADR 0002, unchanged).
+const MAX_COLD_START_RETRIES = 5;
 
 class InterviewWebSocket {
   private ws: WebSocket | null = null;
@@ -37,19 +45,20 @@ class InterviewWebSocket {
     this.interviewId = interviewId;
     this.intentionalClose = false;
 
-    for (let attempt = 0; attempt <= MAX_RECONNECT_ATTEMPTS; attempt++) {
+    for (let attempt = 0; attempt <= MAX_COLD_START_RETRIES; attempt++) {
       if (this.intentionalClose) return;
       try {
         await this.openSocket(interviewId);
         return; // socket opened — interview is now running
       } catch (err) {
-        if (attempt >= MAX_RECONNECT_ATTEMPTS) {
+        if (attempt >= MAX_COLD_START_RETRIES) {
           throw err instanceof Error
             ? err
             : new Error('Unable to reach the interview server.');
         }
-        // Exponential backoff before the next cold-start attempt: 1s, 2s, 4s.
-        await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)));
+        // Exponential backoff before the next cold-start attempt:
+        // 1s, 2s, 4s, 8s, 8s — see coldStartDelayMs.
+        await new Promise((r) => setTimeout(r, coldStartDelayMs(attempt)));
       }
     }
   }

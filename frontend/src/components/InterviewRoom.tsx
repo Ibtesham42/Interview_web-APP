@@ -436,6 +436,16 @@ export function InterviewRoom() {
     interviewWs.sendEndInterview();
   }, []);
 
+  // Re-run the cold-start connect loop without a page refresh. Safe to call
+  // after a failed connect: the socket never opened, disconnect() was never
+  // invoked, so all WS handlers from the effect above are still registered.
+  const handleRetryConnect = useCallback(() => {
+    if (!interviewId) return;
+    setConnectionError(false);
+    setStatus('connecting');
+    interviewWs.connect(interviewId).catch(() => setConnectionError(true));
+  }, [interviewId]);
+
   const lastMessage = messages[messages.length - 1];
   const micEnabled = status === 'ready' || status === 'recording';
   const showConnecting = !connectionError && status === 'connecting' && messages.length === 0;
@@ -484,7 +494,13 @@ export function InterviewRoom() {
         <div className="iv-connect-state">
           <div className="iv-connect-icon error">!</div>
           <h3>Unable to connect</h3>
-          <p>We couldn't reach the interview server. Check your connection and refresh the page.</p>
+          <p>
+            We couldn't reach the interview server. It may just be waking up —
+            try again in a moment.
+          </p>
+          <button className="btn btn-primary" onClick={handleRetryConnect}>
+            Try again
+          </button>
         </div>
       ) : lostConnection ? (
         <div className="iv-connect-state">
