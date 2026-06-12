@@ -10,6 +10,16 @@
 // constructor only accepts ws:/wss:), and the value pasted more than once
 // (e.g. "wss://host.comwss://host.com", which produces an unresolvable
 // hostname and fails silently in the browser).
+/** Backoff before cold-start retry N (0-based): 1s, 2s, 4s, then capped at
+ * 8s. Lives here (not websocket.ts) for the same import-safety reason as the
+ * helpers above. The cap matters: 1+2+4+8+8 ≈ 23s of backoff plus each
+ * attempt's own connect time rides out a Render free-tier wake (30–60s),
+ * where the old 3-attempt/7s budget surfaced "couldn't reach the interview
+ * server" on a perfectly healthy deployment. */
+export function coldStartDelayMs(attempt: number): number {
+  return Math.min(8000, 1000 * Math.pow(2, attempt));
+}
+
 export function normalizeWsHost(raw: string | undefined): string {
   const fallback = 'ws://localhost:8000';
   if (!raw) return fallback;

@@ -154,7 +154,11 @@ ADR 0005 for the schema decisions.
 A hiring organization with its own Candidates, Recruiters, and Apply Link.
 Created via `/companies/signup` by a `'user'` who flips to `'company_admin'`
 on creation. Identified by an immutable UUID + a human-readable Slug. A
-Candidate belongs to exactly one Company (or to no Company if B2C).
+Candidate has at most one **primary** Company (`profiles.company_id`, set by
+their first claim and never silently changed) but may hold memberships in
+additional Companies through accepted Invitations (migration 011, 2026-06-12)
+— each Interview is stamped with the one Company it is *for*. A Candidate
+with no Company at all is B2C.
 _Avoid_: Tenant — use Company in domain conversation; "tenant" survives as
 an architecture term (e.g. tenant-scoped query, `TenantContext`) but the
 *noun* is a Company. Also avoid: Org, Workspace, Account (ambiguous with
@@ -181,24 +185,48 @@ _Avoid_: Invite URL (Apply Link is shared broadly; the Invite is a
 per-Candidate email — see below), Application page, Job link (we don't
 model jobs yet).
 
-**Invite**:
+**Invite** (the act):
 A per-Candidate email sent via `POST /api/companies/invite`, addressed
 to one specific email address and carrying the same Apply Link URL the
 public landing exposes. Distinct from the Apply Link by *audience*: the
 Apply Link is broadcast (a Recruiter posts it on LinkedIn, embeds it in
 a careers page), the Invite is targeted (a Recruiter says "I want this
 specific person to apply"). Both flows terminate at the same
-`/apply/{slug}` page; the Invite simply puts the URL in front of one
-named recipient. Audit-logged in `email_outbox` with
-`candidate_id IS NULL` (the recipient hasn't signed up yet); the
-candidate appears in the tenant's pool only once they complete signup
-through the link. Capability: `'invite_candidate'` (HIRING_ROLES with a
-tenant — see [[capability_module]] / ADR 0006).
-_Avoid_: Invitation (too generic — every email is an "invitation" of
-some sort), Invite URL (the URL belongs to the Apply Link; the Invite
-is the act of emailing it), Outreach (overloaded — the
-shortlist-email is also outreach but a different action against an
-existing Candidate).
+`/apply/{slug}` page. Since 2026-06-12 the act writes TWO records: the
+email audit row in `email_outbox` AND an Invitation (below) — so the
+Candidate's right to interview never depends on email delivery.
+Capability: `'invite_candidate'` (HIRING_ROLES with a tenant — see
+ADR 0006).
+_Avoid_: Invite URL (the URL belongs to the Apply Link; the Invite is
+the act of emailing it), Outreach (overloaded — the shortlist-email is
+also outreach but a different action against an existing Candidate).
+
+**Invitation** (the record):
+The per-(Company, Candidate-email) membership ledger row in
+`candidate_invitations` (migration 011). Lifecycle: `pending` →
+`accepted` (claiming the Apply Link, an explicit accept, or starting an
+Interview for that Company) or `pending` → `declined` (dismissed on the
+Candidate dashboard; a re-Invite revives it to pending). A Candidate's
+tenant access = their primary Company PLUS every Company with a
+non-declined Invitation for their email — this is what lets one
+Candidate interview for several Companies without conflict. (Until
+2026-06-12 "Invitation" was an avoided word; it is now the canonical
+noun for the ledger record, while **Invite** remains the act.)
+_Avoid_: Invite (reserved for the emailing act), Membership (the
+Invitation *grants* membership; the row itself records the offer and
+its state).
+
+**Snapshot**:
+A small webcam frame (~320px JPEG) captured during a live Interview and
+stored in `interview_snapshots` (migration 012) — one per minute
+(`periodic`) plus one at the moment each integrity warning fires
+(`integrity`). Proctoring *evidence*, always advisory: reviewers see
+what the camera saw; no Snapshot ever auto-decides anything. Readable
+by exactly the same set as the Report (owner, hiring roles of the
+Interview's Company, Admin) and visible to the Candidate on their own
+Report for transparency.
+_Avoid_: Screenshot (it captures the camera, not the screen), Photo,
+Frame (too low-level).
 
 
 

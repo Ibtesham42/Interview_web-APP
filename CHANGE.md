@@ -23,6 +23,60 @@
 
 ---
 
+## 12/06/2026 (c)
+Type: Fix + Verification
+
+Production stabilization pass (features ON HOLD per direction; Jobs/matching
+plan parked).
+
+INTERVIEW STARTUP ("couldn't reach the interview server") — root-cause
+ledger, now complete:
+1. VITE_WS_URL localhost fallback — fixed 10/06 (wsHost derivation). DEPLOYED.
+2. NULL company_id stamps vs the WS tenant gate — fixed 12/06 (migration 011
+   + create-path stamping). DEPLOYED + live-verified (WSS handshake accepted,
+   init/question/audio streamed, socket open ~4.7s warm).
+3. RESIDUAL (fixed this pass, NEEDS DEPLOY): the cold-start connect budget was
+   3 attempts/~7s of backoff while a Render free-tier wake takes 30–60s — any
+   candidate hitting a cold backend (keep-alive miss, deploy restart) saw the
+   error on a healthy system, and the panel offered no retry. Now 6 attempts
+   with backoff capped at 8s (1/2/4/8/8 ≈ 23s + per-attempt connect time;
+   `coldStartDelayMs` in wsHost.ts, unit-tested) + a "Try again" button that
+   re-runs the connect loop without losing registered WS handlers (safe
+   because a failed connect never calls disconnect()). Post-open drops remain
+   terminal — ADR 0002 untouched. CLAUDE.md (root + frontend) realtime lines
+   updated to the new budget.
+
+SIX-FLOW LIVE VERIFICATION (scripted battery against prod, e2e accounts,
+fully cleaned up after): 29/32 — failures are 2× email DELIVERY (both the
+known RESEND_API_KEY config gap; outbox correctly records 'failed') and 1
+script artifact (asserted a wrong stats key; the real count was correct).
+Flows green: company onboarding (signup→company_admin→recruiter access,
+candidate 403), invite (ledger + public apply + claim-accepts), interview
+(login→WS→questions/audio→integrity→completion→snapshot→report), recruiter
+(dashboard row, funnel/summary analytics, shortlist + draft), super admin
+(platform totals, company detail counts/analytics).
+
+SECURITY CHECK: root secrets.md contains live-looking keys but is gitignored
+(.gitignore:18) and verified NEVER COMMITTED on any ref; repo is public, so
+flagged as a hygiene blocker (move keys to .env, delete file).
+
+Docs: PRODUCTION_CHECKLIST.md created (stack state, per-flow checklist,
+ordered blockers); CONTEXT.md reconciled with the shipped domain (Candidate
+multi-Company membership, Invitation promoted from avoided-word to the
+canonical ledger noun, Invite narrowed to the act, Snapshot defined).
+
+Affected files: frontend/src/services/{websocket,wsHost}.ts,
+frontend/src/services/__tests__/coldStart.test.ts,
+frontend/src/components/InterviewRoom.tsx, CLAUDE.md, frontend/CLAUDE.md,
+CONTEXT.md, PRODUCTION_CHECKLIST.md
+Architectural impact: none to the WS state machine — only the pre-open
+cold-start loop and an error-panel affordance.
+Future considerations: REMAINING BLOCKERS (ordered): (1) RESEND_API_KEY +
+RESEND_FROM_EMAIL on Render — the only functional gap; (2)
+ENVIRONMENT=production on Render; (3) push main to deploy the cold-start
+hardening; (4) secrets.md hygiene. Jobs/Resume-matching implementation stays
+on hold until these clear.
+
 ## 12/06/2026 (b)
 Type: Feature + Fix
 

@@ -73,6 +73,6 @@ React + TypeScript + Vite + Tailwind
 
 ## WebSocket (from realtime.md)
 - Single connection per interview session
-- Auto-reconnect: max 3 attempts, exponential backoff (1s → 2s → 4s)
+- Cold-start connect: 6 total attempts, backoff 1s → 2s → 4s → 8s → 8s (rides out a Render wake); post-open drops are terminal (ADR 0002)
 - Message queue during reconnection
 - WebSocket messages are source of truth for state

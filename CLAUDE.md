@@ -142,8 +142,10 @@ frontend/src/
   `voice_transcript`, `voice_error`, `interview_ended`, `error`.
 - Backend always emits an `audio` frame after a `question` (empty if TTS fails)
   so the client state machine is deterministic.
-- Frontend reconnect: exponential backoff, max 3 attempts; no reconnect after
-  an intentional disconnect.
+- Frontend cold-start connect: 6 total attempts, exponential backoff capped
+  at 8s (1/2/4/8/8 — rides out a Render free-tier wake). Applies only before
+  the socket first opens; a drop after open is terminal (ADR 0002) and there
+  is no reconnect after an intentional disconnect.
 - See skill: `realtime.md`.
 
 ---
