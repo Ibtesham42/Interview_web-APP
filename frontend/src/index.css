@@ -1188,6 +1188,20 @@ a:hover { color: var(--primary); }
   text-decoration: underline;
 }
 
+/* Per-job apply landing — the job description block (migration 013) */
+.job-apply-description {
+  margin: var(--space-md) 0;
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--border-subtle);
+  text-align: left;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  max-height: 16rem;
+  overflow-y: auto;
+}
+
 /* Select dropdown - CRITICAL for text visibility */
 select.form-input {
   cursor: pointer;

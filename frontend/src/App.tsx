@@ -19,6 +19,7 @@ import { JobsPage } from './components/jobs/JobsPage';
 import { CompanySignup } from './components/companies/CompanySignup';
 import { Settings } from './components/companies/Settings';
 import { Apply } from './components/apply/Apply';
+import { JobApply } from './components/apply/JobApply';
 import { AppShell } from './components/layout/AppShell';
 import { UiShowcase } from './components/ui/UiShowcase';
 import type { CapabilityName } from './services/capabilities';
@@ -96,6 +97,9 @@ function App() {
               If a signed-in visitor lands here, they get a one-click
               claim CTA instead. */}
           <Route path="/apply/:slug" element={<Apply />} />
+          {/* Per-job public apply landing — migration 013. Two path segments,
+              so it never collides with the one-segment company /apply/:slug. */}
+          <Route path="/apply/:companySlug/:jobSlug" element={<JobApply />} />
 
           <Route path="/" element={<ProtectedRoute><RoleHome /></ProtectedRoute>} />
 

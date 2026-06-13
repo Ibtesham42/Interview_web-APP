@@ -23,6 +23,32 @@
 
 ---
 
+## 13/06/2026 (f)
+Type: Feature
+
+Job Management — per-job candidate apply landing (completes the Jobs UI; builds
+on entries (c)/(d)/(e)).
+
+- components/apply/JobApply.tsx: public landing for /apply/{companySlug}/{jobSlug}
+  via jobsApi.publicLookup (OPEN jobs only). Shows the role + company + meta +
+  description, then funnels into the EXISTING apply path — signed-out ->
+  /signup?company={slug}; signed-in candidate -> claimCompany + dashboard;
+  hiring accounts blocked; draft/closed/unknown -> friendly "not available".
+- Route /apply/:companySlug/:jobSlug (two segments — never collides with the
+  one-segment company /apply/:slug). CSS for the description block.
+
+tsc + vitest + build green. NOT browser-walked (needs the running app +
+migration 013). Threading the job onto the eventual interview (interviews.job_id)
+through signup is a follow-up — this gets the candidate into the company via the
+proven claim/signup flow while showing them the specific role.
+
+Affected files: frontend/src/components/apply/JobApply.tsx (new),
+frontend/src/App.tsx, frontend/src/index.css.
+Architectural impact: None — public read over /api/jobs/public; reuses the
+existing claim/signup funnel.
+Future considerations: thread the job onto interviews.job_id through signup;
+write the jobs ADR; then Team/Role management.
+
 ## 13/06/2026 (e)
 Type: Feature
 
