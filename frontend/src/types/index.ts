@@ -500,6 +500,48 @@ export interface JobPublic {
   location: string | null;
 }
 
+// ---------------------------------------------------------------------------
+// Team / role management (migration 014)
+// ---------------------------------------------------------------------------
+
+export type TeamRole = 'recruiter' | 'company_admin';
+
+export interface TeamMember {
+  id: string;
+  email: string;
+  full_name: string | null;
+  role: string;
+}
+
+export interface TeamInvitation {
+  id: string;
+  email: string;
+  role: string;
+  status: string;
+  invited_by: string | null;
+  created_at: string;
+}
+
+export interface TeamResponse {
+  members: TeamMember[];
+  invitations: TeamInvitation[];
+}
+
+export interface TeamInviteResult {
+  id: string;
+  email: string;
+  role: string;
+  status: string;
+  email_status: string;
+  email_error: string | null;
+}
+
+export interface AcceptTeamInviteResult {
+  company_id: string;
+  role: string;
+  profile: Record<string, unknown>;
+}
+
 // Derived candidate status surfaced on the review screen. Combines the
 // caller's Decision (shortlisted/rejected/hold) with funnel state
 // (invited vs interview_completed) — not a stored column.

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { InviteCandidateForm } from './InviteCandidateForm';
+import { TeamPanel } from './TeamPanel';
 
 /**
  * Company settings — /admin/settings (multi-tenant PR 5).
@@ -127,6 +128,21 @@ export function Settings() {
           </p>
           <InviteCandidateForm />
         </div>
+        )}
+
+        {/* Team management (migration 014) — gated by `manage_team`
+            (TENANT_ADMINS + tenant). Recruiters reach Settings via the
+            invite_candidate OR manage_company_settings route gate but can't
+            manage the team, so they never see this card. */}
+        {can('manage_team') && (
+          <div className="card">
+            <h3>Team</h3>
+            <p className="page-sub" style={{ marginTop: 'var(--space-xs)' }}>
+              Invite recruiters and admins to {company.name}. They review the
+              same candidates and jobs as your company.
+            </p>
+            <TeamPanel />
+          </div>
         )}
 
         <div className="card">

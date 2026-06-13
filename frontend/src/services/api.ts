@@ -22,6 +22,10 @@ import type {
   JobPublic,
   JobStatus,
   JobUpdatePayload,
+  AcceptTeamInviteResult,
+  TeamInviteResult,
+  TeamResponse,
+  TeamRole,
   Evaluation,
   DashboardData,
   AdminOverview,
@@ -373,6 +377,28 @@ export const jobsApi = {
     fetchJson<JobPublic>(
       `/jobs/public/${encodeURIComponent(companySlug)}/${encodeURIComponent(jobSlug)}`,
     ),
+};
+
+// Team API — team/role management (migration 014). Management endpoints are
+// gated by `manage_team` on the backend (TENANT_ADMINS + tenant); `accept` is
+// auth + email-identity matched.
+export const teamApi = {
+  get: () => fetchJson<TeamResponse>('/team/'),
+  invite: (email: string, role: TeamRole) =>
+    fetchJson<TeamInviteResult>('/team/invite', {
+      method: 'POST',
+      body: JSON.stringify({ email, role }),
+    }),
+  revoke: (invitationId: string) =>
+    fetchJson<{ id: string; status: string }>(
+      `/team/invitations/${encodeURIComponent(invitationId)}/revoke`,
+      { method: 'POST' },
+    ),
+  accept: (companySlug: string) =>
+    fetchJson<AcceptTeamInviteResult>('/team/accept', {
+      method: 'POST',
+      body: JSON.stringify({ company_slug: companySlug }),
+    }),
 };
 
 // Apply API — multi-tenant rollout PR 4. Public landing route + post-signup

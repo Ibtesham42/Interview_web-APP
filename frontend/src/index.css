@@ -806,6 +806,25 @@ a:hover { color: var(--primary); }
   font-size: 0.8125rem;
 }
 
+/* Team panel (migration 014) — members + pending invitations + invite form */
+.team-panel { display: flex; flex-direction: column; gap: var(--space-md); margin-top: var(--space-sm); }
+.team-section { display: flex; flex-direction: column; gap: var(--space-xs); }
+.team-subhead {
+  font-size: 0.8125rem; font-weight: 600; color: var(--text-tertiary);
+  text-transform: uppercase; letter-spacing: 0.04em; margin: 0;
+}
+.team-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.team-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-sm); padding: var(--space-sm) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.team-row:last-child { border-bottom: none; }
+.team-invite-form { display: flex; flex-direction: column; gap: var(--space-xs); }
+.team-invite-row { display: flex; gap: var(--space-sm); align-items: stretch; flex-wrap: wrap; }
+.team-invite-row .form-input { flex: 1; min-width: 12rem; }
+.team-role-select { flex: 0 0 auto; min-width: 8rem; }
+
 /* ========================================
    EMAIL COMPOSER MODAL + PRIOR-MESSAGES LIST
    Multi-tenant PR 7

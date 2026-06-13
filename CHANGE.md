@@ -23,6 +23,39 @@
 
 ---
 
+## 14/06/2026 (c)
+Type: Feature
+
+Team / Role Management — UI (completes the Team feature; builds on entry (a)).
+
+- Frontend Team types + teamApi (get / invite / revoke / accept).
+- components/companies/TeamPanel.tsx: a Settings card (gated by manage_team)
+  listing members (profiles with hiring roles) + pending invitations, with an
+  invite form (email + role select) and a revoke action. Surfaces the email
+  sent/failed outcome inline.
+- components/companies/TeamAccept.tsx + route /team/accept?company={slug}:
+  PUBLIC landing (ProtectedRoute drops the query on the login redirect, so it
+  can't be route-gated). Reuses applyApi.landing for the company name. A
+  signed-in plain 'user' gets an explicit Accept button (profile stamped with
+  the role; RoleHome routes them onward); a hiring account is blocked; signed-out
+  shows sign-in / create-account CTAs.
+- Reuses the index.css settings/card classes + Button/Badge/EmptyState; no new
+  UI system.
+
+tsc + vitest + build green. NOT browser-walked (needs the running app +
+migration 014). Follow-up: auto-accept after signup (today a brand-new teammate
+signs up, then reopens the invite link to accept); member offboarding.
+
+Affected files: frontend/src/types/index.ts, frontend/src/services/api.ts,
+frontend/src/components/companies/TeamPanel.tsx (new),
+frontend/src/components/companies/TeamAccept.tsx (new),
+frontend/src/components/companies/Settings.tsx, frontend/src/App.tsx,
+frontend/src/index.css.
+Architectural impact: None new — UI over /api/team; the Settings card is
+capability-gated by manage_team.
+Future considerations: smoother accept-after-signup; member offboarding;
+multi-company membership stays out of scope (one-company model).
+
 ## 14/06/2026 (b)
 Type: Feature
 

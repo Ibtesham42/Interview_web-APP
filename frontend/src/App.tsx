@@ -20,6 +20,7 @@ import { CompanySignup } from './components/companies/CompanySignup';
 import { Settings } from './components/companies/Settings';
 import { Apply } from './components/apply/Apply';
 import { JobApply } from './components/apply/JobApply';
+import { TeamAccept } from './components/companies/TeamAccept';
 import { AppShell } from './components/layout/AppShell';
 import { UiShowcase } from './components/ui/UiShowcase';
 import type { CapabilityName } from './services/capabilities';
@@ -100,6 +101,9 @@ function App() {
           {/* Per-job public apply landing — migration 013. Two path segments,
               so it never collides with the one-segment company /apply/:slug. */}
           <Route path="/apply/:companySlug/:jobSlug" element={<JobApply />} />
+          {/* Team-invitation accept landing — migration 014. Public (a fresh
+              teammate may not be signed in); handles both states internally. */}
+          <Route path="/team/accept" element={<TeamAccept />} />
 
           <Route path="/" element={<ProtectedRoute><RoleHome /></ProtectedRoute>} />
 
