@@ -18,6 +18,7 @@ import {
 } from '../ui';
 import type { BadgeVariant } from '../ui';
 import { EmailComposerModal } from './EmailComposerModal';
+import { RecommendationCard } from './RecommendationCard';
 import type {
   CandidateStatus,
   EmailOutboxRow,
@@ -379,6 +380,8 @@ export function RecruiterCandidateDetail() {
           <div className="mt-1 text-xs text-ink-subtle">Recruiter decisions</div>
         </Card>
       </div>
+
+      <RecommendationCard candidateId={candidateId} />
 
       <Card>
         <CardHeader>

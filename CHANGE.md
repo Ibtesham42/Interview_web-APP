@@ -23,6 +23,33 @@
 
 ---
 
+## 14/06/2026 (d)
+Type: Feature
+
+AI Hiring Recommendation — UI (completes the Phase 2 recommendation feature;
+builds on entry (b)).
+
+- Frontend Recommendation / PhaseContribution types + recruiterApi.recommendation.
+- components/recruiter/RecommendationCard.tsx: a self-fetching card on the
+  recruiter candidate-detail page showing the recommendation tier (Badge) + the
+  final weighted score, the summary, and per-phase contribution bars (the
+  contributions sum to the final — the "why"). Advisory — the recruiter's
+  Shortlist/Reject buttons still own the decision.
+- Rendered after the stat tiles on RecruiterCandidateDetail. Reuses the
+  Card/Badge/EmptyState primitives + Tailwind tokens; the bar fill is a
+  data-driven inline width (the documented exception) over var(--primary).
+
+tsc + vitest + build green. NOT browser-walked (needs the running app). No
+backend or schema change.
+
+Affected files: frontend/src/types/index.ts, frontend/src/services/api.ts,
+frontend/src/components/recruiter/RecommendationCard.tsx (new),
+frontend/src/components/recruiter/RecruiterCandidateDetail.tsx,
+frontend/src/index.css.
+Architectural impact: None — UI over the existing recommendation endpoint.
+Future considerations: a per-job ranked candidate list (Phase 2 ATS pipeline);
+surfacing/tuning the score thresholds.
+
 ## 14/06/2026 (c)
 Type: Feature
 

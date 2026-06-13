@@ -542,6 +542,27 @@ export interface AcceptTeamInviteResult {
   profile: Record<string, unknown>;
 }
 
+// ---------------------------------------------------------------------------
+// AI hiring recommendation — explainability (Phase 2)
+// ---------------------------------------------------------------------------
+
+export interface PhaseContribution {
+  phase: number;
+  phase_name: string;
+  overall: number;
+  weight: number;
+  contribution: number;
+}
+
+export interface Recommendation {
+  candidate_id: string;
+  interview_id: string | null;
+  final_score: number | null;
+  recommendation: string | null;
+  phase_breakdown: PhaseContribution[];
+  summary: string;
+}
+
 // Derived candidate status surfaced on the review screen. Combines the
 // caller's Decision (shortlisted/rejected/hold) with funnel state
 // (invited vs interview_completed) — not a stored column.

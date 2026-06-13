@@ -38,6 +38,7 @@ import type {
   IntegrityVolumeResponse,
   RecruiterAnalyticsFilters,
   RecruiterAnalyticsSummary,
+  Recommendation,
   RecruiterCandidateDetail,
   RecruiterDecision,
   RecruiterDecisionRow,
@@ -254,6 +255,11 @@ export const recruiterApi = {
 
   detail: (candidateId: string) =>
     fetchJson<RecruiterCandidateDetail>(`/recruiter/candidates/${candidateId}`),
+
+  // Explainable AI hiring recommendation (Phase 2) — reuses the interview
+  // scoring; returns the recommendation tier + per-phase weighted breakdown.
+  recommendation: (candidateId: string) =>
+    fetchJson<Recommendation>(`/recruiter/candidates/${candidateId}/recommendation`),
 
   setDecision: (candidateId: string, decision: RecruiterDecision) =>
     fetchJson<RecruiterDecisionRow>(
