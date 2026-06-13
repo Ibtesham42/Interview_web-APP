@@ -8,6 +8,11 @@ import { useCameraPresenceMonitor } from '../hooks/useCameraPresenceMonitor';
 import { useFaceMonitor } from '../hooks/useFaceMonitor';
 import { useSnapshotCapture } from '../hooks/useSnapshotCapture';
 import { playTerminationAlarm, playWarningChirp } from '../utils/proctorAlerts';
+import {
+  ANSWER_COUNTDOWN_SECONDS,
+  shouldRunAnswerCountdown,
+  nextCountdownValue,
+} from '../utils/interviewCountdown';
 import { CameraPreflight } from './integrity/CameraPreflight';
 import { CameraThumbnail } from './integrity/CameraThumbnail';
 import { IntegrityWarning } from './integrity/IntegrityWarning';
@@ -119,6 +124,13 @@ export function InterviewRoom() {
   const { startRecording, stopRecording, audioLevel, isSilence, error: micError } =
     useAudioRecorder();
 
+  // Auto-answer countdown (post-AI-speech). `countdown` is the seconds left
+  // while it's the candidate's turn and the mic is already granted; null means
+  // no countdown (manual tap). `micGranted` gates the auto-start so we never
+  // trigger a permission prompt automatically — safety requirement.
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const [micGranted, setMicGranted] = useState<boolean | null>(null);
+
   const audioRef = useRef<HTMLAudioElement>(null);
   const audioUrlRef = useRef<string | null>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
@@ -130,6 +142,35 @@ export function InterviewRoom() {
   useEffect(() => {
     const id = window.setInterval(() => setInterviewTime((t) => t + 1), 1000);
     return () => window.clearInterval(id);
+  }, []);
+
+  // Track whether mic permission is already granted WITHOUT prompting, so the
+  // auto-answer countdown only ever auto-starts a mic the candidate already
+  // allowed (safety requirement 5). Unknown/unsupported => treat as not granted
+  // (manual tap only). getUserMedia success later promotes this to true.
+  useEffect(() => {
+    const perms = navigator.permissions;
+    if (!perms?.query) {
+      setMicGranted(false);
+      return;
+    }
+    let cancelled = false;
+    let handle: PermissionStatus | null = null;
+    perms
+      .query({ name: 'microphone' as PermissionName })
+      .then((st) => {
+        if (cancelled) return;
+        handle = st;
+        setMicGranted(st.state === 'granted');
+        st.onchange = () => setMicGranted(st.state === 'granted');
+      })
+      .catch(() => {
+        if (!cancelled) setMicGranted(false);
+      });
+    return () => {
+      cancelled = true;
+      if (handle) handle.onchange = null;
+    };
   }, []);
 
   // Smooth auto-scroll as the transcript or turn state changes
@@ -400,21 +441,61 @@ export function InterviewRoom() {
     };
   }, [interviewId, navigate, soundTerminationAlarm]);
 
-  // Recording is only permitted when it is genuinely the user's turn.
-  const handleRecord = useCallback(async () => {
+  // Begin recording the answer — shared by the auto-start countdown, the
+  // "Start Answer Now" button and the mic button. Success confirms the mic is
+  // granted (so later turns auto-start); a failure marks it ungranted so the
+  // countdown can't re-fire into a denied-permission loop.
+  const startAnswer = useCallback(async () => {
+    setCountdown(null);
     setNotice(null);
+    try {
+      await startRecording();
+      setMicGranted(true);
+      setStatus('recording');
+    } catch {
+      setMicGranted(false); // micError surfaces the reason; fall back to manual
+      setStatus('ready');
+    }
+  }, [startRecording]);
 
+  // Stable ref so the countdown effect fires the latest startAnswer at zero
+  // without depending on it (which would restart the timer every render).
+  const startAnswerRef = useRef(startAnswer);
+  startAnswerRef.current = startAnswer;
+
+  // Auto-answer countdown: once it's the candidate's turn and the mic is
+  // already granted, tick down once per second. Any status change (new
+  // question, recording started, error, end) tears the timer down. The
+  // fire-at-zero lives in its own effect so this updater stays side-effect-free
+  // (safe under React StrictMode's double-invoke).
+  useEffect(() => {
+    if (!shouldRunAnswerCountdown(status, micGranted)) {
+      setCountdown(null);
+      return;
+    }
+    setCountdown(ANSWER_COUNTDOWN_SECONDS);
+    const id = window.setInterval(() => {
+      setCountdown((c) => (c === null ? c : nextCountdownValue(c)));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [status, micGranted]);
+
+  // When the countdown reaches zero, auto-start recording — exactly once per
+  // turn (startAnswer immediately clears the countdown, so this can't re-fire).
+  useEffect(() => {
+    if (countdown === 0) startAnswerRef.current();
+  }, [countdown]);
+
+  // Mic button: start the answer when it's the user's turn (also skips an
+  // active countdown), or stop + submit when recording.
+  const handleRecord = useCallback(async () => {
     if (status === 'ready') {
-      try {
-        await startRecording();
-        setStatus('recording');
-      } catch {
-        setStatus('ready'); // micError surfaces the reason
-      }
+      await startAnswer();
       return;
     }
 
     if (status === 'recording') {
+      setNotice(null);
       try {
         const { audioBlob, duration } = await stopRecording();
         if (!audioBlob || audioBlob.size < MIN_BLOB_BYTES || duration < MIN_DURATION_SEC) {
@@ -430,7 +511,7 @@ export function InterviewRoom() {
         setStatus('ready');
       }
     }
-  }, [status, startRecording, stopRecording]);
+  }, [status, startAnswer, stopRecording]);
 
   const handleEnd = useCallback(() => {
     interviewWs.sendEndInterview();
@@ -653,14 +734,41 @@ export function InterviewRoom() {
                 </>
               )}
 
-              {status === 'ready' && (
+              {status === 'ready' && countdown !== null && (
+                <>
+                  <span className="turn-pill ready">
+                    <span className="turn-dot" />
+                    Preparing microphone…
+                  </span>
+                  <div className="turn-countdown" aria-hidden="true">
+                    Recording starts in <strong>{countdown}</strong>{' '}
+                    second{countdown === 1 ? '' : 's'}…
+                  </div>
+                  <div className="turn-hint">
+                    Recording will start automatically — or start whenever you're ready.
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm turn-start-now"
+                    onClick={startAnswer}
+                  >
+                    Start Answer Now
+                  </button>
+                </>
+              )}
+
+              {status === 'ready' && countdown === null && (
                 <>
                   <span className="turn-pill ready">
                     <span className="turn-dot" />
                     Your turn
                   </span>
                   <div className="turn-title">Tap the mic to answer</div>
-                  <div className="turn-hint">Speak naturally — your answer is transcribed automatically.</div>
+                  <div className="turn-hint">
+                    {micGranted === false
+                      ? 'Microphone access is needed — tap the mic to enable it and answer.'
+                      : 'Speak naturally — your answer is transcribed automatically.'}
+                  </div>
                 </>
               )}
 

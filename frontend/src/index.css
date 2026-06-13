@@ -1928,6 +1928,19 @@ select.form-input option {
 .turn-error  { font-size: 0.8125rem; color: var(--accent-rose);  font-weight: 500; }
 .turn-notice { font-size: 0.8125rem; color: var(--accent-amber); font-weight: 500; }
 
+/* Auto-answer countdown (after the AI finishes speaking, before the mic
+   auto-starts). tabular-nums keeps the number from shifting width as it ticks. */
+.turn-countdown {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.turn-countdown strong {
+  color: var(--accent-green);
+  font-variant-numeric: tabular-nums;
+}
+.turn-start-now { margin-top: var(--space-xs); }
+
 .turn-dot {
   width: 8px;
   height: 8px;

@@ -23,6 +23,50 @@
 
 ---
 
+## 13/06/2026 (b)
+Type: Feature
+
+Auto-answer countdown in the interview room. After the AI finishes speaking, a
+visible countdown ("Recording starts in N seconds…", 10 → 1) runs and the mic
+auto-starts recording at zero, so the candidate no longer has to click the mic
+each turn. A "Start Answer Now" button (and the existing mic button) skip the
+countdown and begin immediately.
+
+Safety: the countdown only runs when microphone permission is ALREADY granted —
+queried via navigator.permissions WITHOUT prompting, and confirmed on the first
+successful getUserMedia. So the very first question stays manual (that tap
+establishes the grant) and every later turn auto-starts; a denied/blocked mic
+falls back to the manual "tap the mic" path with a clear message. A failed
+auto-start marks the mic ungranted so the countdown can't loop into a denied
+prompt.
+
+Frontend-only. The WS protocol, orchestrator, TTS/STT and useAudioRecorder are
+untouched — this is auto-START only, so the voice-ai "no auto-stop; the user
+controls recording duration" rule still holds. The strict turn state machine is
+unchanged; the countdown is a UI layer over the existing 'ready' status.
+
+Pure gate + tick logic extracted to utils/interviewCountdown.ts and unit-tested
+(component render tests aren't set up — CURRENT_TASKS). Verification: tsc clean,
+vitest 38 -> 43 (5 new), production build green. NOT browser-walked here — the
+live interview needs camera+mic grants + a running backend/Supabase, which isn't
+drivable headlessly; manual steps below.
+
+Manual verification (next browser session): (1) after Q1, grant mic via the mic
+button → from Q2 on, a 10→1 countdown shows and recording auto-starts at 0;
+(2) "Start Answer Now" during the countdown starts immediately; (3) deny mic →
+no countdown, manual path + clear message.
+
+Affected files: frontend/src/components/InterviewRoom.tsx,
+frontend/src/utils/interviewCountdown.ts (new),
+frontend/src/utils/__tests__/interviewCountdown.test.ts (new),
+frontend/src/index.css (.turn-countdown, .turn-start-now).
+Architectural impact: None — additive UI over the existing 'ready' turn state; no
+WS/orchestrator/recorder changes.
+Future considerations: countdown length is a single constant
+(ANSWER_COUNTDOWN_SECONDS=10) — could become a per-interview setting. Once
+@testing-library/react + jsdom land, add a render test for the countdown→auto-
+start→override flow.
+
 ## 13/06/2026 (a)
 Type: Fix
 
