@@ -41,6 +41,16 @@ export function JobFormModal({ job, onClose, onSaved }: JobFormModalProps) {
   const [employmentType, setEmploymentType] = useState(job?.employment_type ?? '');
   const [location, setLocation] = useState(job?.location ?? '');
   const [skills, setSkills] = useState((job?.required_skills ?? []).join(', '));
+  // Advanced interview flow (Phase 3): per-job tuning, stored in interview_config.
+  const initialConfig: Record<string, unknown> = job?.interview_config ?? {};
+  const [focusAreas, setFocusAreas] = useState(
+    Array.isArray(initialConfig.focus_areas)
+      ? (initialConfig.focus_areas as unknown[]).map(String).join(', ')
+      : '',
+  );
+  const [instructions, setInstructions] = useState(
+    typeof initialConfig.instructions === 'string' ? initialConfig.instructions : '',
+  );
   const [status, setStatus] = useState<JobStatus>(job?.status ?? 'draft');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,6 +77,12 @@ export function JobFormModal({ job, onClose, onSaved }: JobFormModalProps) {
       return;
     }
     setSaving(true);
+    // Build interview_config from the tuning fields. Empty -> {} so the
+    // interviewer prompt is unchanged for this job (strictly additive backend).
+    const interviewConfig: Record<string, unknown> = {};
+    const focus = focusAreas.split(',').map((s) => s.trim()).filter(Boolean);
+    if (focus.length) interviewConfig.focus_areas = focus;
+    if (instructions.trim()) interviewConfig.instructions = instructions.trim();
     const payload: JobCreatePayload = {
       title: title.trim(),
       slug: slug.trim().toLowerCase(),
@@ -78,6 +94,7 @@ export function JobFormModal({ job, onClose, onSaved }: JobFormModalProps) {
         .map((s) => s.trim())
         .filter(Boolean),
       status,
+      interview_config: interviewConfig,
     };
     try {
       const saved = isEdit
@@ -178,6 +195,39 @@ export function JobFormModal({ job, onClose, onSaved }: JobFormModalProps) {
               value={skills}
               onChange={(e) => setSkills(e.target.value)}
               placeholder="python, fastapi, postgres"
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label" htmlFor="job-focus">
+              Interview focus areas <span className="cell-sub">· optional, comma-separated</span>
+            </label>
+            <input
+              id="job-focus"
+              type="text"
+              className="form-input"
+              value={focusAreas}
+              onChange={(e) => setFocusAreas(e.target.value)}
+              placeholder="system design, scalability"
+            />
+            <p className="form-hint">
+              Extra emphasis the AI interviewer weaves in for this role. It adds to
+              the standard 5-phase interview — it doesn't replace it.
+            </p>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label" htmlFor="job-instructions">
+              Interviewer instructions <span className="cell-sub">· optional</span>
+            </label>
+            <textarea
+              id="job-instructions"
+              className="form-input"
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              rows={2}
+              maxLength={500}
+              placeholder="e.g. Probe trade-offs in their system-design answers."
             />
           </div>
 

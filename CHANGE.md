@@ -23,6 +23,41 @@
 
 ---
 
+## 14/06/2026 (h)
+Type: Feature
+
+Advanced Interview Flow (Phase 3, part 2) — per-job interviewer tuning. COMPLETES
+THE ROADMAP (Phases 1-3).
+
+Strictly ADDITIVE enrichment of the interviewer system prompt. The guarded
+realtime pipeline, turn flow, Matryoshka layer engine, scoring, evaluators, and
+WS protocol are UNCHANGED (ADR 0001 preserved).
+
+Backend (interview_orchestrator.py only):
+- The orchestrator self-loads the interview's job interview_config in
+  _load_interview (best-effort: absent job_id / pre-013 jobs table / no config ->
+  empty). New _job_focus_block() builds an optional "ROLE-SPECIFIC FOCUS" block
+  from interview_config.focus_areas + instructions, appended to base_prompt.
+  Empty config -> "" -> base_prompt BYTE-IDENTICAL to before (proven by a test).
+- +3 tests (empty -> no block + unchanged prompt; set -> appended emphasis; phase
+  structure intact). Backend 458 -> 461 green; full suite confirms no orchestrator
+  regression.
+
+Frontend:
+- JobFormModal gains optional "Interview focus areas" + "Interviewer instructions"
+  fields -> job.interview_config. Empty -> {} (no prompt change). tsc + build green.
+
+interview_config (jobs, migration 013) was reserved for exactly this — no new
+migration. interview_session.py untouched (the orchestrator self-loads).
+
+Affected files: backend/app/services/interview_orchestrator.py,
+backend/tests/test_advanced_flow.py (new),
+frontend/src/components/jobs/JobFormModal.tsx.
+Architectural impact: per-job prompt emphasis only; the realtime interview
+contract is unchanged. Job-less / unconfigured interviews are identical to before.
+Future considerations: adaptive difficulty + phase-weight overrides would reach
+into the layer engine / scoring (deferred — higher risk). ROADMAP COMPLETE.
+
 ## 14/06/2026 (g)
 Type: Feature
 

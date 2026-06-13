@@ -336,6 +336,12 @@ class InterviewOrchestrator:
         self._field_info: Optional[Dict[str, str]] = None
         self._project_cursor: int = 0
 
+        # Advanced interview flow (Phase 3): per-job interview tuning, loaded
+        # from the interview's job (if any) in _load_interview. Empty by default
+        # — a job-less interview or a job with no config produces a system
+        # prompt byte-identical to the pre-feature one (strictly additive).
+        self.interview_config: Dict[str, Any] = {}
+
         # Load interview from DB if ID is valid
         if interview_id:
             self._load_interview()
@@ -353,6 +359,23 @@ class InterviewOrchestrator:
                 interview = result.data[0]
                 self.current_phase = interview.get("current_phase", 1)
                 self.conversation_history = interview.get("conversation_history", [])
+                # Per-job interview tuning (Phase 3). Additive + best-effort: an
+                # absent job_id, a missing jobs table (pre-migration-013), or a
+                # job with no config all leave interview_config empty.
+                job_id = interview.get("job_id")
+                if job_id:
+                    job_rows = (
+                        self.supabase.table("jobs")
+                        .select("interview_config")
+                        .eq("id", job_id)
+                        .limit(1)
+                        .execute()
+                        .data
+                        or []
+                    )
+                    cfg = job_rows[0].get("interview_config") if job_rows else None
+                    if isinstance(cfg, dict):
+                        self.interview_config = cfg
         except Exception:
             pass
 
@@ -582,6 +605,36 @@ class InterviewOrchestrator:
                     labels.append(label[:80])
         return labels
 
+    def _job_focus_block(self) -> str:
+        """Per-job emphasis appended to the system prompt (advanced flow, Phase 3).
+
+        Strictly additive guidance built from the job's `interview_config` —
+        extra `focus_areas` (list) plus an optional free-text `instructions`.
+        Returns '' when neither is set, so a job-less interview's prompt is
+        unchanged. It NEVER alters the phase structure, Matryoshka layer engine,
+        scoring, or turn flow (ADR 0001): it only adds emphasis the interviewer
+        LLM weaves into its phrasing.
+        """
+        cfg = self.interview_config or {}
+        focus = cfg.get("focus_areas")
+        focus_list = (
+            ", ".join(str(f).strip() for f in focus if str(f).strip())
+            if isinstance(focus, list)
+            else ""
+        )
+        instructions = cfg.get("instructions")
+        instructions = instructions.strip() if isinstance(instructions, str) else ""
+        if not focus_list and not instructions:
+            return ""
+        lines = [
+            "ROLE-SPECIFIC FOCUS (for this job — added emphasis; it does NOT replace the structure above):"
+        ]
+        if focus_list:
+            lines.append(f"- Give extra attention to: {focus_list}.")
+        if instructions:
+            lines.append(f"- {instructions}")
+        return "\n" + "\n".join(lines) + "\n"
+
     async def get_interviewer_prompt(self, phase: int) -> str:
         """Return the system prompt for the interviewer for the given phase.
 
@@ -614,6 +667,9 @@ Topics are explored in nested layers, L1 (broad) to L5 (real-world depth). You w
 INTERVIEW FOCUS — {topics}
 RELEVANT TECHNICAL GROUND — {technical_questions}
 """
+        # Additive per-job emphasis — empty string for job-less interviews, so
+        # base_prompt is unchanged in that (overwhelmingly common) case.
+        base_prompt += self._job_focus_block()
 
         phase_prompts = {
             1: base_prompt + f"""
