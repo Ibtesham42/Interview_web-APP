@@ -23,6 +23,41 @@
 
 ---
 
+## 14/06/2026 (f)
+Type: Feature
+
+ATS Candidate Pipeline (Phase 2) — per-job candidate board. Completes Phase 2.
+
+Backend:
+- services/recruiter.job_pipeline: a job's candidates (via interviews.job_id),
+  each tagged with the CALLER's derived candidate status, reusing
+  _status_from_decision + score_interviews_bulk + this recruiter's decisions. NO
+  recruiter_decisions schema change — v1 uses the company-wide decision; per-job
+  decision scoping (UNIQUE(...,job_id) + backfill) is a deliberate follow-up
+  (ADR 0013 consequences), avoided here to keep prod-data migration risk at zero.
+- GET /api/recruiter/jobs/{job_id}/pipeline (get_current_recruiter; tenant-
+  validates the job via jobs_svc.get_for_company). JobPipeline* schemas.
+- +3 tests (grouping by derived status, cross-tenant 404, empty). Backend 448 ->
+  451 green.
+
+Frontend:
+- JobPipelineBoard.tsx + route /recruiter/jobs/:jobId (gated by manage_candidates):
+  a read-only Kanban with columns by status (In progress / Interviewed /
+  Shortlisted / On hold / Rejected); cards show score + recommendation + integrity
+  and link to the candidate detail (where decisions are made). JobsPage titles now
+  link to the board. recruiterApi.jobPipeline + types + board CSS.
+- tsc + vitest + build green. NOT browser-walked.
+
+Affected files: backend/app/models/schemas.py, backend/app/services/recruiter.py,
+backend/app/routers/recruiter.py, backend/tests/test_pipeline.py,
+frontend/src/types/index.ts, frontend/src/services/api.ts,
+frontend/src/components/jobs/JobPipelineBoard.tsx (new),
+frontend/src/components/jobs/JobsPage.tsx, frontend/src/App.tsx, frontend/src/index.css.
+Architectural impact: additive read endpoint reusing the recruiter aggregation;
+no decision-model change (decisions stay company-wide in v1).
+Future considerations: per-job decisions; drag-to-move would need persisted stage
+transitions. This entry completes the planned roadmap Phases 1 + 2.
+
 ## 14/06/2026 (e)
 Type: Feature
 

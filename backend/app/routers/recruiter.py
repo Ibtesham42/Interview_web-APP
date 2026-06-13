@@ -24,6 +24,9 @@ from app.models.schemas import (
     EmailSendRequest,
     HiringFunnelResponse,
     IntegrityVolumeResponse,
+    JobPipelineCandidate,
+    JobPipelineJob,
+    JobPipelineResponse,
     RecruiterBookmarkUpdate,
     RecruiterCandidateDetailResponse,
     RecruiterCandidateListResponse,
@@ -43,9 +46,11 @@ from app.services.recruiter import (
     RankFilters,
     candidate_tenant,
     get_candidate_detail,
+    job_pipeline,
     rank_candidates,
     upsert_recruiter_decision,
 )
+from app.services import jobs as jobs_svc
 from app.services.recruiter_analytics import (
     candidate_analytics_summary,
     hiring_funnel,
@@ -329,6 +334,32 @@ async def candidate_recommendation(
         recommendation=recommendation,
         phase_breakdown=breakdown,
         summary=summary,
+    )
+
+
+@router.get("/jobs/{job_id}/pipeline", response_model=JobPipelineResponse)
+async def job_pipeline_endpoint(job_id: str, user=Depends(get_current_recruiter)):
+    """Per-job candidate board (Phase 2 ATS): candidates who interviewed for this
+    job, each tagged with the caller's derived status so the UI groups them into
+    columns. Tenant-gated — the job must belong to the caller's company (a
+    platform admin without an act-as company gets 404)."""
+    supabase = get_supabase()
+    company_id = tenant_scope(user)
+    job = (
+        jobs_svc.get_for_company(supabase, job_id, company_id)
+        if company_id is not None
+        else None
+    )
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    rows = job_pipeline(
+        supabase, job_id=job_id, recruiter_id=user.id, company_id=company_id
+    )
+    return JobPipelineResponse(
+        job=JobPipelineJob(
+            id=job["id"], title=job["title"], slug=job["slug"], status=job["status"]
+        ),
+        candidates=[JobPipelineCandidate(**r) for r in rows],
     )
 
 

@@ -38,6 +38,7 @@ import type {
   IntegrityVolumeResponse,
   RecruiterAnalyticsFilters,
   RecruiterAnalyticsSummary,
+  JobPipelineResponse,
   Recommendation,
   RecruiterCandidateDetail,
   RecruiterDecision,
@@ -260,6 +261,10 @@ export const recruiterApi = {
   // scoring; returns the recommendation tier + per-phase weighted breakdown.
   recommendation: (candidateId: string) =>
     fetchJson<Recommendation>(`/recruiter/candidates/${candidateId}/recommendation`),
+
+  // Per-job ATS pipeline (Phase 2) — a job's candidates grouped by status.
+  jobPipeline: (jobId: string) =>
+    fetchJson<JobPipelineResponse>(`/recruiter/jobs/${jobId}/pipeline`),
 
   setDecision: (candidateId: string, decision: RecruiterDecision) =>
     fetchJson<RecruiterDecisionRow>(

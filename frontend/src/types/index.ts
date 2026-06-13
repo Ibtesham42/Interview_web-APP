@@ -563,6 +563,34 @@ export interface Recommendation {
   summary: string;
 }
 
+// ---------------------------------------------------------------------------
+// ATS pipeline — per-job candidate board (Phase 2)
+// ---------------------------------------------------------------------------
+
+export interface JobPipelineCandidate {
+  candidate_id: string;
+  name: string;
+  email: string | null;
+  field_specialization: string;
+  final_score: number;
+  recommendation: string;
+  status: CandidateStatus;
+  decision: RecruiterDecision;
+  integrity_warnings: number;
+}
+
+export interface JobPipelineJob {
+  id: string;
+  title: string;
+  slug: string;
+  status: JobStatus;
+}
+
+export interface JobPipelineResponse {
+  job: JobPipelineJob;
+  candidates: JobPipelineCandidate[];
+}
+
 // Derived candidate status surfaced on the review screen. Combines the
 // caller's Decision (shortlisted/rejected/hold) with funnel state
 // (invited vs interview_completed) — not a stored column.

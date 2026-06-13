@@ -17,6 +17,7 @@ import { RecruiterDashboard } from './components/recruiter/RecruiterDashboard';
 import { RecruiterCandidateDetail } from './components/recruiter/RecruiterCandidateDetail';
 import { RecruiterAnalytics } from './components/recruiter/RecruiterAnalytics';
 import { JobsPage } from './components/jobs/JobsPage';
+import { JobPipelineBoard } from './components/jobs/JobPipelineBoard';
 import { CompanySignup } from './components/companies/CompanySignup';
 import { Settings } from './components/companies/Settings';
 import { Apply } from './components/apply/Apply';
@@ -153,6 +154,8 @@ function App() {
           <Route path="/recruiter/analytics" element={protectedShell(<RecruiterAnalytics />, { requires: 'manage_candidates' })} />
           {/* Job requisitions — manage_jobs (hiring role + tenant), migration 013. */}
           <Route path="/recruiter/jobs" element={protectedShell(<JobsPage />, { requires: 'manage_jobs' })} />
+          {/* Per-job ATS pipeline board — manage_candidates (the endpoint tenant-scopes the job). */}
+          <Route path="/recruiter/jobs/:jobId" element={protectedShell(<JobPipelineBoard />, { requires: 'manage_candidates' })} />
           <Route path="/recruiter/candidates/:candidateId" element={protectedShell(<RecruiterCandidateDetail />, { requires: 'manage_candidates' })} />
 
           {/* Dev-only design-system showcase (Phase 1). Gated to DEV so it is

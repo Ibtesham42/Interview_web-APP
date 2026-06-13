@@ -449,6 +449,106 @@ def rank_candidates(
     }
 
 
+def job_pipeline(
+    supabase,
+    *,
+    job_id: str,
+    recruiter_id: str,
+    company_id: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Candidates in a job's pipeline (via interviews.job_id), each tagged with
+    the CALLER's derived candidate status so the board can group by stage.
+
+    Reuses the recruiter list's aggregation (bulk score + this recruiter's
+    decisions + `_status_from_decision`). Tenant scope: the router validates the
+    job belongs to the caller's company; `company_id` filters the candidate
+    fetch as defense-in-depth. v1 uses the company-wide decision (per-job
+    decision scoping is a deliberate follow-up — see ADR 0013 consequences).
+    """
+    interviews = (
+        supabase.table("interviews")
+        .select("id,candidate_id,status,created_at")
+        .eq("job_id", job_id)
+        .execute()
+        .data
+        or []
+    )
+    candidate_ids = list({iv["candidate_id"] for iv in interviews if iv.get("candidate_id")})
+    if not candidate_ids:
+        return []
+
+    cand_q = (
+        supabase.table("candidates")
+        .select("id,name,email,field_specialization,created_at")
+        .in_("id", candidate_ids)
+    )
+    if company_id is not None:
+        cand_q = cand_q.eq("company_id", company_id)
+    candidates = cand_q.execute().data or []
+    if not candidates:
+        return []
+
+    interview_ids = [iv["id"] for iv in interviews]
+    iv_scores = score_interviews_bulk(supabase, interview_ids)
+
+    integrity_counts: Dict[str, int] = {}
+    try:
+        rows = (
+            supabase.table("interview_integrity_events")
+            .select("interview_id")
+            .in_("interview_id", interview_ids)
+            .execute()
+            .data
+            or []
+        )
+        for row in rows:
+            iid = row.get("interview_id")
+            if iid:
+                integrity_counts[iid] = integrity_counts.get(iid, 0) + 1
+    except Exception:  # noqa: BLE001 — integrity is supplemental
+        integrity_counts = {}
+
+    decision_rows = (
+        supabase.table("recruiter_decisions")
+        .select("candidate_id,decision")
+        .eq("recruiter_id", recruiter_id)
+        .in_("candidate_id", candidate_ids)
+        .execute()
+        .data
+        or []
+    )
+    decisions = {r["candidate_id"]: r for r in decision_rows}
+
+    ivs_by_cand: Dict[str, List[Dict[str, Any]]] = {}
+    for iv in interviews:
+        ivs_by_cand.setdefault(iv["candidate_id"], []).append(iv)
+
+    result: List[Dict[str, Any]] = []
+    for cand in candidates:
+        ivs = ivs_by_cand.get(cand["id"], [])
+        scored = [iv_scores.get(iv["id"], {"score": 0}) for iv in ivs]
+        completed_scores = [
+            s["score"] for iv, s in zip(ivs, scored)
+            if iv.get("status") == "completed" and s["score"] > 0
+        ]
+        best = max(completed_scores) if completed_scores else 0.0
+        has_completed = any(iv.get("status") == "completed" for iv in ivs)
+        warnings = sum(integrity_counts.get(iv["id"], 0) for iv in ivs)
+        drow = decisions.get(cand["id"], {})
+        result.append({
+            "candidate_id": cand["id"],
+            "name": cand.get("name", "Candidate"),
+            "email": cand.get("email"),
+            "field_specialization": cand.get("field_specialization") or "general",
+            "final_score": best,
+            "recommendation": recommendation_for(best) if best > 0 else "",
+            "status": _status_from_decision(drow.get("decision", "undecided"), has_completed),
+            "decision": drow.get("decision", "undecided"),
+            "integrity_warnings": warnings,
+        })
+    return result
+
+
 def get_candidate_detail(
     supabase,
     candidate_id: str,

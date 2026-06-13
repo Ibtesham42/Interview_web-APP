@@ -686,3 +686,35 @@ class RecommendationResponse(BaseModel):
     recommendation: Optional[str] = None
     phase_breakdown: List[PhaseContribution] = Field(default_factory=list)
     summary: str
+
+
+# ---------------------------------------------------------------------------
+# ATS pipeline — per-job candidate board (Phase 2)
+# ---------------------------------------------------------------------------
+
+class JobPipelineJob(BaseModel):
+    id: UUID
+    title: str
+    slug: str
+    status: str
+
+
+class JobPipelineCandidate(BaseModel):
+    """A candidate in a job's pipeline. `status` is the caller's derived
+    candidate status (the same lifecycle label as the recruiter list — ADR
+    0011), which the board groups into columns. Decision is company-wide in this
+    v1 (per-job decisions are a follow-up)."""
+    candidate_id: UUID
+    name: str
+    email: Optional[str] = None
+    field_specialization: str
+    final_score: float
+    recommendation: str
+    status: str
+    decision: str
+    integrity_warnings: int
+
+
+class JobPipelineResponse(BaseModel):
+    job: JobPipelineJob
+    candidates: List[JobPipelineCandidate]

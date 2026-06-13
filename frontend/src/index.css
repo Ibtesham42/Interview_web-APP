@@ -866,6 +866,35 @@ a:hover { color: var(--primary); }
 .replay-phase-name { font-size: 0.8125rem; color: var(--text-secondary); }
 .replay-integrity { font-size: 0.8125rem; color: var(--text-tertiary); }
 
+/* ATS pipeline board (Phase 2) */
+.pipeline-job-link { font-weight: 600; color: var(--text-primary); text-decoration: none; }
+.pipeline-job-link:hover { color: var(--primary); text-decoration: underline; }
+.pipeline-board {
+  display: grid; grid-auto-flow: column;
+  grid-auto-columns: minmax(220px, 1fr); gap: var(--space-md);
+  overflow-x: auto; padding-bottom: var(--space-sm); align-items: start;
+}
+.pipeline-col {
+  background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md); padding: var(--space-sm);
+  display: flex; flex-direction: column; gap: var(--space-sm); min-height: 7rem;
+}
+.pipeline-col-head {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 0.8125rem; font-weight: 600; color: var(--text-secondary); padding: 2px 4px;
+}
+.pipeline-col-count { color: var(--text-tertiary); font-weight: 500; }
+.pipeline-card {
+  display: block; background: var(--bg-primary); border: 1px solid var(--border-default);
+  border-radius: var(--radius-md); padding: var(--space-sm);
+  text-decoration: none; color: inherit; transition: border-color var(--transition-fast);
+}
+.pipeline-card:hover { border-color: var(--primary); }
+.pipeline-card-name { font-weight: 600; font-size: 0.875rem; color: var(--text-primary); }
+.pipeline-card-meta { display: flex; align-items: center; gap: var(--space-xs); flex-wrap: wrap; margin: 4px 0; }
+.pipeline-card-field { font-size: 0.75rem; color: var(--text-tertiary); }
+.pipeline-empty-col { font-size: 0.75rem; color: var(--text-tertiary); padding: var(--space-xs) 4px; }
+
 /* ========================================
    EMAIL COMPOSER MODAL + PRIOR-MESSAGES LIST
    Multi-tenant PR 7

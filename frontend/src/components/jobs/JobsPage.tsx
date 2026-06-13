@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { jobsApi } from '../../services/api';
 import { Button } from '../Button';
 import { Badge, Card, EmptyState } from '../ui';
@@ -161,7 +162,9 @@ export function JobsPage() {
                 {jobs.map((job) => (
                   <tr key={job.id}>
                     <td>
-                      <div className="cell-name">{job.title}</div>
+                      <Link to={`/recruiter/jobs/${job.id}`} className="pipeline-job-link">
+                        {job.title}
+                      </Link>
                       <div className="cell-sub">/{job.slug}</div>
                     </td>
                     <td>
