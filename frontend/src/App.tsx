@@ -15,6 +15,7 @@ import { AdminCompanyDetail } from './components/admin/AdminCompanyDetail';
 import { RecruiterDashboard } from './components/recruiter/RecruiterDashboard';
 import { RecruiterCandidateDetail } from './components/recruiter/RecruiterCandidateDetail';
 import { RecruiterAnalytics } from './components/recruiter/RecruiterAnalytics';
+import { JobsPage } from './components/jobs/JobsPage';
 import { CompanySignup } from './components/companies/CompanySignup';
 import { Settings } from './components/companies/Settings';
 import { Apply } from './components/apply/Apply';
@@ -139,6 +140,8 @@ function App() {
               admits HIRING_ROLES (recruiter + tenant admins). */}
           <Route path="/recruiter" element={protectedShell(<RecruiterDashboard />, { requires: 'manage_candidates' })} />
           <Route path="/recruiter/analytics" element={protectedShell(<RecruiterAnalytics />, { requires: 'manage_candidates' })} />
+          {/* Job requisitions — manage_jobs (hiring role + tenant), migration 013. */}
+          <Route path="/recruiter/jobs" element={protectedShell(<JobsPage />, { requires: 'manage_jobs' })} />
           <Route path="/recruiter/candidates/:candidateId" element={protectedShell(<RecruiterCandidateDetail />, { requires: 'manage_candidates' })} />
 
           {/* Dev-only design-system showcase (Phase 1). Gated to DEV so it is

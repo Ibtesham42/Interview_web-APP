@@ -450,6 +450,56 @@ export type RecruiterDecision = 'shortlisted' | 'rejected' | 'undecided' | 'hold
 // management). Maps to the backend ?template= query param.
 export type EmailTemplateKind = 'shortlist' | 'rejection';
 
+// ---------------------------------------------------------------------------
+// Jobs / requisitions (migration 013 — job-centric ATS keystone)
+// ---------------------------------------------------------------------------
+
+export type JobStatus = 'draft' | 'open' | 'closed';
+
+export interface Job {
+  id: string;
+  company_id: string;
+  title: string;
+  slug: string;
+  description: string | null;
+  required_skills: string[];
+  employment_type: string | null;
+  location: string | null;
+  status: JobStatus;
+  interview_config: Record<string, unknown>;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface JobListResponse {
+  items: Job[];
+}
+
+export interface JobCreatePayload {
+  title: string;
+  slug: string;
+  description?: string;
+  required_skills?: string[];
+  employment_type?: string;
+  location?: string;
+  status?: JobStatus;
+  interview_config?: Record<string, unknown>;
+}
+
+export type JobUpdatePayload = Partial<JobCreatePayload>;
+
+// Public, un-authed apply view of an OPEN job (/api/jobs/public/...).
+export interface JobPublic {
+  company_slug: string;
+  company_name: string;
+  title: string;
+  slug: string;
+  description: string | null;
+  employment_type: string | null;
+  location: string | null;
+}
+
 // Derived candidate status surfaced on the review screen. Combines the
 // caller's Decision (shortlisted/rejected/hold) with funnel state
 // (invited vs interview_completed) — not a stored column.

@@ -89,6 +89,14 @@ function NavIcon({ name }: { name: string }) {
           <line x1="8" y1="12" x2="16" y2="12" />
         </svg>
       );
+    case 'jobs':
+      return (
+        <svg {...common}>
+          <rect x="3" y="7" width="18" height="13" rx="2" />
+          <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+          <path d="M3 12h18" />
+        </svg>
+      );
     default:
       return null;
   }
@@ -121,6 +129,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
     items.push({ to: '/recruiter', label: 'Candidates', icon: 'candidates', end: true });
     items.push({ to: '/recruiter/analytics', label: 'Analytics', icon: 'analytics' });
   }
+  if (can('manage_jobs')) items.push({ to: '/recruiter/jobs', label: 'Jobs', icon: 'jobs' });
   if (can('manage_company_settings')) items.push({ to: '/admin/settings', label: 'Settings', icon: 'settings' });
   if (role === 'user') {
     items.push({ to: '/dashboard', label: 'Dashboard', icon: 'dashboard' });

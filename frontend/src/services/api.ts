@@ -16,6 +16,12 @@ import type {
   InviteCandidateResponse,
   Interview,
   InterviewReport,
+  Job,
+  JobCreatePayload,
+  JobListResponse,
+  JobPublic,
+  JobStatus,
+  JobUpdatePayload,
   Evaluation,
   DashboardData,
   AdminOverview,
@@ -349,6 +355,23 @@ export const companiesApi = {
   inviteDraft: (toEmail: string, candidateName: string) =>
     fetchJson<EmailDraft>(
       `/companies/invite/draft?to_email=${encodeURIComponent(toEmail)}&candidate_name=${encodeURIComponent(candidateName)}`,
+    ),
+};
+
+// Jobs API — job requisitions (migration 013). Tenant CRUD is gated by the
+// `manage_jobs` capability on the backend; `publicLookup` is the un-authed
+// apply view of an OPEN job.
+export const jobsApi = {
+  list: (status?: JobStatus) =>
+    fetchJson<JobListResponse>(`/jobs/${status ? `?status=${status}` : ''}`),
+  get: (id: string) => fetchJson<Job>(`/jobs/${id}`),
+  create: (data: JobCreatePayload) =>
+    fetchJson<Job>('/jobs/', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: JobUpdatePayload) =>
+    fetchJson<Job>(`/jobs/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  publicLookup: (companySlug: string, jobSlug: string) =>
+    fetchJson<JobPublic>(
+      `/jobs/public/${encodeURIComponent(companySlug)}/${encodeURIComponent(jobSlug)}`,
     ),
 };
 

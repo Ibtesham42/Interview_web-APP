@@ -4040,6 +4040,29 @@ a.iv-row:hover {
   gap: var(--space-xs);
 }
 
+/* Jobs — create/edit modal form (migration 013) */
+.job-form-panel {
+  max-width: 560px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.job-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.job-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-md);
+}
+
+@media (max-width: 540px) {
+  .job-form-row { grid-template-columns: 1fr; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .modal-backdrop { animation: none; }
 }

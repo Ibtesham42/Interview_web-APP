@@ -23,6 +23,39 @@
 
 ---
 
+## 13/06/2026 (e)
+Type: Feature
+
+Job Management — recruiter-facing jobs UI (Phase 1 keystone, frontend slice;
+builds on the migration-013 backend in entries (c)/(d)).
+
+- Frontend Job types + jobsApi (list/get/create/update + public OPEN-only
+  lookup) in services/api.ts.
+- components/jobs/JobsPage.tsx (tenant job board: status filter, table,
+  one-click open/close, create/edit modal) + JobFormModal.tsx (create/edit
+  form; slug auto-derived from title until edited; skills as a comma-separated
+  list mapped to the string[] API).
+- Route /recruiter/jobs gated by the manage_jobs capability (ADR 0007 pattern);
+  a "Jobs" nav item + briefcase icon in AppShell, gated by can('manage_jobs').
+- Reuses the recruiter page/table/modal design-system classes + the shared
+  Button/Badge/Card/EmptyState primitives — no new UI system.
+
+Verification: tsc clean, vitest 43 green, production build green. NOT
+browser-walked here (needs the running app + auth + migration 013 applied);
+manual check: as a recruiter/company_admin, open Jobs -> create -> toggle
+open/close -> edit.
+
+Affected files: frontend/src/types/index.ts, frontend/src/services/api.ts,
+frontend/src/components/jobs/JobsPage.tsx (new),
+frontend/src/components/jobs/JobFormModal.tsx (new), frontend/src/App.tsx,
+frontend/src/components/layout/AppShell.tsx, frontend/src/index.css.
+Architectural impact: None new — UI over the existing /api/jobs endpoints;
+capability-gated route + nav.
+Future considerations: the per-job candidate apply landing
+(/apply/{companySlug}/{jobSlug}) is the remaining Jobs UI piece —
+jobsApi.publicLookup is already in place for it. Per-job pipeline view comes
+with Phase 2 (ATS). Jobs ADR still to write.
+
 ## 13/06/2026 (d)
 Type: Feature
 
