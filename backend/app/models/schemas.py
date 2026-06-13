@@ -718,3 +718,22 @@ class JobPipelineCandidate(BaseModel):
 class JobPipelineResponse(BaseModel):
     job: JobPipelineJob
     candidates: List[JobPipelineCandidate]
+
+
+# ---------------------------------------------------------------------------
+# Resume matching — JD skill overlap + gap analysis (Phase 3)
+# ---------------------------------------------------------------------------
+
+class JobMatchCandidate(BaseModel):
+    candidate_id: UUID
+    name: str
+    email: Optional[str] = None
+    match_score: int  # 0-100, share of required skills found in the resume
+    matched_skills: List[str]
+    missing_skills: List[str]
+
+
+class JobMatchesResponse(BaseModel):
+    job: JobPipelineJob
+    required_skills: List[str]
+    matches: List[JobMatchCandidate]

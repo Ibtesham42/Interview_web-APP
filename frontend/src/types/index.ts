@@ -591,6 +591,21 @@ export interface JobPipelineResponse {
   candidates: JobPipelineCandidate[];
 }
 
+export interface JobMatchCandidate {
+  candidate_id: string;
+  name: string;
+  email: string | null;
+  match_score: number;
+  matched_skills: string[];
+  missing_skills: string[];
+}
+
+export interface JobMatchesResponse {
+  job: JobPipelineJob;
+  required_skills: string[];
+  matches: JobMatchCandidate[];
+}
+
 // Derived candidate status surfaced on the review screen. Combines the
 // caller's Decision (shortlisted/rejected/hold) with funnel state
 // (invited vs interview_completed) — not a stored column.

@@ -23,6 +23,45 @@
 
 ---
 
+## 14/06/2026 (g)
+Type: Feature
+
+Resume Matching (Phase 3, part 1) — deterministic JD skill-overlap + gap analysis.
+
+VALIDATION FIRST (per the plan): the platform's vector path
+(ml_questions.embedding) is a NON-operational stub — a VECTOR(384) column vs the
+only embed helper using OpenAI text-embedding-3-small (1536-dim), gated on an
+often-unset OPENAI_API_KEY, called "the (unused) embedding seed" in config.py
+(the retriever falls back to keyword overlap). So matching is built NOT on
+embeddings but on what's operational: the parsed resume_sections.skills +
+resume_text vs jobs.required_skills (migration 013). No migration, no new
+dependency, no candidate writes (advisory, user-input-authoritative).
+
+Backend:
+- services/resume_match.py: skill_match (pure: required vs resume skills/text ->
+  0-100 score + matched/missing) + job_matches (rank a job's applicants).
+- GET /api/recruiter/jobs/{job_id}/matches (tenant-validated). JobMatch schemas.
+- +7 tests (skill_match incl. resume_text fallback + dict-shaped skills; endpoint
+  ranking + gap + cross-tenant 404). Backend 451 -> 458 green.
+
+Frontend:
+- components/jobs/JobMatchesView.tsx as a "Resume match" tab on the job page
+  (JobPipelineBoard now has Pipeline | Resume match tabs): applicants ranked by
+  match %, matched (green) / missing (struck-through) skill chips, linking to the
+  candidate detail. recruiterApi.jobMatches + types + tab/chip CSS.
+- tsc + vitest + build green. NOT browser-walked.
+
+Affected files: backend/app/services/resume_match.py (new),
+backend/app/models/schemas.py, backend/app/routers/recruiter.py,
+backend/tests/test_matching.py (new), frontend/src/types/index.ts,
+frontend/src/services/api.ts, frontend/src/components/jobs/JobMatchesView.tsx (new),
+frontend/src/components/jobs/JobPipelineBoard.tsx, frontend/src/index.css.
+Architectural impact: None new — additive read reusing resume_sections + jobs;
+the embedding stub is left untouched.
+Future considerations: semantic matching (LLM via the operational Groq client, or
+fix the 384-dim embedding column); match the full tenant pool (sourcing) not just
+applicants; weighted skills. Leaves Advanced Interview Flow as the final roadmap item.
+
 ## 14/06/2026 (f)
 Type: Feature
 

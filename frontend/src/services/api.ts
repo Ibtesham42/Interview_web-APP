@@ -38,6 +38,7 @@ import type {
   IntegrityVolumeResponse,
   RecruiterAnalyticsFilters,
   RecruiterAnalyticsSummary,
+  JobMatchesResponse,
   JobPipelineResponse,
   Recommendation,
   RecruiterCandidateDetail,
@@ -265,6 +266,10 @@ export const recruiterApi = {
   // Per-job ATS pipeline (Phase 2) — a job's candidates grouped by status.
   jobPipeline: (jobId: string) =>
     fetchJson<JobPipelineResponse>(`/recruiter/jobs/${jobId}/pipeline`),
+
+  // Resume matching (Phase 3) — a job's applicants ranked by JD skill overlap.
+  jobMatches: (jobId: string) =>
+    fetchJson<JobMatchesResponse>(`/recruiter/jobs/${jobId}/matches`),
 
   setDecision: (candidateId: string, decision: RecruiterDecision) =>
     fetchJson<RecruiterDecisionRow>(

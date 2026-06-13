@@ -24,6 +24,8 @@ from app.models.schemas import (
     EmailSendRequest,
     HiringFunnelResponse,
     IntegrityVolumeResponse,
+    JobMatchCandidate,
+    JobMatchesResponse,
     JobPipelineCandidate,
     JobPipelineJob,
     JobPipelineResponse,
@@ -51,6 +53,7 @@ from app.services.recruiter import (
     upsert_recruiter_decision,
 )
 from app.services import jobs as jobs_svc
+from app.services import resume_match
 from app.services.recruiter_analytics import (
     candidate_analytics_summary,
     hiring_funnel,
@@ -360,6 +363,31 @@ async def job_pipeline_endpoint(job_id: str, user=Depends(get_current_recruiter)
             id=job["id"], title=job["title"], slug=job["slug"], status=job["status"]
         ),
         candidates=[JobPipelineCandidate(**r) for r in rows],
+    )
+
+
+@router.get("/jobs/{job_id}/matches", response_model=JobMatchesResponse)
+async def job_matches_endpoint(job_id: str, user=Depends(get_current_recruiter)):
+    """Resume screening for a job (Phase 3): the job's applicants ranked by how
+    well their parsed resume covers the job's required_skills, with the matched
+    and missing skills (gap analysis). Deterministic + advisory — no embeddings,
+    no candidate writes. Tenant-gated like the pipeline."""
+    supabase = get_supabase()
+    company_id = tenant_scope(user)
+    job = (
+        jobs_svc.get_for_company(supabase, job_id, company_id)
+        if company_id is not None
+        else None
+    )
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    rows = resume_match.job_matches(supabase, job=job, company_id=company_id)
+    return JobMatchesResponse(
+        job=JobPipelineJob(
+            id=job["id"], title=job["title"], slug=job["slug"], status=job["status"]
+        ),
+        required_skills=job.get("required_skills") or [],
+        matches=[JobMatchCandidate(**r) for r in rows],
     )
 
 

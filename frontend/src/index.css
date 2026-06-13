@@ -895,6 +895,34 @@ a:hover { color: var(--primary); }
 .pipeline-card-field { font-size: 0.75rem; color: var(--text-tertiary); }
 .pipeline-empty-col { font-size: 0.75rem; color: var(--text-tertiary); padding: var(--space-xs) 4px; }
 
+/* Job-detail tabs (Pipeline | Resume match) */
+.job-tabs {
+  display: flex; gap: var(--space-xs);
+  border-bottom: 1px solid var(--border-subtle); margin-bottom: var(--space-md);
+}
+.job-tab {
+  appearance: none; background: none; border: none; border-bottom: 2px solid transparent;
+  padding: var(--space-xs) var(--space-sm); min-height: 40px; font: inherit; font-weight: 500;
+  color: var(--text-secondary); cursor: pointer;
+}
+.job-tab.active { color: var(--text-primary); border-bottom-color: var(--primary); }
+.job-tab:focus-visible { outline: 3px solid var(--border-focus); outline-offset: -3px; }
+
+/* Resume match list (Phase 3) */
+.match-list { display: flex; flex-direction: column; gap: var(--space-sm); }
+.match-row {
+  display: block; border: 1px solid var(--border-default); border-radius: var(--radius-md);
+  padding: var(--space-sm) var(--space-md); text-decoration: none; color: inherit;
+  transition: border-color var(--transition-fast);
+}
+.match-row:hover { border-color: var(--primary); }
+.match-row-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-sm); }
+.match-name { font-weight: 600; color: var(--text-primary); }
+.match-skills { display: flex; flex-wrap: wrap; gap: 4px; margin-top: var(--space-xs); }
+.skill-chip { font-size: 0.75rem; padding: 1px 8px; border-radius: var(--radius-full); }
+.skill-chip.matched { background: rgba(5, 150, 105, 0.14); color: var(--accent-green); }
+.skill-chip.missing { background: var(--bg-tertiary); color: var(--text-tertiary); text-decoration: line-through; }
+
 /* ========================================
    EMAIL COMPOSER MODAL + PRIOR-MESSAGES LIST
    Multi-tenant PR 7

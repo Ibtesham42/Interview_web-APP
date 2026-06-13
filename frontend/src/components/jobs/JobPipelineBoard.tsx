@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { recruiterApi } from '../../services/api';
 import { Badge, Card, EmptyState } from '../ui';
 import type { BadgeVariant } from '../ui';
+import { JobMatchesView } from './JobMatchesView';
 import type { CandidateStatus, JobPipelineCandidate, JobPipelineResponse } from '../../types';
 
 // Pipeline columns, left -> right. Labels are board-friendly; the values are
@@ -62,6 +63,7 @@ export function JobPipelineBoard() {
   const [data, setData] = useState<JobPipelineResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<'pipeline' | 'matches'>('pipeline');
 
   useEffect(() => {
     if (!jobId) return;
@@ -116,12 +118,35 @@ export function JobPipelineBoard() {
           <Link to="/recruiter/jobs" className="back-link">← Jobs</Link>
           <h1>{data.job.title}</h1>
           <p className="page-sub">
-            Pipeline · {total} candidate{total === 1 ? '' : 's'} · job is {data.job.status}
+            {total} candidate{total === 1 ? '' : 's'} · job is {data.job.status}
           </p>
         </div>
       </div>
 
-      {total === 0 ? (
+      <div className="job-tabs" role="tablist" aria-label="Job views">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'pipeline'}
+          className={`job-tab${tab === 'pipeline' ? ' active' : ''}`}
+          onClick={() => setTab('pipeline')}
+        >
+          Pipeline
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'matches'}
+          className={`job-tab${tab === 'matches' ? ' active' : ''}`}
+          onClick={() => setTab('matches')}
+        >
+          Resume match
+        </button>
+      </div>
+
+      {tab === 'matches' ? (
+        jobId && <JobMatchesView jobId={jobId} />
+      ) : total === 0 ? (
         <Card>
           <EmptyState
             title="No candidates yet"
