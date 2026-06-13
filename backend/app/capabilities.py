@@ -117,6 +117,14 @@ CAPABILITIES: Dict[str, Predicate] = {
     # Candidates. Tenant scope enforced at the handler via
     # `_resolve_candidate_tenant`; this gate is role-only.
     "manage_candidates": lambda ctx: ctx.role in HIRING_ROLES,
+
+    # Job requisitions — create / edit / open / close jobs (migration 013).
+    # Same predicate shape as invite_candidate: a hiring role AND a tenant.
+    # Admin without a company_id honestly fails (no jobs to own); jobs are
+    # tenant-scoped in the handler via tenant_scope.
+    "manage_jobs": lambda ctx: (
+        ctx.role in HIRING_ROLES and ctx.company_id is not None
+    ),
 }
 
 
@@ -161,9 +169,12 @@ def requires(capability_name: str):
         @router.post("/invite")
         async def invite(
             body: ...,
-            ctx = Depends(requires("invite_candidate")),
+            ctx = requires("invite_candidate"),
         ):
             ...
+
+    Note: `requires(...)` already returns a `Depends(...)` marker — assign it
+    directly, do NOT wrap it in another `Depends()`.
     """
     # Sanity check at module-load (when route decorator runs) — a
     # typo in the capability name surfaces here rather than at first

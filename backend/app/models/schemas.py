@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime
 from uuid import UUID
 
@@ -45,6 +45,10 @@ class InterviewCreate(InterviewBase):
     # the caller's allowed companies (profile company + invitations). Omitted
     # = the candidate row's company, falling back to the caller's primary.
     company_id: Optional[UUID] = None
+    # Optional job requisition this interview is for (migration 013). Validated
+    # to belong to the resolved company; NULL = a general (job-less) interview,
+    # the pre-013 behaviour, so the realtime pipeline is unchanged.
+    job_id: Optional[UUID] = None
 
 
 class MessageContent(BaseModel):
@@ -59,6 +63,9 @@ class InterviewResponse(InterviewBase):
     conversation_history: Optional[List[Dict[str, Any]]] = []
     created_at: datetime
     completed_at: Optional[datetime] = None
+    # Job requisition this interview is tied to, or None for a job-less
+    # (candidate-centric) interview (migration 013).
+    job_id: Optional[UUID] = None
 
     class Config:
         from_attributes = True
@@ -359,6 +366,10 @@ class InviteCandidateRequest(BaseModel):
     candidate_name: Optional[str] = Field(None, max_length=120)
     subject: Optional[str] = Field(None, min_length=1, max_length=200)
     body: Optional[str] = Field(None, min_length=1, max_length=20_000)
+    # Optional job this invite targets (migration 013). Validated to belong to
+    # the sender's company; recorded on the invitation ledger row. NULL = a
+    # general company invite (the pre-013 behaviour).
+    job_id: Optional[UUID] = None
 
 
 class InviteCandidateResponse(BaseModel):
@@ -510,3 +521,81 @@ class EmailOutboxRow(BaseModel):
 
 class EmailListResponse(BaseModel):
     items: List[EmailOutboxRow]
+
+
+# ---------------------------------------------------------------------------
+# Jobs / requisitions (migration 013 — job-centric ATS keystone)
+# ---------------------------------------------------------------------------
+
+JobStatus = Literal["draft", "open", "closed"]
+
+
+class JobCreate(BaseModel):
+    """POST /api/jobs/ body. `slug` is unique PER COMPANY and forms the
+    public apply URL /apply/{company_slug}/{job_slug} — same shape as the
+    company slug. `required_skills` is a flat list the matcher (later
+    phase) consumes; `interview_config` is per-job interview tuning, an
+    empty object meaning "use platform defaults" so the orchestrator is
+    untouched until a company sets it."""
+    title: str = Field(..., min_length=2, max_length=120)
+    slug: str = Field(..., min_length=3, max_length=60, pattern=r"^[a-z][a-z0-9-]*$")
+    description: Optional[str] = Field(None, max_length=20_000)
+    required_skills: List[str] = Field(default_factory=list)
+    employment_type: Optional[str] = Field(None, max_length=60)
+    location: Optional[str] = Field(None, max_length=160)
+    status: JobStatus = "draft"
+    interview_config: Dict[str, Any] = Field(default_factory=dict)
+
+
+class JobUpdate(BaseModel):
+    """PATCH /api/jobs/{id} body — every field optional (partial update).
+    Slug is editable here (unlike company slug, which is immutable) since a
+    requisition title can change before it goes live; uniqueness per company
+    is still enforced. Absent fields are left unchanged."""
+    title: Optional[str] = Field(None, min_length=2, max_length=120)
+    slug: Optional[str] = Field(None, min_length=3, max_length=60, pattern=r"^[a-z][a-z0-9-]*$")
+    description: Optional[str] = Field(None, max_length=20_000)
+    required_skills: Optional[List[str]] = None
+    employment_type: Optional[str] = Field(None, max_length=60)
+    location: Optional[str] = Field(None, max_length=160)
+    status: Optional[JobStatus] = None
+    interview_config: Optional[Dict[str, Any]] = None
+
+
+class JobResponse(BaseModel):
+    """Tenant-side job row (recruiter/company_admin view)."""
+    id: UUID
+    company_id: UUID
+    title: str
+    slug: str
+    description: Optional[str] = None
+    required_skills: List[str] = Field(default_factory=list)
+    employment_type: Optional[str] = None
+    location: Optional[str] = None
+    status: JobStatus
+    interview_config: Dict[str, Any] = Field(default_factory=dict)
+    created_by: Optional[UUID] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class JobListResponse(BaseModel):
+    items: List[JobResponse]
+
+
+class JobPublicResponse(BaseModel):
+    """GET /api/jobs/{company_slug}/{job_slug} — public, no auth. Only an
+    'open' job is served; the candidate-facing apply page reads this. Carries
+    the company label so the landing page can render "<Job> at <Company>"
+    without a second call. Internal fields (interview_config, status,
+    created_by) are intentionally omitted."""
+    company_slug: str
+    company_name: str
+    title: str
+    slug: str
+    description: Optional[str] = None
+    employment_type: Optional[str] = None
+    location: Optional[str] = None

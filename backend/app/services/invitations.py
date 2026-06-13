@@ -32,11 +32,16 @@ def upsert_invitation(
     email: str,
     candidate_name: Optional[str] = None,
     invited_by: Optional[str] = None,
+    job_id: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Record an invitation; a re-invite of the same (company, email) is a
     no-op (the unique constraint keeps one row). Returns the row, or None
     when the write failed (missing table — logged, never raised: the
     invite email itself is the pre-existing behaviour and must not break).
+
+    `job_id` (migration 013) is stamped on a NEW invitation row. The ledger is
+    unique per (company, email), so a re-invite keeps its original job link —
+    per-job invitation rows are a later (ATS pipeline) refinement.
     """
     addr = normalize_email(email)
     if not addr:
@@ -46,6 +51,7 @@ def upsert_invitation(
         "email": addr,
         "candidate_name": (candidate_name or "").strip() or None,
         "invited_by": invited_by,
+        "job_id": job_id,
     }
     try:
         existing = (

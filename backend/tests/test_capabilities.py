@@ -157,6 +157,30 @@ class TestCanManageCandidates:
 
 
 # ---------------------------------------------------------------------------
+# `manage_jobs` — HIRING_ROLES AND a tenant (migration 013). Same shape as
+# invite_candidate: platform admin without a company honestly fails.
+# ---------------------------------------------------------------------------
+
+class TestCanManageJobs:
+    def test_company_admin_in_tenant_can(self):
+        assert can(_ctx(role="company_admin", company_id="c-1"), "manage_jobs")
+
+    def test_recruiter_in_tenant_can(self):
+        assert can(_ctx(role="recruiter", company_id="c-1"), "manage_jobs")
+
+    def test_platform_admin_no_tenant_cannot(self):
+        """Same honest dead-end as invite_candidate: admin is in
+        HIRING_ROLES but has no company_id to own jobs under."""
+        assert not can(_ctx(role="admin", company_id=None), "manage_jobs")
+
+    def test_b2c_user_cannot(self):
+        assert not can(_ctx(role="user", company_id=None), "manage_jobs")
+
+    def test_b2b_applicant_cannot(self):
+        assert not can(_ctx(role="user", company_id="c-1"), "manage_jobs")
+
+
+# ---------------------------------------------------------------------------
 # can() error semantics — unknown capability raises KeyError.
 # ---------------------------------------------------------------------------
 
@@ -217,7 +241,7 @@ class TestMatrixCompleteness:
         capability."""
         tested = {
             "create_company", "invite_candidate", "manage_company_settings",
-            "see_admin_overview", "manage_candidates",
+            "see_admin_overview", "manage_candidates", "manage_jobs",
         }
         missing = set(CAPABILITIES.keys()) - tested
         assert not missing, (

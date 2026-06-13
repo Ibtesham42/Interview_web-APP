@@ -35,6 +35,7 @@ from app.models.schemas import (
     InviteCandidateResponse,
 )
 from app.services import email as email_svc
+from app.services import jobs as jobs_svc
 from app.services.email_templates import default_invite_template
 from app.services.invitations import upsert_invitation
 from app.supabase_client import get_supabase
@@ -412,6 +413,15 @@ async def invite_candidate(
 
     supabase = get_supabase()
 
+    # Optional job link (migration 013): validate it belongs to the sender's
+    # company before recording it on the invitation ledger. NULL = a general
+    # company invite (the pre-013 behaviour).
+    job_id = None
+    if body.job_id is not None:
+        if jobs_svc.get_for_company(supabase, str(body.job_id), ctx.company_id) is None:
+            raise HTTPException(status_code=400, detail="Job not found for this company.")
+        job_id = str(body.job_id)
+
     # Look up the company so the email body includes the company name
     # + the right apply slug. This is one extra SELECT per invite; the
     # caller's TenantContext gives us company_id but not the human
@@ -441,6 +451,7 @@ async def invite_candidate(
         email=body.to_email,
         candidate_name=body.candidate_name,
         invited_by=ctx.id,
+        job_id=job_id,
     )
 
     try:

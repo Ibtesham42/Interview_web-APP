@@ -55,6 +55,10 @@ export const CAPABILITIES: Record<string, Predicate> = {
 
   // manage_candidates — HIRING_ROLES, tenant scope enforced by handler.
   manage_candidates: (ctx) => inHiringRoles(ctx.role),
+
+  // manage_jobs — HIRING_ROLES AND company_id IS NOT NULL (migration 013).
+  // Same shape as invite_candidate; admin without a tenant honestly fails.
+  manage_jobs: (ctx) => inHiringRoles(ctx.role) && hasCompany(ctx.company_id),
 };
 
 export type CapabilityName = keyof typeof CAPABILITIES;

@@ -167,6 +167,21 @@ class TestUpsertInvitation:
         # An accepted invitation is never demoted by a re-invite.
         assert supabase._store["candidate_invitations"][0]["status"] == "accepted"
 
+    def test_stamps_job_id_on_new_invitation(self):
+        """Migration 013: a job-targeted invite records job_id on the row."""
+        supabase = _supabase({"candidate_invitations": []})
+        upsert_invitation(
+            supabase, company_id=COMPANY_A, email="cand@example.com",
+            job_id="job-123",
+        )
+        assert supabase._store["candidate_invitations"][0]["job_id"] == "job-123"
+
+    def test_job_id_defaults_to_none(self):
+        """A general (job-less) invite keeps the pre-013 shape."""
+        supabase = _supabase({"candidate_invitations": []})
+        upsert_invitation(supabase, company_id=COMPANY_A, email="cand@example.com")
+        assert supabase._store["candidate_invitations"][0]["job_id"] is None
+
     def test_reinvite_revives_declined(self):
         supabase = _supabase({"candidate_invitations": [{
             "id": "inv-1", "company_id": COMPANY_A,

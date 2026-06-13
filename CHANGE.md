@@ -23,6 +23,70 @@
 
 ---
 
+## 13/06/2026 (d)
+Type: Feature
+
+Job Management — thread job_id into interview-create + invite (Phase 1 keystone,
+backend slice 2; builds on migration 013 in entry (c)).
+
+- InterviewCreate / InterviewResponse and InviteCandidateRequest gain an
+  optional job_id (nullable). create_interview (routers/interviews.py) and
+  companies.invite_candidate both validate the job belongs to the resolved /
+  sender company — reusing the tenant-scoped jobs_svc.get_for_company — and 400
+  on a cross-tenant job, then stamp interviews.job_id / candidate_invitations.job_id.
+  upsert_invitation carries job_id on new ledger rows.
+- NULL job_id everywhere keeps the candidate-centric flow AND the realtime
+  interview pipeline unchanged (additive only).
+- +3 tests (ledger job_id stamping + default; invite cross-company job -> 400).
+  Backend 430 -> 433 green.
+
+Affected files: backend/app/models/schemas.py, backend/app/routers/interviews.py,
+backend/app/routers/companies.py, backend/app/services/invitations.py,
+backend/tests/test_invitations.py, backend/tests/test_jobs.py.
+Architectural impact: interviews + invitations can now reference a job; still
+additive (nullable) — no turn-flow / WS / scoring changes.
+Future considerations: candidate_invitations is unique per (company, email), so
+job_id reflects the invitation row, not a per-job invite — per-job invitation
+rows come with the ATS pipeline slice. A job-aware invite email template is a
+follow-up. Next: jobs UI (list/form/detail) + per-job apply landing, then the
+jobs ADR, then Team/Role management.
+
+## 13/06/2026 (c)
+Type: Feature
+
+Job Management — Phase 1 keystone of the hiring roadmap (the candidate-centric ->
+job-aware pivot). BACKEND FOUNDATION ONLY this commit; frontend, job_id
+threading, and Team management follow as separate slices.
+
+- Migration 013_jobs.sql: `jobs` table (company_id, title, slug unique-per-company,
+  description, required_skills jsonb, employment_type, location, status
+  draft|open|closed, interview_config jsonb, created_by, created_at, updated_at)
+  + NULLABLE interviews.job_id + candidate_invitations.job_id. Nullable by design
+  so every existing candidate-centric interview/invite AND the realtime pipeline
+  are untouched. Service-role-only RLS. NOT yet applied to the hosted Supabase.
+- Capability `manage_jobs` (HIRING_ROLES + a tenant) in capabilities.py + the TS
+  mirror + test_capabilities. Also fixed the misleading `requires()` docstring:
+  it already returns Depends(...), so assign it directly — wrapping in another
+  Depends() double-wraps and fails at import (caught here as the first consumer).
+- Schemas: JobCreate / JobUpdate / JobResponse / JobListResponse / JobPublicResponse.
+- services/jobs.py (tenant-scoped list/get/create/update + public OPEN-only
+  lookup) + routers/jobs.py (CRUD gated by manage_jobs + public GET
+  /public/{company_slug}/{job_slug}), registered at /api/jobs.
+- tests/test_jobs.py + manage_jobs capability tests: +20. Backend 410 -> 430
+  green; frontend tsc + vitest green.
+
+Affected files: backend/app/migrations/013_jobs.sql, backend/app/capabilities.py,
+backend/app/models/schemas.py, backend/app/services/jobs.py,
+backend/app/routers/jobs.py, backend/app/main.py,
+frontend/src/services/capabilities.ts, backend/tests/test_jobs.py,
+backend/tests/test_capabilities.py.
+Architectural impact: introduces the jobs domain; job_id is nullable everywhere,
+so the candidate-centric flow + the guarded realtime interview pipeline are
+unchanged. A new ADR (candidate-centric -> job-aware) is still to be written.
+Future considerations: apply migration 013 to the hosted Supabase; next slices —
+thread job_id into interview-create + invite, jobs UI + per-job apply landing,
+then Team/Role management; then Phase 2.
+
 ## 13/06/2026 (b)
 Type: Feature
 
@@ -50,6 +114,12 @@ Pure gate + tick logic extracted to utils/interviewCountdown.ts and unit-tested
 vitest 38 -> 43 (5 new), production build green. NOT browser-walked here — the
 live interview needs camera+mic grants + a running backend/Supabase, which isn't
 drivable headlessly; manual steps below.
+
+Deployed: commit 50cb29b pushed to main; Vercel production
+(interview-web-app-lyart.vercel.app) rebuilt and CONFIRMED live — the served
+bundle (index-DwgZZb-h.js) contains the commit-unique markers "Start Answer Now"
++ "Recording starts in" (verified by fetching the deployed JS; no gh/vercel CLI
+in the env). Render unaffected (frontend-only change).
 
 Manual verification (next browser session): (1) after Q1, grant mic via the mic
 button → from Q2 on, a 10→1 countdown shows and recording auto-starts at 0;

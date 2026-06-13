@@ -38,6 +38,7 @@ from app.supabase_client import get_supabase
 from app.auth import get_current_user, get_tenant_context
 from app.routers.candidates import resolve_target_company
 from app.services.invitations import mark_accepted
+from app.services import jobs as jobs_svc
 
 router = APIRouter()
 
@@ -103,6 +104,23 @@ async def create_interview(
         if cand_rows and cand_rows[0].get("company_id"):
             company_id = cand_rows[0]["company_id"]
 
+    # Optional job link (migration 013): validate it belongs to the resolved
+    # company so an interview can never be stamped with another tenant's job.
+    # NULL job_id keeps the pre-013 candidate-centric behaviour.
+    job_id = None
+    if interview.job_id is not None:
+        if not company_id:
+            raise HTTPException(
+                status_code=400,
+                detail="A job-linked interview requires a company.",
+            )
+        if jobs_svc.get_for_company(supabase, str(interview.job_id), company_id) is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Job not found for this company.",
+            )
+        job_id = str(interview.job_id)
+
     result = supabase.table("interviews").insert({
         "candidate_id": str(interview.candidate_id),
         "job_description": interview.job_description,
@@ -111,6 +129,7 @@ async def create_interview(
         "conversation_history": [],
         "user_id": user.id,
         "company_id": company_id,
+        "job_id": job_id,
     }).execute()
 
     if not result.data:
