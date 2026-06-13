@@ -9,6 +9,7 @@ import { Dashboard } from './components/Dashboard';
 import { CandidateUpload } from './components/CandidateUpload';
 import { InterviewRoom } from './components/InterviewRoom';
 import { Report } from './components/Report';
+import { InterviewReplay } from './components/InterviewReplay';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 import { AdminUserDetail } from './components/admin/AdminUserDetail';
 import { AdminCompanyDetail } from './components/admin/AdminCompanyDetail';
@@ -114,6 +115,8 @@ function App() {
 
           {/* Reports — viewable by candidates (own) and admins (oversight) */}
           <Route path="/report/:interviewId" element={protectedShell(<Report />)} />
+          {/* Interview replay — same access as the report (endpoints gate it). */}
+          <Route path="/replay/:interviewId" element={protectedShell(<InterviewReplay />)} />
 
           {/* Self-serve company signup — multi-tenant PR 3. Reachable
               by ANY visitor including signed-out (Fix 2, 2026-05-29):

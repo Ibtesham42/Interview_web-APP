@@ -829,6 +829,43 @@ a:hover { color: var(--primary); }
 .rec-bar-track { height: 6px; border-radius: 999px; background: var(--bg-tertiary); overflow: hidden; }
 .rec-bar-fill { height: 100%; border-radius: 999px; background: var(--primary); }
 
+/* Interview replay (Phase 2) — step-through player */
+.replay-stage {
+  display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: var(--space-lg); align-items: start;
+}
+@media (max-width: 768px) { .replay-stage { grid-template-columns: 1fr; } }
+.replay-convo { min-height: 9rem; }
+.replay-camera-fig { margin: 0; }
+.replay-camera-img {
+  width: 100%; display: block; border-radius: var(--radius-md);
+  border: 1px solid var(--border-default);
+}
+.replay-camera-cap {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-sm); margin-top: var(--space-xs);
+  font-size: 0.75rem; color: var(--text-tertiary);
+}
+.replay-camera-empty {
+  display: flex; align-items: center; justify-content: center; min-height: 9rem;
+  border: 1px dashed var(--border-default); border-radius: var(--radius-md);
+  color: var(--text-tertiary); font-size: 0.875rem;
+}
+.replay-controls {
+  display: flex; align-items: center; gap: var(--space-md);
+  margin-top: var(--space-lg); flex-wrap: wrap;
+}
+.replay-slider { flex: 1; min-width: 8rem; }
+.replay-pos { font-size: 0.8125rem; color: var(--text-secondary); white-space: nowrap; }
+.replay-meta {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-md); flex-wrap: wrap;
+}
+.replay-phases { display: flex; gap: var(--space-md); flex-wrap: wrap; }
+.replay-phase { display: flex; align-items: center; gap: var(--space-xs); }
+.replay-phase-name { font-size: 0.8125rem; color: var(--text-secondary); }
+.replay-integrity { font-size: 0.8125rem; color: var(--text-tertiary); }
+
 /* ========================================
    EMAIL COMPOSER MODAL + PRIOR-MESSAGES LIST
    Multi-tenant PR 7

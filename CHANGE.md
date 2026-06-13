@@ -23,6 +23,33 @@
 
 ---
 
+## 14/06/2026 (e)
+Type: Feature
+
+Interview Replay (Phase 2) — step-through player, frontend-only.
+
+- components/InterviewReplay.tsx + route /replay/:interviewId (same access as the
+  report — the report + snapshots endpoints gate owner/tenant/admin).
+- Steps through the recorded transcript turn by turn (prev / next / slider),
+  shows the proctoring snapshot from around that point (proportional match, since
+  turns aren't timestamped yet — labelled with the snapshot's real capture time),
+  plus a phase-score + integrity summary. Reuses reportApi.get +
+  interviewApi.listSnapshots and the existing .tr-* / .phase-pill classes +
+  Card/Badge/EmptyState.
+- A "Watch replay" link added on the report (when a transcript exists).
+- NO backend change — pure re-presentation of already-persisted data, so the
+  guarded realtime interview pipeline is untouched.
+
+tsc + vitest + build green. NOT browser-walked (needs the running app + a
+completed interview). Follow-up (deliberately deferred to keep this slice off the
+realtime path): stamp each conversation turn with a timestamp for exact per-turn
+snapshot sync + a real time axis; auto-play.
+
+Affected files: frontend/src/components/InterviewReplay.tsx (new),
+frontend/src/App.tsx, frontend/src/components/Report.tsx, frontend/src/index.css.
+Architectural impact: None — UI over the existing report/snapshots endpoints.
+Future considerations: per-turn timestamps; auto-play; deep-link a turn.
+
 ## 14/06/2026 (d)
 Type: Feature
 

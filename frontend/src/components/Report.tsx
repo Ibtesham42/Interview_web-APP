@@ -328,6 +328,9 @@ export function Report() {
       {/* Actions */}
       <div className="report-actions">
         <Link to="/dashboard" className="btn btn-secondary btn-lg">Back to Dashboard</Link>
+        {transcript.length > 0 && (
+          <Link to={`/replay/${interviewId}`} className="btn btn-secondary btn-lg">Watch replay</Link>
+        )}
         <Link to="/new" className="btn btn-primary btn-lg">New Interview</Link>
       </div>
 
