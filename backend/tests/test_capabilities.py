@@ -181,6 +181,27 @@ class TestCanManageJobs:
 
 
 # ---------------------------------------------------------------------------
+# `manage_team` — TENANT_ADMINS AND a tenant (migration 014). Recruiters are
+# deliberately EXCLUDED so they can't escalate the tenant's headcount.
+# ---------------------------------------------------------------------------
+
+class TestCanManageTeam:
+    def test_company_admin_in_tenant_can(self):
+        assert can(_ctx(role="company_admin", company_id="c-1"), "manage_team")
+
+    def test_recruiter_cannot(self):
+        """The key privilege-escalation guard: a recruiter manages candidates
+        and jobs but cannot add teammates."""
+        assert not can(_ctx(role="recruiter", company_id="c-1"), "manage_team")
+
+    def test_platform_admin_no_tenant_cannot(self):
+        assert not can(_ctx(role="admin", company_id=None), "manage_team")
+
+    def test_b2c_user_cannot(self):
+        assert not can(_ctx(role="user", company_id=None), "manage_team")
+
+
+# ---------------------------------------------------------------------------
 # can() error semantics — unknown capability raises KeyError.
 # ---------------------------------------------------------------------------
 
@@ -242,6 +263,7 @@ class TestMatrixCompleteness:
         tested = {
             "create_company", "invite_candidate", "manage_company_settings",
             "see_admin_overview", "manage_candidates", "manage_jobs",
+            "manage_team",
         }
         missing = set(CAPABILITIES.keys()) - tested
         assert not missing, (

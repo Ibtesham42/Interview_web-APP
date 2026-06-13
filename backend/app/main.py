@@ -16,6 +16,7 @@ from app.routers.profile import router as profile_router
 from app.routers.recruiter import router as recruiter_router
 from app.routers.companies import router as companies_router
 from app.routers.jobs import router as jobs_router
+from app.routers.team import router as team_router
 from app.routers.apply import router as apply_router
 from app.routers.invitations import router as invitations_router
 from app.routers.webhooks import router as webhooks_router
@@ -68,6 +69,8 @@ app.include_router(recruiter_router, prefix="/api/recruiter", tags=["recruiter"]
 app.include_router(companies_router, prefix="/api/companies", tags=["companies"])
 # Job requisitions — tenant CRUD (manage_jobs) + public apply lookup (migration 013).
 app.include_router(jobs_router, prefix="/api/jobs", tags=["jobs"])
+# Team management — invite/revoke/accept teammates to hiring roles (migration 014).
+app.include_router(team_router, prefix="/api/team", tags=["team"])
 # Candidate-facing invitation ledger (list/accept/decline) — migration 011.
 app.include_router(invitations_router, prefix="/api/invitations", tags=["invitations"])
 # apply.py has two routes (apply/{slug} public + auth/claim-company authed)

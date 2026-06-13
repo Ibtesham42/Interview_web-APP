@@ -599,3 +599,90 @@ class JobPublicResponse(BaseModel):
     description: Optional[str] = None
     employment_type: Optional[str] = None
     location: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Team / role management (migration 014)
+# ---------------------------------------------------------------------------
+
+TeamRole = Literal["recruiter", "company_admin"]
+
+
+class TeamMemberRow(BaseModel):
+    """A current member of a company — a profiles row with a hiring role."""
+    id: UUID
+    email: str = ""
+    full_name: Optional[str] = None
+    role: str
+
+
+class TeamInvitationRow(BaseModel):
+    id: UUID
+    email: str
+    role: str
+    status: str
+    invited_by: Optional[UUID] = None
+    created_at: datetime
+
+
+class TeamResponse(BaseModel):
+    members: List[TeamMemberRow]
+    invitations: List[TeamInvitationRow]
+
+
+class TeamInviteRequest(BaseModel):
+    """POST /api/team/invite — invite a teammate to a hiring role. `role` is
+    restricted to the two tenant-side roles (you can't mint a platform admin)."""
+    email: str = Field(..., min_length=5, max_length=320,
+                       pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    role: TeamRole = "recruiter"
+
+
+class TeamInviteResponse(BaseModel):
+    """The created invitation plus the email outcome, so the SPA shows instant
+    sent/failed feedback (same shape posture as the candidate invite)."""
+    id: UUID
+    email: str
+    role: str
+    status: str
+    email_status: str
+    email_error: Optional[str] = None
+
+
+class AcceptTeamInviteRequest(BaseModel):
+    company_slug: str = Field(..., min_length=1, max_length=40)
+
+
+class AcceptTeamInviteResponse(BaseModel):
+    company_id: UUID
+    role: str
+    profile: Dict[str, Any]
+
+
+# ---------------------------------------------------------------------------
+# AI hiring recommendation — explainability (Phase 2)
+# ---------------------------------------------------------------------------
+
+class PhaseContribution(BaseModel):
+    """How one assessed phase contributes to the final weighted score. The
+    `contribution` values across phases sum to `final_score` — the 'why'
+    behind the recommendation, derived from the existing scoring functions."""
+    phase: int
+    phase_name: str
+    overall: float
+    weight: float
+    contribution: float
+
+
+class RecommendationResponse(BaseModel):
+    """GET /api/recruiter/candidates/{id}/recommendation. Reuses the
+    deterministic interview scoring (compute_phase_scores / compute_final_score
+    / recommendation_for) over the candidate's best interview and exposes the
+    per-phase breakdown so a recruiter sees why, not just a number. Advisory —
+    never an automated decision."""
+    candidate_id: UUID
+    interview_id: Optional[UUID] = None
+    final_score: Optional[float] = None
+    recommendation: Optional[str] = None
+    phase_breakdown: List[PhaseContribution] = Field(default_factory=list)
+    summary: str

@@ -59,6 +59,10 @@ export const CAPABILITIES: Record<string, Predicate> = {
   // manage_jobs — HIRING_ROLES AND company_id IS NOT NULL (migration 013).
   // Same shape as invite_candidate; admin without a tenant honestly fails.
   manage_jobs: (ctx) => inHiringRoles(ctx.role) && hasCompany(ctx.company_id),
+
+  // manage_team — TENANT_ADMINS AND company_id IS NOT NULL (migration 014).
+  // Only company_admin/admin (NOT recruiter) can invite/revoke teammates.
+  manage_team: (ctx) => inTenantAdmins(ctx.role) && hasCompany(ctx.company_id),
 };
 
 export type CapabilityName = keyof typeof CAPABILITIES;

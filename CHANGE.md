@@ -23,6 +23,60 @@
 
 ---
 
+## 14/06/2026 (b)
+Type: Feature
+
+Phase 2 kickoff — AI Hiring Recommendation (explainability), backend.
+
+GET /api/recruiter/candidates/{id}/recommendation: reuses the deterministic
+scoring (compute_phase_scores / compute_final_score / recommendation_for +
+PHASE_WEIGHTS / PHASE_NAMES) over the candidate's best-scoring interview and
+returns the per-phase weighted breakdown — the `contribution` values sum to
+`final_score`, so a recruiter sees WHY, not just a number. Tenant-gated (reuses
+_resolve_candidate_tenant); one bulk score query (no N+1); advisory only (reads,
+never writes a decision — user-input-authoritative rule). +2 tests including the
+contributions-sum-to-final invariant. Backend 446 -> 448 green; no migration.
+
+Affected files: backend/app/models/schemas.py (PhaseContribution +
+RecommendationResponse), backend/app/routers/recruiter.py,
+backend/tests/test_recommendation.py.
+Architectural impact: None — additive read over the existing scoring functions.
+Future considerations: per-job ranking endpoint (needs the ATS pipeline); a
+recommendation panel on the candidate detail UI; surfacing the score thresholds.
+
+## 14/06/2026 (a)
+Type: Feature
+
+Team / Role Management — self-serve teammate onboarding (Phase 1 track), backend.
+
+Replaces the manual-Supabase-console task of adding a recruiter:
+- Migration 014_team_invitations.sql: team_invitations ledger (company_id, email,
+  role recruiter|company_admin, status pending|accepted|revoked, invited_by,
+  accepted_user_id, UNIQUE(company_id, email)). Service-role RLS. Membership still
+  lives on profiles (role + company_id) — unchanged; this is only the invite ledger.
+- manage_team capability (TENANT_ADMINS + a tenant — Recruiters EXCLUDED, the
+  privilege-escalation guard) in capabilities.py + TS mirror + test.
+- services/team.py + routers/team.py at /api/team: GET /team (members from
+  profiles + pending invitations), POST /team/invite (invite + a deliverability-
+  clean team-invite email via the existing email service), POST
+  /team/invitations/{id}/revoke (tenant-scoped), POST /team/accept (authed; the
+  caller's email must match the pending invite; only a plain 'user' may accept ->
+  profile stamped with role + company). default_team_invite_template added.
+- +13 tests (invite/revive, revoke cross-tenant 404, accept identity + role
+  guards, members listing excludes candidates + other tenants). Backend 433 ->
+  446 green.
+
+Affected files: backend/app/migrations/014_team_invitations.sql,
+backend/app/capabilities.py, frontend/src/services/capabilities.ts,
+backend/app/models/schemas.py, backend/app/services/team.py,
+backend/app/services/email_templates.py, backend/app/routers/team.py,
+backend/app/main.py, backend/tests/test_team.py, backend/tests/test_capabilities.py.
+Architectural impact: new team_invitations ledger; the membership model on
+profiles is unchanged (one user, one company, one role). manage_team gates against
+recruiter privilege escalation.
+Future considerations: a /team/accept frontend route + a Settings team panel UI;
+member offboarding; multi-company membership stays out of scope (one-company model).
+
 ## 13/06/2026 (g)
 Type: Decision
 

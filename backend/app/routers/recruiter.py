@@ -27,6 +27,8 @@ from app.models.schemas import (
     RecruiterBookmarkUpdate,
     RecruiterCandidateDetailResponse,
     RecruiterCandidateListResponse,
+    PhaseContribution,
+    RecommendationResponse,
     RecruiterDecisionRow,
     RecruiterDecisionUpdate,
     RecruiterNotesUpdate,
@@ -49,6 +51,14 @@ from app.services.recruiter_analytics import (
     hiring_funnel,
     integrity_event_volume,
     scores_by_field,
+)
+from app.services.interview_orchestrator import (
+    PHASE_NAMES,
+    PHASE_WEIGHTS,
+    compute_final_score,
+    compute_phase_scores,
+    recommendation_for,
+    score_interviews_bulk,
 )
 from app.supabase_client import get_supabase
 
@@ -232,6 +242,95 @@ async def set_notes(
 # Analytics (PR 6) — funnel + scores + integrity volume. All bulk-query
 # aggregations; see services/recruiter_analytics.py.
 # ---------------------------------------------------------------------------
+
+@router.get(
+    "/candidates/{candidate_id}/recommendation",
+    response_model=RecommendationResponse,
+)
+async def candidate_recommendation(
+    candidate_id: UUID, user=Depends(get_current_recruiter)
+):
+    """Explainable hiring recommendation for a candidate (Phase 2).
+
+    Reuses the deterministic interview scoring (compute_phase_scores /
+    compute_final_score / recommendation_for) over the candidate's
+    BEST-scoring interview, and returns the per-phase weighted breakdown — the
+    `contribution` values sum to `final_score` — so the recruiter sees WHY, not
+    just a number. Tenant-gated; a single bulk score query (no N+1). Advisory
+    only: it reads, never writes a decision (user-input-authoritative rule)."""
+    supabase = get_supabase()
+    _resolve_candidate_tenant(supabase, candidate_id, user)
+
+    interviews = (
+        supabase.table("interviews")
+        .select("id")
+        .eq("candidate_id", str(candidate_id))
+        .execute()
+        .data
+        or []
+    )
+    scored = score_interviews_bulk(supabase, [iv["id"] for iv in interviews])
+
+    # The candidate's strongest interview that actually produced a score.
+    best_id = None
+    best_score = 0.0
+    for iv_id, s in scored.items():
+        if s["score"] > best_score:
+            best_id, best_score = iv_id, s["score"]
+
+    if best_id is None:
+        return RecommendationResponse(
+            candidate_id=candidate_id,
+            summary=(
+                "No scored interview yet — the recommendation appears once the "
+                "candidate completes an interview."
+            ),
+        )
+
+    evals = (
+        supabase.table("evaluations")
+        .select("phase,depth_score,accuracy_score,clarity_score,details")
+        .eq("interview_id", best_id)
+        .execute()
+        .data
+        or []
+    )
+    phase_scores = compute_phase_scores(evals)
+    final_score = compute_final_score(phase_scores)
+    recommendation = recommendation_for(final_score)
+
+    total_weight = sum(w for p, w in PHASE_WEIGHTS.items() if p in phase_scores)
+    breakdown = []
+    for phase, weight in PHASE_WEIGHTS.items():
+        if phase not in phase_scores:
+            continue
+        overall = float(phase_scores[phase].get("overall", 0) or 0)
+        contribution = round(overall * weight / total_weight, 2) if total_weight else 0.0
+        breakdown.append(PhaseContribution(
+            phase=phase,
+            phase_name=PHASE_NAMES.get(phase, f"Phase {phase}"),
+            overall=overall,
+            weight=weight,
+            contribution=contribution,
+        ))
+
+    strongest = max(breakdown, key=lambda b: b.overall) if breakdown else None
+    plural = "s" if len(breakdown) != 1 else ""
+    summary = (
+        f"{recommendation}: weighted score {final_score}/10 across "
+        f"{len(breakdown)} assessed phase{plural}"
+        + (f"; strongest in {strongest.phase_name}." if strongest else ".")
+    )
+
+    return RecommendationResponse(
+        candidate_id=candidate_id,
+        interview_id=best_id,
+        final_score=final_score,
+        recommendation=recommendation,
+        phase_breakdown=breakdown,
+        summary=summary,
+    )
+
 
 @router.get("/analytics/funnel", response_model=HiringFunnelResponse)
 async def analytics_funnel(user=Depends(get_current_recruiter)):

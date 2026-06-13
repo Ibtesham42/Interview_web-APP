@@ -125,6 +125,14 @@ CAPABILITIES: Dict[str, Predicate] = {
     "manage_jobs": lambda ctx: (
         ctx.role in HIRING_ROLES and ctx.company_id is not None
     ),
+
+    # Team management — invite / revoke teammates to hiring roles (migration
+    # 014). TENANT_ADMINS only (company_admin / platform admin) + a tenant: a
+    # Recruiter cannot add teammates, so a compromised recruiter account can't
+    # escalate the tenant's headcount. Same shape as manage_company_settings.
+    "manage_team": lambda ctx: (
+        ctx.role in TENANT_ADMINS and ctx.company_id is not None
+    ),
 }
 
 

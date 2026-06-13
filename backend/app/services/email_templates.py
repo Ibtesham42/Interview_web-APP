@@ -159,6 +159,36 @@ def default_invite_template(
     return {"subject": subject, "body": body}
 
 
+def default_team_invite_template(
+    company: Dict[str, Any],
+    role: str,
+    accept_url: str,
+) -> EmailTemplate:
+    """Subject + body for a team invitation (migration 014).
+
+    Sent by a company_admin inviting a teammate to a hiring role. `accept_url`
+    points at the frontend accept route (built against FRONTEND_BASE_URL). Same
+    deliverability rules as the candidate templates — no caps/emojis, names the
+    company + purpose up front, reply line + contact footer.
+    """
+    company_name = (company.get("name") or "our team").strip() or "our team"
+    role_label = "company administrator" if role == "company_admin" else "recruiter"
+
+    subject = f"You've been invited to join {company_name}'s hiring team"
+    body = (
+        f"Hi,\n\n"
+        f"{company_name} has invited you to join their hiring team as a "
+        f"{role_label}. This gives you access to review candidates and "
+        f"interviews for {company_name}.\n\n"
+        f"To accept, sign in or create your account using this link:\n"
+        f"{accept_url}\n\n"
+        f"Best regards,\n"
+        f"The {company_name} team\n\n"
+        f"{_company_footer(company)}"
+    )
+    return {"subject": subject, "body": body}
+
+
 def default_rejection_template(
     candidate: Dict[str, Any],
     company: Dict[str, Any],
