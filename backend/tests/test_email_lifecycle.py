@@ -279,6 +279,41 @@ class TestSendIdentity:
         assert email_svc._build_from(None) == "noreply@platform.com"
         assert email_svc._build_from("") == "noreply@platform.com"
 
+    def test_reserved_invalid_reply_to_is_dropped(self, monkeypatch):
+        """A Reply-To on a reserved-invalid domain (the seed company's
+        'default@invalid.example' placeholder) must never reach the Resend
+        payload — we send with no Reply-To rather than a broken one."""
+        monkeypatch.setenv("RESEND_API_KEY", "test-key")
+        monkeypatch.setenv("RESEND_FROM_EMAIL", "noreply@platform.com")
+        captured = {}
+
+        async def fake_post(api_key, payload, idempotency_key=None):
+            captured.update(payload)
+            return {"id": "re_x"}
+
+        monkeypatch.setattr(email_svc, "_post_to_resend", fake_post)
+
+        sb = _FakeSupabase()
+        _run(email_svc.send(
+            sb, company_id="c-1", candidate_id="cand-1", sender_id="rec-1",
+            to="a@b.com", subject="s", body="b",
+            from_name="Acme", reply_to="default@invalid.example",
+        ))
+        assert "reply_to" not in captured
+
+    def test_sanitize_reply_to(self):
+        """Pure-function coverage for the reserved-invalid TLD set + shape check."""
+        f = email_svc._sanitize_reply_to
+        assert f("hiring@acme.com") == "hiring@acme.com"
+        assert f("  hiring@acme.com  ") == "hiring@acme.com"
+        assert f("default@invalid.example") is None
+        assert f("x@y.test") is None
+        assert f("x@host.localhost") is None
+        assert f("nobody@nowhere.invalid") is None
+        assert f("not-an-email") is None
+        assert f("   ") is None
+        assert f(None) is None
+
 
 # ---------------------------------------------------------------------------
 # Resend API errors -> friendly, recruiter-safe messages (403 hardening)

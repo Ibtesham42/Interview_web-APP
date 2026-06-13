@@ -286,6 +286,26 @@ def _build_from(from_name: Optional[str]) -> str:
     return addr
 
 
+# RFC 2606 / RFC 6761 reserved TLDs that can never resolve to a real mailbox.
+# A Reply-To on one of these — e.g. the 'default@invalid.example' placeholder
+# that migration 007 backfilled onto the Default seed company — bounces every
+# reply AND is a spam signal. We drop it and send with no Reply-To rather than
+# ship a guaranteed-broken header.
+_RESERVED_EMAIL_TLDS = (".example", ".invalid", ".test", ".localhost")
+
+
+def _sanitize_reply_to(reply_to: Optional[str]) -> Optional[str]:
+    """Return a usable Reply-To address, or None when it is absent, malformed,
+    or on a reserved-invalid domain. Never raises — a header sanitiser must not
+    be able to take down a send."""
+    addr = (reply_to or "").strip()
+    if not addr or "@" not in addr:
+        return None
+    if addr.lower().endswith(_RESERVED_EMAIL_TLDS):
+        return None
+    return addr
+
+
 def _post_to_resend_sync(
     api_key: str, payload: Dict[str, Any], idempotency_key: Optional[str]
 ) -> Dict[str, Any]:
@@ -398,7 +418,7 @@ async def send(
 
     settings = get_settings()
     api_key = settings.resend_api_key.strip()
-    reply_to_clean = (reply_to or "").strip() or None
+    reply_to_clean = _sanitize_reply_to(reply_to)
 
     status = "sent"
     resend_message_id: Optional[str] = None

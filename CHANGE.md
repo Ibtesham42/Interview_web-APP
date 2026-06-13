@@ -23,6 +23,49 @@
 
 ---
 
+## 13/06/2026 (a)
+Type: Fix
+
+Production email diagnosis + minimal hardening. Reported: (1) emails land in
+spam; (2) invites deliver only to the Resend account owner's own address and
+fail for every other recipient.
+
+ROOT CAUSE = CONFIGURATION, not application code. Proven against the live
+email_outbox (3 sent — all to the owner's address; 8 failed) whose Resend error
+rows read "You can only send testing emails to your own email address" + "the
+gmail.com domain is not verified". RESEND_FROM_EMAIL is unset on Render so it
+defaults to the sandbox sender onboarding@resend.dev (config.py); Resend's
+sandbox is hard-limited to the account owner until a domain is verified. The
+spam placement is the same unverified-domain condition (no SPF/DKIM/DMARC
+alignment on a domain we control) — also config/DNS. Content/headers were
+already deliverability-clean (multipart text+HTML, no caps/emoji, branded From,
+footer). The required fix is operational: verify a domain in Resend, set
+RESEND_FROM_EMAIL to an address on it, add DMARC, redeploy.
+
+Two minimal in-repo changes applied (reused existing architecture, no new system):
+- Code guard: services/email.py `_sanitize_reply_to` drops a Reply-To on an
+  RFC 2606/6761 reserved-invalid domain (.example/.invalid/.test/.localhost) or
+  a malformed address — we send with no Reply-To rather than a broken header.
+  Wired into send(); +2 tests. Backend suite 408 -> 410 green.
+- Data fix (production): cleared the Default seed company
+  (00000000-0000-0000-0000-000000000001) email from the 'default@invalid.example'
+  placeholder (migration 007 backfill) to '' — it was leaking as an invalid
+  Reply-To on 8 sends. Templates omit an empty contact and send() now yields
+  Reply-To=None. Only that one row held the placeholder.
+
+Also reverted a prior same-day local backend/.env edit (the secrets relocation):
+Settings uses extra='forbid', so two app-unused keys (SUPABASE_ACCESS_TOKEN,
+ELEVENLABS_API_KEY) crashed Settings() — those belong in a password manager,
+not .env. (.env is gitignored.)
+
+Affected files: backend/app/services/email.py, backend/tests/test_email_lifecycle.py.
+Also: production companies seed row (data), backend/.env (revert, gitignored).
+Architectural impact: None — additive Reply-To sanitiser; email pipeline otherwise unchanged.
+Future considerations: the reported symptoms clear only once a Resend domain is
+verified + RESEND_FROM_EMAIL set on Render (+ DMARC) — see RESEND_EMAIL.md and
+verify with backend/scripts/verify_email_delivery.py. Could extend the
+reserved-invalid check to the template footer if a placeholder ever lands there.
+
 ## 12/06/2026 (d)
 Type: Feature
 
