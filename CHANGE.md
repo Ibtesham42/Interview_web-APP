@@ -23,6 +23,28 @@
 
 ---
 
+## 13/06/2026 (g)
+Type: Decision
+
+ADR 0013 — Jobs are first-class requisitions; the link to interviews/invites is
+nullable. Records the candidate-centric -> job-aware pivot (chose a full
+requisition object over a lightweight job tag or deferral), the nullable-job_id
+constraint that keeps the realtime pipeline + every existing flow untouched,
+per-company slugs, the manage_jobs authz shape, and that ADR 0004 (funnel stops
+at shortlist) still holds — a job is what a candidate is shortlisted *for*, not a
+new terminal stage. Follow-ups are recorded in the ADR's Consequences (per-job
+pipeline scoping of recruiter_decisions, per-job invitation uniqueness, threading
+job_id onto interviews through signup). CONTEXT.md updated: new "Job" domain term
++ removed the stale "we don't model jobs yet" note from the Apply Link term.
+
+Closes the Jobs feature (Phase 1 keystone): backend (c/d), UI (e), apply landing
+(f), and this decision record.
+
+Affected files: docs/adr/0013-jobs-are-first-class-requisitions.md (new), CONTEXT.md.
+Architectural impact: documents the jobs pivot; no code change.
+Future considerations: per-job pipeline (Phase 2 ATS); then the other Phase 1
+track — Team/Role management.
+
 ## 13/06/2026 (f)
 Type: Feature
 

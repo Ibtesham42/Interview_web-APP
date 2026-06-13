@@ -182,8 +182,22 @@ which stamps the new Candidate's profile with the Company's id on signup.
 The Slug is chosen at Company creation and is part of the schema contract
 — renaming a Slug breaks outstanding links.
 _Avoid_: Invite URL (Apply Link is shared broadly; the Invite is a
-per-Candidate email — see below), Application page, Job link (we don't
-model jobs yet).
+per-Candidate email — see below), Application page. Distinct from a Job's
+apply link `/apply/{company_slug}/{job_slug}` (ADR 0013), which targets one
+requisition — the Apply Link is company-wide.
+
+**Job** (a.k.a. Requisition):
+A role a Company is hiring for (`jobs` table, migration 013 / ADR 0013).
+Tenant-scoped; identified by a UUID + a per-Company Slug, with a Status
+(`draft` = not visible, `open` = accepting applicants, `closed` = archived).
+Published at `/apply/{company_slug}/{job_slug}` when `open`. Interviews and
+Invitations may reference a Job via a NULLABLE `job_id` — a Job is optional
+context, never a requirement, so the candidate-centric flow and the realtime
+interview pipeline are unchanged. Per-job interview tuning is reserved as
+`interview_config` (empty = platform defaults; the orchestrator is untouched
+until a Company opts in).
+Capability: `'manage_jobs'` (HIRING_ROLES with a tenant — see ADR 0006/0007).
+_Avoid_: Posting, Listing, Position, Role (overloaded with the auth Role).
 
 **Invite** (the act):
 A per-Candidate email sent via `POST /api/companies/invite`, addressed
